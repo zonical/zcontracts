@@ -19,7 +19,7 @@ You will need the latest release of nosoop's stocksoup if you wish to build the 
 | :---: | :---: | :---: |
 | Progress | Each objective has its own progress bar (defined per objective) | Each objective has its own progress bar OR can be completed infinitely (defined per objective), One central progress bar (defined per contract) |
 | Completion | Each objective must be completed to finish the Contract. | The central progress bar must be completed to finish the Contract. |
-| In-Game chat example | ![image](https://user-images.githubusercontent.com/30227729/175793750-542e674c-4078-4100-88cc-49dd8905bae5.png) | ![image](https://user-images.githubusercontent.com/30227729/175793737-56b6e649-28ca-473f-90b8-75c93dac8ad5.png) |
+| In-Game chat example | `[ZC] You have selected the contract: "Example Contract - Kills (Type 1)". To complete it, finish all the objectives.` | `[ZC] You have selected the contract: "Example Contract - Kills (Type 2)". To complete it, get 100CP.` |
 
 - Objectives can have timer-based events.
 - Server operators can create custom Contracker events with the provided Native functions (`CallContrackerEvent`).
