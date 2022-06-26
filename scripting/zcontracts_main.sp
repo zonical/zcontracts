@@ -76,79 +76,22 @@ public void OnSchemaConVarChange(ConVar convar, char[] oldValue, char[] newValue
 	CreateContractMenu();
 }
 
-public Action DebugSetContract(int client, int args)
-{	
-	// Grab UUID.
-	char sUUID[64];
-	GetCmdArg(1, sUUID, sizeof(sUUID));
-	PrintToChat(client, "Setting contract: %s", sUUID);
-	
-	SetClientContract(client, sUUID);
-	return Plugin_Handled;
-}
-
-public Action DebugContractInfo(int client, int args)
-{	
-	// Grab UUID.
-	char sUUID[64];
-	GetCmdArg(1, sUUID, sizeof(sUUID));
-	Contract hContract;
-	GetContractDefinition(sUUID, hContract);
-	PrintToConsole(client, "See server console for output.");
-
-	if (args == 1)
-	{
-		PrintToServer("---------------------------------------------");
-		PrintToServer("Contract Name: %s", hContract.m_sContractName);
-		PrintToServer("Contract UUID: %s", hContract.m_sUUID);
-		PrintToServer("Contract Directory: %s", hContract.m_sDirectoryPath);
-		PrintToServer("Contract Progress Type: %d", hContract.m_iContractType);
-		PrintToServer("Contract Progress: %d/%d", hContract.m_iProgress, hContract.m_iMaxProgress);
-		PrintToServer("Contract Objective Count: %d", hContract.m_hObjectives.Length);
-		PrintToServer("Is Contract Complete: %d", hContract.IsContractComplete());
-		PrintToServer("[INFO] To debug an objective, type sm_debugcontract [UUID] [objective_index]");
-		PrintToServer("---------------------------------------------");
-	}
-	if (args == 2)
-	{
-		char sArg[4];
-		GetCmdArg(2, sArg, sizeof(sArg));
-		int iID = StringToInt(sArg);
-		PrintToServer("%d", iID);
-
-		ContractObjective hContractObjective;
-		hContract.m_hObjectives.GetArray(iID, hContractObjective);
-
-		PrintToServer("---------------------------------------------");
-		PrintToServer("Contract Name: %s", hContract.m_sContractName);
-		PrintToServer("Contract UUID: %s", hContract.m_sUUID);
-		PrintToServer("Contract Progress Type: %d", hContract.m_iContractType);
-		PrintToServer("Objective Initalized: %d", hContractObjective.m_bInitalized);
-		PrintToServer("Objective Internal ID: %d", hContractObjective.m_iInternalID);
-		PrintToServer("Objective Is Infinite: %d", hContractObjective.m_bInfinite);
-		PrintToServer("Objective Award: %d", hContractObjective.m_iAward);
-		PrintToServer("Objective Progress: %d/%d", hContractObjective.m_iProgress, hContractObjective.m_iMaxProgress);
-		PrintToServer("Objective Event Count: %d", hContractObjective.m_hEvents.Length);
-		PrintToServer("Is Objective Complete: %d", hContractObjective.IsObjectiveComplete());
-		PrintToServer("[INFO] To debug an event, type sm_debugcontract [UUID] [objective_index] [event_index]");
-		PrintToServer("---------------------------------------------");
-	}
-	
-	return Plugin_Handled;
-}
-
-
 public Action ReloadContracts(int args)
 {
 	ProcessContractsSchema();
 	CreateContractMenu();
 }
 
+// ============ NATIVE FUNCTIONS ============
+
 // Grabs a client's contract.
 public any Native_GetClientContract(Handle plugin, int numParams)
 {
 	int client = GetNativeCell(1);
-	if (!IsClientValid(client)) return ThrowNativeError(SP_ERROR_NATIVE, "Invalid client index (%d)", client);
+	if (!IsClientValid(client)) 
+	{
+		return ThrowNativeError(SP_ERROR_NATIVE, "Invalid client index (%d)", client);
+	}
 	SetNativeArray(2, m_hContracts[client], sizeof(Contract));
 	return true;
 }
@@ -162,24 +105,32 @@ public any Native_CallContrackerEvent(Handle plugin, int numParams)
 	int value = GetNativeCell(3); 
 
 	// Are we a bot?
-	if (!IsClientValid(client) || IsFakeClient(client)) 
+	if (!IsClientValid(client) || IsFakeClient(client))
+	{
 		return ThrowNativeError(SP_ERROR_NATIVE, "Invalid client index (%d)", client);
+	}
 
 	Contract hContract;
 	GetClientContract(client, hContract);
 	
 	// Do we have a contract currently active?
-	if (hContract.m_sUUID[0] != '{') return false;
-	if (hContract.IsContractComplete()) return false;
+	if (hContract.m_sUUID[0] != '{' || 
+	hContract.IsContractComplete())
+	{
+		return false;
+	}
 
 	// Try to increment all of our objectives.
 	for (int i = 0; i < MAX_CONTRACT_OBJECTIVES; i++)
 	{
 		ContractObjective hContractObjective;
 		hContract.m_hObjectives.GetArray(i, hContractObjective);
-		if (!hContractObjective.m_bInitalized) continue;
-		if (hContractObjective.IsObjectiveComplete()) continue;
-
+		// Don't touch this objective if it shouldn't be doing anything.
+		if (!hContractObjective.m_bInitalized ||
+		hContractObjective.IsObjectiveComplete()) 
+		{
+			continue;
+		}
 		TryIncrementObjectiveProgress(hContractObjective, client, event, value);
 		hContract.m_hObjectives.SetArray(i, hContractObjective);
 	}
@@ -195,11 +146,14 @@ public any Native_SetClientContract(Handle plugin, int numParams)
 	GetNativeString(2, sUUID, sizeof(sUUID));
 
 	// Are we a bot?
-	if (!IsClientValid(client) || IsFakeClient(client)) 
+	if (!IsClientValid(client) || IsFakeClient(client))
+	{
 		return ThrowNativeError(SP_ERROR_NATIVE, "Invalid client index (%d)", client);
+	}
 
 	if (GetContractDefinition(sUUID, m_hContracts[client]))
 	{
+		// Print a specific type of message depending on what type of Contract we're doing.
 		char sMessage[128] = "{green}[ZC]{default} You have selected the contract: {lightgreen}\"%s\"{default}. To complete it, ";
 		switch (m_hContracts[client].m_iContractType)
 		{
@@ -523,6 +477,70 @@ public int ContractMenuHandler(Menu menu, MenuAction action, int param1, int par
 public Action OpenContrackerForClient(int client, int args)
 {	
 	gContractMenu.Display(client, MENU_TIME_FOREVER);
+	return Plugin_Handled;
+}
+
+
+// ============ DEBUG FUNCTIONS ============
+
+public Action DebugSetContract(int client, int args)
+{	
+	// Grab UUID.
+	char sUUID[64];
+	GetCmdArg(1, sUUID, sizeof(sUUID));
+	PrintToChat(client, "Setting contract: %s", sUUID);
+	
+	SetClientContract(client, sUUID);
+	return Plugin_Handled;
+}
+
+public Action DebugContractInfo(int client, int args)
+{	
+	// Grab UUID.
+	char sUUID[64];
+	GetCmdArg(1, sUUID, sizeof(sUUID));
+	Contract hContract;
+	GetContractDefinition(sUUID, hContract);
+	PrintToConsole(client, "See server console for output.");
+
+	if (args == 1)
+	{
+		PrintToServer("---------------------------------------------");
+		PrintToServer("Contract Name: %s", hContract.m_sContractName);
+		PrintToServer("Contract UUID: %s", hContract.m_sUUID);
+		PrintToServer("Contract Directory: %s", hContract.m_sDirectoryPath);
+		PrintToServer("Contract Progress Type: %d", hContract.m_iContractType);
+		PrintToServer("Contract Progress: %d/%d", hContract.m_iProgress, hContract.m_iMaxProgress);
+		PrintToServer("Contract Objective Count: %d", hContract.m_hObjectives.Length);
+		PrintToServer("Is Contract Complete: %d", hContract.IsContractComplete());
+		PrintToServer("[INFO] To debug an objective, type sm_debugcontract [UUID] [objective_index]");
+		PrintToServer("---------------------------------------------");
+	}
+	if (args == 2)
+	{
+		char sArg[4];
+		GetCmdArg(2, sArg, sizeof(sArg));
+		int iID = StringToInt(sArg);
+		PrintToServer("%d", iID);
+
+		ContractObjective hContractObjective;
+		hContract.m_hObjectives.GetArray(iID, hContractObjective);
+
+		PrintToServer("---------------------------------------------");
+		PrintToServer("Contract Name: %s", hContract.m_sContractName);
+		PrintToServer("Contract UUID: %s", hContract.m_sUUID);
+		PrintToServer("Contract Progress Type: %d", hContract.m_iContractType);
+		PrintToServer("Objective Initalized: %d", hContractObjective.m_bInitalized);
+		PrintToServer("Objective Internal ID: %d", hContractObjective.m_iInternalID);
+		PrintToServer("Objective Is Infinite: %d", hContractObjective.m_bInfinite);
+		PrintToServer("Objective Award: %d", hContractObjective.m_iAward);
+		PrintToServer("Objective Progress: %d/%d", hContractObjective.m_iProgress, hContractObjective.m_iMaxProgress);
+		PrintToServer("Objective Event Count: %d", hContractObjective.m_hEvents.Length);
+		PrintToServer("Is Objective Complete: %d", hContractObjective.IsObjectiveComplete());
+		PrintToServer("[INFO] To debug an event, type sm_debugcontract [UUID] [objective_index] [event_index]");
+		PrintToServer("---------------------------------------------");
+	}
+	
 	return Plugin_Handled;
 }
 

@@ -27,7 +27,10 @@ public Action OnPlayerDeath(Event event, const char[] name, bool dontBroadcast)
 	{
 		CallContrackerEvent(attacker, "CONTRACTS_PLAYER_KILL", 1);
 		CallContrackerEvent(victim, "CONTRACTS_PLAYER_DEATH", 1);
-		if (IsClientValid(assister) && assister != attacker) CallContrackerEvent(assister, "CONTRACTS_PLAYER_ASSIST_KILL", 1);
+		if (IsClientValid(assister) && assister != attacker)
+		{
+			CallContrackerEvent(assister, "CONTRACTS_PLAYER_ASSIST_KILL", 1);
+		}
 	}
 }
 
