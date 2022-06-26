@@ -6,6 +6,10 @@
 ArrayList g_Contracts;
 ArrayList g_Directories;
 
+ConVar g_ConfigSearchPath;
+ConVar g_RequiredFileExt;
+ConVar g_DisabledPath;
+
 public KeyValues LoadContractsSchema()
 {
 	KeyValues contractSchema = new KeyValues("Items");
@@ -13,7 +17,9 @@ public KeyValues LoadContractsSchema()
 	// We'll ditch the single file legacy format and instead load separate contract files.
 	// These will all be loaded and merged together in one single schema.
 	char schemaDir[PLATFORM_MAX_PATH];
-	BuildPath(Path_SM, schemaDir, sizeof(schemaDir), "configs/%s", SCHEMA_FOLDER);
+	char configPath[PLATFORM_MAX_PATH];
+	g_ConfigSearchPath.GetString(configPath, sizeof(configPath));
+	BuildPath(Path_SM, schemaDir, sizeof(schemaDir), configPath);
 	
 	// Find files within `configs/creators/contracts/` and import them, too
 	ArrayList configFiles = GetFilesInDirectoryRecursive(schemaDir);
@@ -24,11 +30,15 @@ public KeyValues LoadContractsSchema()
 		configFiles.GetString(i, contractFilePath, sizeof(contractFilePath));
 		NormalizePathToPOSIX(contractFilePath);
 		
-		// Skip files in directories named "disabled".
-		if (StrContains(contractFilePath, "/disabled/") != -1) continue;
+		// Skip files in directories that the g_DisabledPath ConVar disallows
+		char disabledPath[PLATFORM_MAX_PATH];
+		g_DisabledPath.GetString(disabledPath, sizeof(disabledPath));
+		if (StrContains(contractFilePath, disabledPath) != -1) continue;
 		
-		// Skip files that are NOT text files (e.g documentation).
-		if (StrContains(contractFilePath, REQUIRED_FILE_EXTENSION) == -1) continue;
+		// Skip files that are NOT what g_RequiredFileExt requires (e.g documentation).
+		char requiredExt[16];
+		g_RequiredFileExt.GetString(requiredExt, sizeof(requiredExt));
+		if (StrContains(contractFilePath, requiredExt) == -1) continue;
 		
 		// Import in this config file.
 		KeyValues importKV = new KeyValues("Contract");
@@ -73,7 +83,6 @@ public void CreateContractObjectiveEvent(KeyValues hEventConf, ContractObjective
 	hEventConf.GetString("exclusive_description", hEvent.m_sExclusiveDescription, sizeof(hEvent.m_sExclusiveDescription));
 	hEventConf.GetString("type", hEvent.m_sEventType, sizeof(hEvent.m_sEventType), "increment");
 	hEvent.m_iThreshold = hEventConf.GetNum("threshold", 1);
-	hEvent.m_iAward = hEventConf.GetNum("award", 1);
 	
 	// If this event has a timer...
 	if (hEventConf.JumpToKey("timer", false))
@@ -105,10 +114,11 @@ public void CreateContractObjectiveEvent(KeyValues hEventConf, ContractObjective
 public void CreateContractObjective(KeyValues hObjectiveConf, ContractObjective hObjective)
 {
 	hObjective.Initalize();
-	
+
 	hObjectiveConf.GetString("description", hObjective.m_sDescription, sizeof(hObjective.m_sDescription));
 	hObjectiveConf.GetString("weapon_restriction", hObjective.m_sWeaponRestriction, sizeof(hObjective.m_sWeaponRestriction));
 	hObjective.m_iMaxProgress = hObjectiveConf.GetNum("required_progress", 1);
+	hObjective.m_iAward = hObjectiveConf.GetNum("award", 1);
 	hObjective.m_bInfinite = view_as<bool>(hObjectiveConf.GetNum("infinite", 0));
 	if (hObjective.m_bInfinite)
 	{
@@ -210,7 +220,7 @@ public void CreateContract(KeyValues hContractConf, Contract hContract)
 public void ProcessContractsSchema()
 {
 	KeyValues contractSchema = LoadContractsSchema();
-
+	
 	delete g_Directories;
 	delete g_Contracts;
 	g_Directories = new ArrayList(ByteCountToCells(MAX_DIRECTORY_SIZE));

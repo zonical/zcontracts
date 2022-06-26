@@ -1,0 +1,49 @@
+"Contract"
+{
+	"{3e761827-d899-43ef-beb6-df3245ccc320}"
+	{
+		"name"		"Example Contract - Kills (Type 2)"
+		"directory"	"root/examples"
+		"type"		"2"
+		"required_progress"		"100"
+		
+		// What classes can do this contract?
+		"classes"
+		{
+			"soldier"	"1"
+			"pyro"		"1"
+			"heavy"		"1"
+			"engineer"	"1"
+			"scout"		"1"
+			"demoman"	"1"
+			"sniper"	"1"
+			"medic"		"1"
+			"spy"		"1"
+		}
+		
+		"objectives"
+		{
+			"1"
+			{
+				"description"		"Kill a player."
+				"infinite"		"1"
+				
+				// The events that this objective looks out for.
+				"events"		
+				{
+					"CONTRACTS_PLAYER_KILL"
+					{
+						// What this event should do.
+						"type"		"increment"
+						
+						// How many times does this event need to trigger to add points?
+						"threshold"	"1"
+						
+						// How many points should we give for successfully doing this objective?
+						"award"		"3"
+					}
+				}
+			}
+		}
+	}
+}

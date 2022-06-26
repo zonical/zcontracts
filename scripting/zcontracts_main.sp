@@ -31,18 +31,29 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 
 public void OnPluginStart()
 {
+	// Register ConVars
+	// These three are defined in contracts_schema.sp
+	g_ConfigSearchPath = CreateConVar("zc_contract_search_path", "configs/zcontracts", "The path, relative to the \"sourcemods/\" directory, to find Contract definition files. Changing this Value will cause a reload of the Contract schema.");
+	g_RequiredFileExt = CreateConVar("zc_required_file_ext", ".txt", "The file extension that Contract definition files must have in order to be considered valid. Changing this Value will cause a reload of the Contract schema.");
+	g_DisabledPath = CreateConVar("zc_disabled_path", "configs/zcontracts/disabled", "If a search path has this string in it, any Contract's loaded in or derived from this path will not be loaded. Changing this Value will cause a reload of the Contract schema.");
+	g_ConfigSearchPath.AddChangeHook(OnSchemaConVarChange);
+	g_RequiredFileExt.AddChangeHook(OnSchemaConVarChange);
+	g_DisabledPath.AddChangeHook(OnSchemaConVarChange);
+
 	// Initalization.
 	HookEvents();	
 	ProcessContractsSchema();
 	CreateContractMenu();
+
 	for (int i = 0; i < MAXPLAYERS+1; i++)
 	{
 		OnClientPostAdminCheck(i);
 	}
 	
-	RegServerCmd("sm_reloadcontracts", ReloadContracts);
 	RegConsoleCmd("sm_setcontract", DebugSetContract);
+	RegConsoleCmd("sm_debugcontract", DebugContractInfo);
 
+	RegServerCmd("sm_reloadcontracts", ReloadContracts);
 	RegConsoleCmd("sm_contract", OpenContrackerForClient);
 	RegConsoleCmd("sm_contracts", OpenContrackerForClient);
 	RegConsoleCmd("sm_c", OpenContrackerForClient);
@@ -59,6 +70,12 @@ public void OnClientPostAdminCheck(int client)
 	g_Menu_CurrentDirectory[client] = "root";
 }
 
+public void OnSchemaConVarChange(ConVar convar, char[] oldValue, char[] newValue)
+{
+	ProcessContractsSchema();
+	CreateContractMenu();
+}
+
 public Action DebugSetContract(int client, int args)
 {	
 	// Grab UUID.
@@ -69,6 +86,57 @@ public Action DebugSetContract(int client, int args)
 	SetClientContract(client, sUUID);
 	return Plugin_Handled;
 }
+
+public Action DebugContractInfo(int client, int args)
+{	
+	// Grab UUID.
+	char sUUID[64];
+	GetCmdArg(1, sUUID, sizeof(sUUID));
+	Contract hContract;
+	GetContractDefinition(sUUID, hContract);
+	PrintToConsole(client, "See server console for output.");
+
+	if (args == 1)
+	{
+		PrintToServer("---------------------------------------------");
+		PrintToServer("Contract Name: %s", hContract.m_sContractName);
+		PrintToServer("Contract UUID: %s", hContract.m_sUUID);
+		PrintToServer("Contract Directory: %s", hContract.m_sDirectoryPath);
+		PrintToServer("Contract Progress Type: %d", hContract.m_iContractType);
+		PrintToServer("Contract Progress: %d/%d", hContract.m_iProgress, hContract.m_iMaxProgress);
+		PrintToServer("Contract Objective Count: %d", hContract.m_hObjectives.Length);
+		PrintToServer("Is Contract Complete: %d", hContract.IsContractComplete());
+		PrintToServer("[INFO] To debug an objective, type sm_debugcontract [UUID] [objective_index]");
+		PrintToServer("---------------------------------------------");
+	}
+	if (args == 2)
+	{
+		char sArg[4];
+		GetCmdArg(2, sArg, sizeof(sArg));
+		int iID = StringToInt(sArg);
+		PrintToServer("%d", iID);
+
+		ContractObjective hContractObjective;
+		hContract.m_hObjectives.GetArray(iID, hContractObjective);
+
+		PrintToServer("---------------------------------------------");
+		PrintToServer("Contract Name: %s", hContract.m_sContractName);
+		PrintToServer("Contract UUID: %s", hContract.m_sUUID);
+		PrintToServer("Contract Progress Type: %d", hContract.m_iContractType);
+		PrintToServer("Objective Initalized: %d", hContractObjective.m_bInitalized);
+		PrintToServer("Objective Internal ID: %d", hContractObjective.m_iInternalID);
+		PrintToServer("Objective Is Infinite: %d", hContractObjective.m_bInfinite);
+		PrintToServer("Objective Award: %d", hContractObjective.m_iAward);
+		PrintToServer("Objective Progress: %d/%d", hContractObjective.m_iProgress, hContractObjective.m_iMaxProgress);
+		PrintToServer("Objective Event Count: %d", hContractObjective.m_hEvents.Length);
+		PrintToServer("Is Objective Complete: %d", hContractObjective.IsObjectiveComplete());
+		PrintToServer("[INFO] To debug an event, type sm_debugcontract [UUID] [objective_index] [event_index]");
+		PrintToServer("---------------------------------------------");
+	}
+	
+	return Plugin_Handled;
+}
+
 
 public Action ReloadContracts(int args)
 {
@@ -132,9 +200,22 @@ public any Native_SetClientContract(Handle plugin, int numParams)
 
 	if (GetContractDefinition(sUUID, m_hContracts[client]))
 	{
-		MC_PrintToChat(client,
-		"{green}[ZC]{default} You have selected the contract: {lightgreen}\"%s\"{default}. To complete it, finish all the objectives.",
-		m_hContracts[client].m_sContractName);
+		char sMessage[128] = "{green}[ZC]{default} You have selected the contract: {lightgreen}\"%s\"{default}. To complete it, ";
+		switch (m_hContracts[client].m_iContractType)
+		{
+			case Contract_ObjectiveProgress:
+			{
+				char sAppendText[] = "finish all the objectives.";
+				StrCat(sMessage, sizeof(sMessage), sAppendText);
+			}
+			case Contract_ContractProgress:
+			{
+				char sAppendText[] = "get %dCP.";
+				Format(sAppendText, sizeof(sAppendText), sAppendText, m_hContracts[client].m_iMaxProgress);
+				StrCat(sMessage, sizeof(sMessage), sAppendText);
+			}
+		}
+		MC_PrintToChat(client, sMessage, m_hContracts[client].m_sContractName);
 		
 		// Print our objectives to chat.
 		for (int i = 0; i < MAX_CONTRACT_OBJECTIVES; i++)
@@ -165,9 +246,13 @@ public void PrintContractObjective(int client, ContractObjective hObjective)
 		Format(objectiveString, sizeof(objectiveString), objectiveString, hObjective.m_sDescription);
 		if (!hObjective.m_bInfinite)
 		{
-			StrCat(objectiveString, sizeof(objectiveString), " [%d/%d]");
-			Format(objectiveString, sizeof(objectiveString), objectiveString, 
-			hObjective.m_iProgress, hObjective.m_iMaxProgress);
+			StrCat(objectiveString, sizeof(objectiveString), " [%d/%dCP]");
+			Format(objectiveString, sizeof(objectiveString), objectiveString, hObjective.m_iProgress, hObjective.m_iMaxProgress);
+		}
+		else
+		{
+			StrCat(objectiveString, sizeof(objectiveString), " [+%dCP]");
+			Format(objectiveString, sizeof(objectiveString), objectiveString, hObjective.m_iAward);
 		}
 		
 		MC_PrintToChat(client, objectiveString);
@@ -216,7 +301,7 @@ public void TryIncrementObjectiveProgress(ContractObjective hObjective, int clie
 						PrintHintText(client, "Objective Completed: %s (%s)", hObjective.m_sDescription, hContract.m_sContractName);
 					
 					case Contract_ContractProgress:
-						PrintHintText(client, "Objective Completed: %s (%s) [%d/%d]", 
+						PrintHintText(client, "Objective Completed: %s (%s) [%d/%dCP]", 
 						hObjective.m_sDescription, hContract.m_sContractName,
 						hContract.m_iProgress, hContract.m_iMaxProgress);
 				}
@@ -237,19 +322,19 @@ public void TryIncrementObjectiveProgress(ContractObjective hObjective, int clie
 					{
 						case Contract_ObjectiveProgress:
 							PrintHintText(client, "%s (%s) +%dCP",
-							sDescriptionText, hContract.m_sContractName, hEvent.m_iAward);
+							sDescriptionText, hContract.m_sContractName, hObjective.m_iAward);
 						
 						case Contract_ContractProgress:
-							PrintHintText(client, "[%d/%d] %s (%s) +%dCP",
+							PrintHintText(client, "[%d/%dCP] %s (%s) +%dCP",
 							hContract.m_iProgress, hContract.m_iMaxProgress,
-							sDescriptionText, hContract.m_sContractName, hEvent.m_iAward);
+							sDescriptionText, hContract.m_sContractName, hObjective.m_iAward);
 					}
 				}
 				else
 				{
-					PrintHintText(client, "[%d/%d] %s (%s) +%dCP", 
+					PrintHintText(client, "[%d/%dCP] %s (%s) +%dCP", 
 					hObjective.m_iProgress, hObjective.m_iMaxProgress, sDescriptionText,
-					hContract.m_sContractName, hEvent.m_iAward);
+					hContract.m_sContractName, hObjective.m_iAward);
 				}
 			}
 		}
@@ -262,6 +347,10 @@ public void TryIncrementObjectiveProgress(ContractObjective hObjective, int clie
 		MC_PrintToChat(client,
 		"{green}[ZC]{default} Congratulations! You have completed the contract: {lightgreen}\"%s\"{default}.",
 		hContract.m_sContractName);
+
+		// Set the client's contract to nothing.
+		Contract hBlankContract;
+		m_hContracts[client] = hBlankContract;
 	}
 }
 

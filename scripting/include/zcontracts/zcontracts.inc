@@ -10,9 +10,6 @@
 #define MAX_OBJECTIVE_DESC_SIZE 128
 #define MAX_EVENT_SIZE 64
 #define MAX_DIRECTORY_SIZE 128
-#define REQUIRED_FILE_EXTENSION ".txt"
-
-#define SCHEMA_FOLDER "zcontracts"
 
 enum ContractType
 {
@@ -47,9 +44,6 @@ enum struct ContractObjectiveEvent
 	int m_iCurrentThreshold;
 	
 	char m_sEventType[16];
-	
-	// How many points should be awarded when this event is trigged (if type increment).
-	int m_iAward;
 	
 	// Timer logic.
 	Handle m_hTimer;
@@ -101,6 +95,9 @@ enum struct ContractObjective
 	
 	char m_sDescription[MAX_OBJECTIVE_DESC_SIZE];
 	
+	// Award to give when this event is triggered.
+	int m_iAward;
+
 	// Progress of this objective.
 	int m_iMaxProgress;
 	int m_iProgress;
@@ -121,7 +118,7 @@ enum struct ContractObjective
 			if (StrEqual(hEvent.m_sEventType, "increment"))
 			{
 				// Add to our event progress.
-				this.m_iProgress += hEvent.m_iAward;
+				this.m_iProgress += this.m_iAward;
 	
 				// Clamp.
 				if (!this.m_bInfinite) 
