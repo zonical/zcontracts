@@ -13,7 +13,6 @@ Panel gContractObjeciveDisplay[MAXPLAYERS+1];
 static Menu gContractMenu;
 
 #include "zcontracts/contracts_schema.sp"
-#include "zcontracts/contracts_events.sp"
 #include "zcontracts/contracts_timers.sp"
 #include "zcontracts/contracts_db.sp"
 
@@ -25,8 +24,8 @@ static Menu gContractMenu;
 // TODO: Move debug functions to their own file.
 // TODO: Implement team restrictions for contracts.
 	// (e.g red, blu, terrorists, counterterrorists + aliases)
-// TODO: Documentation!!.
-
+// TODO: Documentation!!
+// TODO: Implement forwards for contract and objective completion
 
 public Plugin myinfo =
 {
@@ -56,8 +55,6 @@ public void OnPluginStart()
 	g_RequiredFileExt.AddChangeHook(OnSchemaConVarChange);
 	g_DisabledPath.AddChangeHook(OnSchemaConVarChange);
 
-	// Initalization.
-	HookEvents();	
 	ProcessContractsSchema();
 	CreateContractMenu();
 
@@ -225,20 +222,36 @@ public void TryIncrementObjectiveProgress(ContractObjective hObjective, int clie
 		// Does this event match?
 		if (StrEqual(hEvent.m_sEventName, event))
 		{
+			// Do we have a timer going?
+			if (hEvent.m_hTimer != INVALID_HANDLE)
+			{
+				TriggerTimeEvent(hObjective, hEvent, "OnThreshold");
+			}
+			// Start the timer if it doesn't exist yet.
+			else 
+			{
+				if (hEvent.m_hTimer == INVALID_HANDLE && hEvent.m_fTime != 0.0)
+				{
+					// Create a datapack for our timer so we can pass our objective and event through.
+					DataPack m_hTimerdata;
+					
+					// Create our timer. (see contracts_timers.sp)
+					hEvent.m_hTimer = CreateDataTimer(hEvent.m_fTime, EventTimer, m_hTimerdata, TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);
+					m_hTimerdata.WriteCell(client); // Pass through our client so we can get our contract.
+					m_hTimerdata.WriteCell(hObjective.m_iInternalID); // Pass through our internal ID so we know which objective to look for.
+					m_hTimerdata.WriteCell(hEvent.m_iInternalID); // Pass through the current event index so we know which event we're looking for in our objective.
+					// ^^ The reason we do these two things as we can't pass enum structs through into a DataPack.
+				}
+			}
+
 			// Increment logic.
+			int iOldProgress = hObjective.m_iProgress;
 			hObjective.TryIncrementProgress(client, hEvent, value);
 			hObjective.m_hEvents.SetArray(i, hEvent);
 
-			// Print that this objective is complete.
-			if (hObjective.IsObjectiveComplete())
+			// Print to HUD that we've triggered this event and gained progress.
+			if (hObjective.m_iProgress > iOldProgress)
 			{
-				PrintHintText(client, "Contract Objective Completed: %s (%s)", hObjective.m_sDescription, hContract.m_sContractName);
-				// Update in the database to reflect that we've completed this objective.
-				SaveObjectiveProgressToDB(client, hContract.m_sUUID, hObjective);
-			}
-			else
-			{
-				// Print to HUD that we've triggered this event.
 				if (hObjective.m_bInfinite)
 				{
 					switch (hContract.m_iContractType)
@@ -262,6 +275,18 @@ public void TryIncrementObjectiveProgress(ContractObjective hObjective, int clie
 					hObjective.m_iProgress, hObjective.m_iMaxProgress, hObjective.m_sDescription,
 					hContract.m_sContractName, hObjective.m_iAward);
 				}
+			}
+
+			// Print that this objective is complete.
+			if (hObjective.IsObjectiveComplete())
+			{
+				// Print to chat.
+				MC_PrintToChat(client,
+				"{green}[ZC]{default} Congratulations! You have completed the contract objective: {lightgreen}\"%s\"{default}.",
+				hObjective.m_sDescription);
+
+				// Update in the database to reflect that we've completed this objective.
+				SaveObjectiveProgressToDB(client, hContract.m_sUUID, hObjective);
 			}
 		}
 	}
@@ -575,4 +600,10 @@ public Action DebugContractInfo(int client, int args)
 
 // ============ UTILITY FUNCTIONS ============
 
-stock int Int_Min(int a, int b) { return a < b ? a : b; }
+public bool IsClientValid(int client)
+{
+	if (client <= 0 || client > MaxClients)return false;
+	if (!IsClientInGame(client))return false;
+	if (!IsClientAuthorized(client))return false;
+	return true;
+}

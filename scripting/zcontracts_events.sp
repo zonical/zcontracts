@@ -1,7 +1,18 @@
+#include <sourcemod>
 #include <sdkhooks>
+#include <zcontracts/zcontracts>
+
+public Plugin myinfo =
+{
+	name = "ZContracts - Event Logic",
+	author = "ZoNiCaL",
+	description = "Hooks game events into the ZContract system.",
+	version = "alpha-1",
+	url = ""
+};
 
 // Hook all of our game events.
-public void HookEvents()
+public void OnPluginStart()
 {
 	// Hook player events.
 	HookEvent("player_death", OnPlayerDeath);
@@ -22,8 +33,7 @@ public Action OnPlayerDeath(Event event, const char[] name, bool dontBroadcast)
 	int assister = GetClientOfUserId(event.GetInt("assister"));
 	
 	// Make sure we're not the same.
-	if (IsClientValid(attacker) && IsClientValid(victim)
-		&& attacker != victim)
+	if (IsClientValid(attacker) && IsClientValid(victim) && attacker != victim)
 	{
 		CallContrackerEvent(attacker, "CONTRACTS_PLAYER_KILL", 1);
 		CallContrackerEvent(victim, "CONTRACTS_PLAYER_DEATH", 1);
@@ -43,14 +53,19 @@ public Action OnPlayerHurt(Event event, const char[] name, bool dontBroadcast)
 	int victim = GetClientOfUserId(event.GetInt("userid"));
 	int damage = event.GetInt("damageamount");
 	
-	// Make sure we're not the same.
-	if (attacker != victim)
+	if (IsClientValid(attacker) && IsClientValid(victim))
 	{
-		// Award an event for the killer.
-		CallContrackerEvent(attacker, "CONTRACTS_PLAYER_DEAL_DAMAGE", damage);
-		// Award an event for the person who died.
-		CallContrackerEvent(victim, "CONTRACTS_PLAYER_TAKE_DAMAGE", damage);
+		// Make sure we're not the same.
+		if (attacker != victim)
+		{
+			// Award an event for the killer.
+			CallContrackerEvent(attacker, "CONTRACTS_PLAYER_DEAL_DAMAGE", damage);
+			// Award an event for the person who died.
+			CallContrackerEvent(victim, "CONTRACTS_PLAYER_TAKE_DAMAGE", damage);
+		}
 	}
+	
+
 	return Plugin_Continue;
 }
 

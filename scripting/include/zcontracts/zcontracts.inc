@@ -11,6 +11,8 @@
 #define MAX_EVENT_SIZE 64
 #define MAX_DIRECTORY_SIZE 128
 
+stock int Int_Min(int a, int b) { return a < b ? a : b; }
+
 enum ContractType
 {
 	// Each objective has it's own progress bar. All objectives must be completed
@@ -67,23 +69,6 @@ enum struct ContractObjectiveEvent
 		delete this.m_hTimerEvents;
 		this.m_bInitalized = false;
 	}
-
-	void StartTimer(int objective_id, int client, const char[] event, int value)
-	{
-		// Start the timer if it doesn't exist yet.
-		if (this.m_hTimer == INVALID_HANDLE && this.m_fTime != 0.0)
-		{
-			// Create a datapack for our timer so we can pass our objective and event through.
-			DataPack m_hTimerdata;
-			
-			// Create our timer. (see contracts_timers.sp)
-			this.m_hTimer = CreateDataTimer(this.m_fTime, EventTimer, m_hTimerdata, TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);
-			m_hTimerdata.WriteCell(client); // Pass through our client so we can get our contract.
-			m_hTimerdata.WriteCell(objective_id); // Pass through our internal ID so we know which objective to look for.
-			m_hTimerdata.WriteCell(this.m_iInternalID); // Pass through the current event index so we know which event we're looking for in our objective.
-			// ^^ The reason we do these two things as we can't pass enum structs through into a DataPack.
-		}
-	}
 }
 
 // Contract objectives.
@@ -115,16 +100,6 @@ enum struct ContractObjective
 
 		// Add to our event threshold.
 		hEvent.m_iCurrentThreshold += value;
-			
-		// Do we have a timer going?
-		if (hEvent.m_hTimer != INVALID_HANDLE)
-		{
-			TriggerTimeEvent(this, hEvent, "OnThreshold");
-		}
-		else 
-		{
-			hEvent.StartTimer(this.m_iInternalID, client, hEvent.m_sEventName, value);
-		}
 
 		if (hEvent.m_iCurrentThreshold >= hEvent.m_iThreshold)
 		{
