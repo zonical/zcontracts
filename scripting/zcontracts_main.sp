@@ -15,6 +15,18 @@ Database g_DB;
 #include "zcontracts/contracts_timers.sp"
 #include "zcontracts/contracts_db.sp"
 
+// TODO: Save Contract style progress
+// TODO: Test new DB threaded code
+// TODO: Timed interval for database saving 
+	// 	(either end of either round or 60 seconds)
+// TODO: CSGO testing
+// TODO: Implement more game events
+// TODO: Move debug functions to their own file
+// TODO: Implement team restrictions for contracts
+	// (e.g red, blu, terrorists, counterterrorists + aliases)
+// TODO: Documentation!!
+
+
 public Plugin myinfo =
 {
 	name = "ZContracts - Custom Contract Logic",
@@ -172,11 +184,14 @@ public any Native_SetClientContract(Handle plugin, int numParams)
 	{
 		return ThrowNativeError(SP_ERROR_NATIVE, "Invalid UUID (%s) for client %d", sUUID, client);
 	}
-	if (!PopulateProgressFromDB(client, sUUID, hContractBuffer))
+
+	// Set our client contract here so we can populate it's progress
+	// values in the threaded callback functions.
+	m_hContracts[client] = hContractBuffer;
+	if (!PopulateProgressFromDB(client, sUUID))
 	{
 		LogError("Unable to populate contract %s progress from the database for client %d", sUUID, client);
 	}
-	m_hContracts[client] = hContractBuffer;
 	
 	// Print a specific type of message depending on what type of Contract we're doing.
 	char sMessage[128] = "{green}[ZC]{default} You have selected the contract: {lightgreen}\"%s\"{default}. To complete it, ";
@@ -278,6 +293,8 @@ public void TryIncrementObjectiveProgress(ContractObjective hObjective, int clie
 						hObjective.m_sDescription, hContract.m_sContractName,
 						hContract.m_iProgress, hContract.m_iMaxProgress);
 				}
+				// Update in the database to reflect that we've completed this objective.
+				SaveObjectiveProgressToDB(client, hContract.m_sUUID, hObjective);
 			}
 			else
 			{
@@ -502,7 +519,6 @@ public Action OpenContrackerForClient(int client, int args)
 	gContractMenu.Display(client, MENU_TIME_FOREVER);
 	return Plugin_Handled;
 }
-
 
 // ============ DEBUG FUNCTIONS ============
 
