@@ -23,11 +23,15 @@ public void CB_ContractProgress(Database db, DBResultSet results, const char[] e
     }
 }
 
-public void CB_ObjectiveProgress(Database db, DBResultSet results, const char[] error, any data)
+public void CB_ObjectiveProgress(Database db, DBResultSet results, const char[] error, DataPack hData)
 {
+    hData.Reset();
+    int client = hData.ReadCell();
+    bool display_to_client = hData.ReadCell();
+
     Contract hContract;
-    GetClientContract(data, hContract);
-    PrintToChat(data, error);
+    GetClientContract(client, hContract);
+    PrintToChat(client, error);
 
     int id = 0;
     while (results.FetchRow())
@@ -36,14 +40,19 @@ public void CB_ObjectiveProgress(Database db, DBResultSet results, const char[] 
         hContract.m_hObjectives.GetArray(id, hObj, sizeof(ContractObjective));
         hObj.m_iProgress = results.FetchInt(0); 
         hContract.m_hObjectives.SetArray(id, hObj, sizeof(ContractObjective));
-        PrintToChat(data, "[DEBUG] Progress for objective %d: %d", id, hObj.m_iProgress);
         id++;
+    }
+
+    // Should we display to the client?
+    if (display_to_client)
+    {
+        CreateObjectiveDisplay(client, hContract);
     }
 }
 
 // NOTE: This assumes that hBuffer has already been assigned the default values and objectives
 // it needs. This function inserts the saved progress from the database.
-public bool PopulateProgressFromDB(int client, const char[] uuid)
+public bool PopulateProgressFromDB(int client, const char[] uuid, bool display_to_client)
 {
     Contract hContract;
     GetClientContract(client, hContract);
@@ -52,20 +61,24 @@ public bool PopulateProgressFromDB(int client, const char[] uuid)
     char steamid64[64];
     GetClientAuthId(client, AuthId_SteamID64, steamid64, sizeof(steamid64));
 
+    DataPack hData = new DataPack();
+    hData.WriteCell(client);
+    hData.WriteCell(display_to_client);
+
     // If we're tracking Contract progress, get this value from the database first.
     if (hContract.m_iContractType == Contract_ContractProgress)
     {
         char query[256];
         g_DB.Format(query, sizeof(query), 
         "SELECT progress FROM contract_progress WHERE steamid64 = '%s' AND contract_uuid = '%s'", steamid64, uuid);
-        g_DB.Query(CB_ContractProgress, query, client);
+        g_DB.Query(CB_ContractProgress, query, hData);
     }
 
     char query[256];
     g_DB.Format(query, sizeof(query), 
     "SELECT progress FROM objective_progress WHERE steamid64 = '%s' AND contract_uuid = '%s' AND (objective_id BETWEEN 0 AND %d) ORDER BY objective_id ASC;", 
     steamid64, uuid, hContract.m_hObjectives.Length);
-    g_DB.Query(CB_ObjectiveProgress, query, client);
+    g_DB.Query(CB_ObjectiveProgress, query, hData);
 
     return true;
 }
@@ -75,9 +88,10 @@ public Action DebugGetProgress(int client, int args)
     // Grab UUID.
     char sUUID[64];
     GetCmdArg(1, sUUID, sizeof(sUUID));
-    PrintToChat(client, "Setting contract: %s", sUUID);
 
-    PopulateProgressFromDB(client, sUUID);
+    PrintToChat(client, "[DEBUG] Getting progress data for contract: %s", sUUID);
+    PopulateProgressFromDB(client, sUUID, false);
+    
     return Plugin_Handled;
 }
 

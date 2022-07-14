@@ -109,9 +109,23 @@ enum struct ContractObjective
 	// Events for this Contract (see ContractObjectiveEvent).
 	ArrayList m_hEvents;
 	
-	void TryIncrementProgress(int client, ContractObjectiveEvent hEvent)
+	void TryIncrementProgress(int client, ContractObjectiveEvent hEvent, int value)
 	{
 		if (this.IsObjectiveComplete()) return;
+
+		// Add to our event threshold.
+		hEvent.m_iCurrentThreshold += value;
+			
+		// Do we have a timer going?
+		if (hEvent.m_hTimer != INVALID_HANDLE)
+		{
+			TriggerTimeEvent(this, hEvent, "OnThreshold");
+		}
+		else 
+		{
+			hEvent.StartTimer(this.m_iInternalID, client, hEvent.m_sEventName, value);
+		}
+
 		if (hEvent.m_iCurrentThreshold >= hEvent.m_iThreshold)
 		{
 			// What type of value are we? Are we incrementing or resetting?
