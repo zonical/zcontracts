@@ -199,7 +199,7 @@ enum struct Contract
 	bool m_bClass[10];
 
 	// What type of Contract are we handling?
-	int m_iContractType;
+	ContractType m_iContractType;
 
 	// If we're using "contract progress" mode, there is one central
 	// progress bar that is updated alongside our objective.

@@ -8,9 +8,12 @@
 
 #pragma semicolon 1
 
+Database g_DB;
+
 #include "zcontracts/contracts_schema.sp"
 #include "zcontracts/contracts_events.sp"
 #include "zcontracts/contracts_timers.sp"
+#include "zcontracts/contracts_db.sp"
 
 public Plugin myinfo =
 {
@@ -45,6 +48,15 @@ public void OnPluginStart()
 	ProcessContractsSchema();
 	CreateContractMenu();
 
+	// Connect to our database.
+	char error[256];
+	g_DB = SQL_Connect("zcontracts", false, error, sizeof(error));
+	if (g_DB == null)
+	{
+		SetFailState("Failed to connect to database: %s", error);
+	}
+	PrintToServer("[ZContracts] Connected to database.");
+
 	for (int i = 0; i < MAXPLAYERS+1; i++)
 	{
 		OnClientPostAdminCheck(i);
@@ -52,6 +64,7 @@ public void OnPluginStart()
 	
 	RegConsoleCmd("sm_setcontract", DebugSetContract);
 	RegConsoleCmd("sm_debugcontract", DebugContractInfo);
+	RegConsoleCmd("sm_debug_getprogress", DebugGetProgress);
 
 	RegServerCmd("sm_reloadcontracts", ReloadContracts);
 	RegConsoleCmd("sm_contract", OpenContrackerForClient);
@@ -80,6 +93,7 @@ public Action ReloadContracts(int args)
 {
 	ProcessContractsSchema();
 	CreateContractMenu();
+	return Plugin_Continue;
 }
 
 // ============ NATIVE FUNCTIONS ============
@@ -142,7 +156,8 @@ public any Native_CallContrackerEvent(Handle plugin, int numParams)
 public any Native_SetClientContract(Handle plugin, int numParams)
 {
 	int client = GetNativeCell(1);
-	char sUUID[MAX_EVENT_SIZE];
+
+	char sUUID[MAX_UUID_SIZE];
 	GetNativeString(2, sUUID, sizeof(sUUID));
 
 	// Are we a bot?
@@ -151,43 +166,48 @@ public any Native_SetClientContract(Handle plugin, int numParams)
 		return ThrowNativeError(SP_ERROR_NATIVE, "Invalid client index (%d)", client);
 	}
 
-	if (GetContractDefinition(sUUID, m_hContracts[client]))
+	// Get our Contract definition.
+	Contract hContractBuffer;
+	if (!CreateContractFromUUID(sUUID, hContractBuffer))
 	{
-		// Print a specific type of message depending on what type of Contract we're doing.
-		char sMessage[128] = "{green}[ZC]{default} You have selected the contract: {lightgreen}\"%s\"{default}. To complete it, ";
-		switch (m_hContracts[client].m_iContractType)
+		return ThrowNativeError(SP_ERROR_NATIVE, "Invalid UUID (%s) for client %d", sUUID, client);
+	}
+	if (!PopulateProgressFromDB(client, sUUID, hContractBuffer))
+	{
+		LogError("Unable to populate contract %s progress from the database for client %d", sUUID, client);
+	}
+	m_hContracts[client] = hContractBuffer;
+	
+	// Print a specific type of message depending on what type of Contract we're doing.
+	char sMessage[128] = "{green}[ZC]{default} You have selected the contract: {lightgreen}\"%s\"{default}. To complete it, ";
+	switch (m_hContracts[client].m_iContractType)
+	{
+		case Contract_ObjectiveProgress:
 		{
-			case Contract_ObjectiveProgress:
-			{
-				char sAppendText[] = "finish all the objectives.";
-				StrCat(sMessage, sizeof(sMessage), sAppendText);
-			}
-			case Contract_ContractProgress:
-			{
-				char sAppendText[] = "get %dCP.";
-				Format(sAppendText, sizeof(sAppendText), sAppendText, m_hContracts[client].m_iMaxProgress);
-				StrCat(sMessage, sizeof(sMessage), sAppendText);
-			}
+			char sAppendText[] = "finish all the objectives.";
+			StrCat(sMessage, sizeof(sMessage), sAppendText);
 		}
-		MC_PrintToChat(client, sMessage, m_hContracts[client].m_sContractName);
-		
-		// Print our objectives to chat.
-		for (int i = 0; i < MAX_CONTRACT_OBJECTIVES; i++)
+		case Contract_ContractProgress:
 		{
-			ContractObjective hContractObjective;
-			m_hContracts[client].m_hObjectives.GetArray(i, hContractObjective);
-			if (!hContractObjective.m_bInitalized) continue;
-			PrintContractObjective(client, hContractObjective);
+			char sAppendText[] = "get %dCP.";
+			Format(sAppendText, sizeof(sAppendText), sAppendText, m_hContracts[client].m_iMaxProgress);
+			StrCat(sMessage, sizeof(sMessage), sAppendText);
 		}
+	}
+	MC_PrintToChat(client, sMessage, m_hContracts[client].m_sContractName);
+	
+	// Print our objectives to chat.
+	for (int i = 0; i < MAX_CONTRACT_OBJECTIVES; i++)
+	{
+		ContractObjective hContractObjective;
+		m_hContracts[client].m_hObjectives.GetArray(i, hContractObjective);
+		if (!hContractObjective.m_bInitalized) continue;
+		PrintContractObjective(client, hContractObjective);
+	}
 
-		// Reset our current directory in the Contracker.
-		g_Menu_CurrentDirectory[client] = "root";
-		return true;
-	}
-	else
-	{
-		return ThrowNativeError(SP_ERROR_NATIVE, "Invalid UUID for client (%s): (%d)", sUUID, client);
-	}
+	// Reset our current directory in the Contracker.
+	g_Menu_CurrentDirectory[client] = "root";
+	return true;
 }
 
 // Prints a Contract Objective to the player in chat.
@@ -212,7 +232,6 @@ public void PrintContractObjective(int client, ContractObjective hObjective)
 		MC_PrintToChat(client, objectiveString);
 	}
 }
-
 
 public void TryIncrementObjectiveProgress(ContractObjective hObjective, int client, const char[] event, int value)
 {
@@ -337,15 +356,19 @@ public void CreateContractMenu()
 
 	// Add all of our contracts to the menu. We'll hide options depending on what
 	// we should be able to see.
-	if (g_Contracts)
+	if (g_ContractSchema.GotoFirstSubKey())
 	{
-		for (int i = 0; i < g_Contracts.Length; i++)
+		do
 		{
-			Contract hContract;
-			g_Contracts.GetArray(i, hContract, sizeof(Contract));
-			gContractMenu.AddItem(hContract.m_sUUID, hContract.m_sContractName);
+			char sUUID[MAX_UUID_SIZE];
+			g_ContractSchema.GetSectionName(sUUID, sizeof(sUUID));
+			char sContractName[MAX_CONTRACT_NAME_SIZE];
+			g_ContractSchema.GetString("name", sContractName, sizeof(sContractName), "undefined");
+			gContractMenu.AddItem(sUUID, sContractName);
 		}
+		while(g_ContractSchema.GotoNextKey());
 	}
+	g_ContractSchema.Rewind();
 }
 
 // Our menu handler.
@@ -371,10 +394,10 @@ public int ContractMenuHandler(Menu menu, MenuAction action, int param1, int par
 			// Are we a contract?
 			else if (sKey[0] == '{')
 			{
-				Contract hContract;
-				GetContractDefinition(sKey, hContract);
+				char sDirectory[MAX_DIRECTORY_SIZE];
+				GetContractDirectory(sKey, sDirectory);
 				// Are we in the right directory?
-				if (!StrEqual(hContract.m_sDirectoryPath, g_Menu_CurrentDirectory[param1])) 
+				if (!StrEqual(sDirectory, g_Menu_CurrentDirectory[param1])) 
 				{
 					return ITEMDRAW_IGNORE;
 				}
@@ -500,21 +523,24 @@ public Action DebugContractInfo(int client, int args)
 	char sUUID[64];
 	GetCmdArg(1, sUUID, sizeof(sUUID));
 	Contract hContract;
-	GetContractDefinition(sUUID, hContract);
+	CreateContractFromUUID(sUUID, hContract);
 	PrintToConsole(client, "See server console for output.");
 
 	if (args == 1)
 	{
-		PrintToServer("---------------------------------------------");
-		PrintToServer("Contract Name: %s", hContract.m_sContractName);
-		PrintToServer("Contract UUID: %s", hContract.m_sUUID);
-		PrintToServer("Contract Directory: %s", hContract.m_sDirectoryPath);
-		PrintToServer("Contract Progress Type: %d", hContract.m_iContractType);
-		PrintToServer("Contract Progress: %d/%d", hContract.m_iProgress, hContract.m_iMaxProgress);
-		PrintToServer("Contract Objective Count: %d", hContract.m_hObjectives.Length);
-		PrintToServer("Is Contract Complete: %d", hContract.IsContractComplete());
-		PrintToServer("[INFO] To debug an objective, type sm_debugcontract [UUID] [objective_index]");
-		PrintToServer("---------------------------------------------");
+		PrintToServer(
+			"---------------------------------------------"
+		... "Contract Name: %s\n"
+		... "Contract UUID: %s\n"
+		... "Contract Directory: %s\n"
+		... "Contract Progress Type: %d\n"
+		... "Contract Progress: %d/%d\n"
+		... "Contract Objective Count: %d\n"
+		... "Is Contract Complete: %d\n"
+		... "[INFO] To debug an objective, type sm_debugcontract [UUID] [objective_index]"
+		... "---------------------------------------------",
+		hContract.m_sContractName, hContract.m_sUUID, hContract.m_sDirectoryPath, hContract.m_iContractType,
+		hContract.m_iProgress, hContract.m_iMaxProgress, hContract.m_hObjectives.Length, hContract.IsContractComplete());
 	}
 	if (args == 2)
 	{
@@ -526,19 +552,24 @@ public Action DebugContractInfo(int client, int args)
 		ContractObjective hContractObjective;
 		hContract.m_hObjectives.GetArray(iID, hContractObjective);
 
-		PrintToServer("---------------------------------------------");
-		PrintToServer("Contract Name: %s", hContract.m_sContractName);
-		PrintToServer("Contract UUID: %s", hContract.m_sUUID);
-		PrintToServer("Contract Progress Type: %d", hContract.m_iContractType);
-		PrintToServer("Objective Initalized: %d", hContractObjective.m_bInitalized);
-		PrintToServer("Objective Internal ID: %d", hContractObjective.m_iInternalID);
-		PrintToServer("Objective Is Infinite: %d", hContractObjective.m_bInfinite);
-		PrintToServer("Objective Award: %d", hContractObjective.m_iAward);
-		PrintToServer("Objective Progress: %d/%d", hContractObjective.m_iProgress, hContractObjective.m_iMaxProgress);
-		PrintToServer("Objective Event Count: %d", hContractObjective.m_hEvents.Length);
-		PrintToServer("Is Objective Complete: %d", hContractObjective.IsObjectiveComplete());
-		PrintToServer("[INFO] To debug an event, type sm_debugcontract [UUID] [objective_index] [event_index]");
-		PrintToServer("---------------------------------------------");
+		PrintToServer(
+			"---------------------------------------------"
+		... "Contract Name: %s\n"
+		... "Contract UUID: %s\n"
+		... "Contract Progress Type: %d\n"
+		... "Objective Initalized: %d\n"
+		... "Objective Internal ID: %d\n"
+		... "Objective Is Infinite: %d\n"
+		... "Objective Award: %d\n"
+		... "Objective Progress: %d/%d\n"
+		... "Objective Event Count: %d\n"
+		... "Is Objective Complete %d\n"
+		... "[INFO] To debug an objective, type sm_debugcontract [UUID] [objective_index]"
+		... "---------------------------------------------",
+		hContract.m_sContractName, hContract.m_sUUID, hContract.m_iContractType, hContractObjective.m_bInitalized,
+		hContractObjective.m_iInternalID, hContractObjective.m_bInfinite, hContractObjective.m_iAward,
+		hContractObjective.m_iProgress, hContractObjective.m_iMaxProgress, hContractObjective.m_hEvents.Length,
+		hContractObjective.IsObjectiveComplete());
 	}
 	
 	return Plugin_Handled;

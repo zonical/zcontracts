@@ -32,6 +32,7 @@ public Action OnPlayerDeath(Event event, const char[] name, bool dontBroadcast)
 			CallContrackerEvent(assister, "CONTRACTS_PLAYER_ASSIST_KILL", 1);
 		}
 	}
+	return Plugin_Continue;
 }
 
 // Events relating to the attacker hurting a victim.
@@ -50,6 +51,7 @@ public Action OnPlayerHurt(Event event, const char[] name, bool dontBroadcast)
 		// Award an event for the person who died.
 		CallContrackerEvent(victim, "CONTRACTS_PLAYER_TAKE_DAMAGE", damage);
 	}
+	return Plugin_Continue;
 }
 
 // Events relating to the round ending
@@ -67,6 +69,7 @@ public Action OnRoundWin(Event event, const char[] name, bool dontBroadcast)
 			CallContrackerEvent(i, "CONTRACTS_PLAYER_WIN_ROUND", 1);
 		}
 	}
+	return Plugin_Continue;
 }
 
 public bool IsClientValid(int client)

@@ -3,7 +3,7 @@
 #include <stocksoup/files>
 #include <zcontracts/zcontracts>
 
-ArrayList g_Contracts;
+KeyValues g_ContractSchema;
 ArrayList g_Directories;
 
 ConVar g_ConfigSearchPath;
@@ -158,7 +158,7 @@ public void CreateContract(KeyValues hContractConf, Contract hContract)
 	hContractConf.GetSectionName(hContract.m_sUUID, sizeof(hContract.m_sUUID));
 	hContractConf.GetString("name", hContract.m_sContractName, sizeof(hContract.m_sContractName));
 	hContractConf.GetString("directory", hContract.m_sDirectoryPath, sizeof(hContract.m_sDirectoryPath), "root");
-	hContract.m_iContractType = hContractConf.GetNum("type", view_as<int>(Contract_ObjectiveProgress));
+	hContract.m_iContractType = view_as<ContractType>(hContractConf.GetNum("type", view_as<int>(Contract_ObjectiveProgress))); // stops a warning
 	hContract.m_iMaxProgress = hContractConf.GetNum("required_progress", -1);
 
 	// Grab the classes that can do this contract.
@@ -205,60 +205,57 @@ public void CreateContract(KeyValues hContractConf, Contract hContract)
 		hContractConf.GoBack();
 	}
 
-	// Add our new directory into the directory register.
-	if (g_Directories.FindString(hContract.m_sDirectoryPath) == -1)
-	{
-		g_Directories.PushString(hContract.m_sDirectoryPath);
-	}
-	// Add our contract to the global list.
-	g_Contracts.PushArray(hContract, sizeof(Contract));
-
 	LogMessage("[ZContracts] Created Contract %s in directory: %s", hContract.m_sUUID, hContract.m_sDirectoryPath);
 	hContractConf.GoBack();
 }
 
 public void ProcessContractsSchema()
 {
-	KeyValues contractSchema = LoadContractsSchema();
+	delete g_ContractSchema;
+	g_ContractSchema = LoadContractsSchema();
 	
 	delete g_Directories;
-	delete g_Contracts;
 	g_Directories = new ArrayList(ByteCountToCells(MAX_DIRECTORY_SIZE));
-	g_Contracts = new ArrayList(sizeof(Contract));
+	int iContractCount = 0;
 	
-	// Parse our items.
-	if (contractSchema.GotoFirstSubKey()) 
+	if (g_ContractSchema.GotoFirstSubKey())
 	{
-		do 
+		do
 		{
-			// Create our Contract.
-			Contract hContract;
-			CreateContract(contractSchema, hContract);
-		} while (contractSchema.GotoNextKey());
-		contractSchema.GoBack();
-		
-	} 
-	delete contractSchema;
+			char sDirectory[MAX_DIRECTORY_SIZE];
+			g_ContractSchema.GetString("directory", sDirectory, sizeof(sDirectory), "root");
+			// Add our new directory into the directory register.
+			if (g_Directories.FindString(sDirectory) == -1)
+			{
+				g_Directories.PushString(sDirectory);
+			} 
+			iContractCount++;
+		}
+		while(g_ContractSchema.GotoNextKey());
+	}
+	g_ContractSchema.Rewind();
 	
-	PrintToServer("[ZContracts] Initalized contracts.");
+	PrintToServer("[ZContracts] Initalized %d contracts.", iContractCount);
 }
 
-// Attempt to find a contract by searching through all directories
-// and matching the UUID's together.
-bool GetContractDefinition(const char[] UUID, Contract buffer) 
+bool CreateContractFromUUID(const char[] sUUID, Contract hBuffer)
 {
-	if (g_Contracts)
+	if (g_ContractSchema.JumpToKey(sUUID))
 	{
-		for (int i = 0; i < g_Contracts.Length; i++)
-		{
-			Contract hContract;
-			g_Contracts.GetArray(i, hContract, sizeof(Contract));
-			if (StrEqual(hContract.m_sUUID, UUID))
-			{
-				buffer = hContract;
-				return true;
-			}
-		}
+		CreateContract(g_ContractSchema, hBuffer);
+		g_ContractSchema.GoBack();
+		return true;
+	}
+	return false;
+}
+
+bool GetContractDirectory(const char[] sUUID, char buffer[MAX_DIRECTORY_SIZE])
+{
+	if (g_ContractSchema.JumpToKey(sUUID))
+	{
+		g_ContractSchema.GetString("directory", buffer, sizeof(buffer), "root");
+		g_ContractSchema.GoBack();
+		return true;
 	}
 	return false;
 }
