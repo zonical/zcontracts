@@ -1,3 +1,16 @@
+public void GotDatabase(Database db, const char[] error, any data)
+{
+    if (db == null)
+    {
+        LogError("Database failure: %s", error);
+    } 
+    else 
+    {
+        PrintToServer("[ZContracts] Connected to database.");
+        g_DB = db;
+    }
+}
+
 
 // Callback for getting ContractProgress progress.
 public void CB_ContractProgress(Database db, DBResultSet results, const char[] error, any data)
@@ -14,6 +27,7 @@ public void CB_ObjectiveProgress(Database db, DBResultSet results, const char[] 
 {
     Contract hContract;
     GetClientContract(data, hContract);
+    PrintToChat(data, error);
 
     int id = 0;
     while (results.FetchRow())
@@ -22,7 +36,7 @@ public void CB_ObjectiveProgress(Database db, DBResultSet results, const char[] 
         hContract.m_hObjectives.GetArray(id, hObj, sizeof(ContractObjective));
         hObj.m_iProgress = results.FetchInt(0); 
         hContract.m_hObjectives.SetArray(id, hObj, sizeof(ContractObjective));
-        PrintToServer("[DEBUG] Progress for objective %d: %d", id, hObj.m_iProgress);
+        PrintToChat(data, "[DEBUG] Progress for objective %d: %d", id, hObj.m_iProgress);
         id++;
     }
 }
@@ -43,15 +57,15 @@ public bool PopulateProgressFromDB(int client, const char[] uuid)
     {
         char query[256];
         g_DB.Format(query, sizeof(query), 
-        "SELECT progress FROM contract_progress WHERE steamid64 = %s AND contract_uuid = %s", steamid64, uuid);
+        "SELECT progress FROM contract_progress WHERE steamid64 = '%s' AND contract_uuid = '%s'", steamid64, uuid);
         g_DB.Query(CB_ContractProgress, query, client);
     }
 
     char query[256];
     g_DB.Format(query, sizeof(query), 
-    "SELECT progress FROM objective_progress WHERE steamid64 = ? AND contract_uuid = ? AND (objective_id BETWEEN 0 AND ?) ORDER BY objective_id ASC;", 
+    "SELECT progress FROM objective_progress WHERE steamid64 = '%s' AND contract_uuid = '%s' AND (objective_id BETWEEN 0 AND %d) ORDER BY objective_id ASC;", 
     steamid64, uuid, hContract.m_hObjectives.Length);
-    g_DB.Query(CB_ContractProgress, query, client);
+    g_DB.Query(CB_ObjectiveProgress, query, client);
 
     return true;
 }
@@ -67,9 +81,9 @@ public Action DebugGetProgress(int client, int args)
     return Plugin_Handled;
 }
 
-public void CB_Obj_OnUpdate(Database db, DBResultSet results, const char[] error, any data)
+public void CB_Obj_OnUpdate(Database db, DBResultSet results, const char[] error, DataPack hData)
 {
-    DataPack hData = view_as<DataPack>(data);
+    hData.Reset();
     int client = hData.ReadCell();
     int objective_id = hData.ReadCell();
     if (results.AffectedRows < 1)
@@ -79,9 +93,9 @@ public void CB_Obj_OnUpdate(Database db, DBResultSet results, const char[] error
     }
 }
 
-public void CB_Obj_OnInsert(Database db, DBResultSet results, const char[] error, any data)
+public void CB_Obj_OnInsert(Database db, DBResultSet results, const char[] error, DataPack hData)
 {
-    DataPack hData = view_as<DataPack>(data);
+    hData.Reset();
     int client = hData.ReadCell();
     int objective_id = hData.ReadCell();
     if (results.AffectedRows < 1)
@@ -91,9 +105,9 @@ public void CB_Obj_OnInsert(Database db, DBResultSet results, const char[] error
     }
 }
 
-public void CB_ObjectiveProgressExists(Database db, DBResultSet results, const char[] error, any data)
+public void CB_ObjectiveProgressExists(Database db, DBResultSet results, const char[] error, DataPack hData)
 {
-    DataPack hData = view_as<DataPack>(data);
+    hData.Reset();
     hData.ReadCell();
     int objective_id = hData.ReadCell();
     int progress = hData.ReadCell();
@@ -107,19 +121,19 @@ public void CB_ObjectiveProgressExists(Database db, DBResultSet results, const c
     if (results.RowCount > 0)
     {
         char query[256];
-        g_DB.Format(query, sizeof(query), 
-        "UPDATE objective_progress SET progress = ? AND complete = ? WHERE steamid64 = ? AND contract_uuid = ? AND objective_id = ?", 
+        db.Format(query, sizeof(query), 
+        "UPDATE objective_progress SET progress = %d AND complete = %d WHERE steamid64 = '%s' AND contract_uuid = '%s' AND objective_id = %d", 
         progress, is_complete, steamid64, uuid, objective_id);
-        g_DB.Query(CB_Obj_OnUpdate, query, hData);
+        db.Query(CB_Obj_OnUpdate, query, hData);
     }
     // Insert.
     else
     {
         char query[256];
-        g_DB.Format(query, sizeof(query), 
-        "INSERT INTO objective_progress (steamid64, contract_uuid, objective_id, progress, complete) VALUES (?, ?, ?, ?, ?)", 
+        db.Format(query, sizeof(query), 
+        "INSERT INTO objective_progress (steamid64, contract_uuid, objective_id, progress, complete) VALUES ('%s', '%s', %d, %d, %d)", 
         steamid64, uuid, objective_id, progress, is_complete);
-        g_DB.Query(CB_Obj_OnInsert, query, hData);
+        db.Query(CB_Obj_OnInsert, query, hData);
     }
 }
 
@@ -132,7 +146,7 @@ public void SaveObjectiveProgressToDB(int client, const char[] uuid, ContractObj
 
     char query[256];
     g_DB.Format(query, sizeof(query), 
-    "SELECT progress FROM objective_progress WHERE steamid64 = ? AND contract_uuid = ? AND objective_id = ?", 
+    "SELECT progress FROM objective_progress WHERE steamid64 = '%s' AND contract_uuid = '%s' AND objective_id = %d", 
     steamid64, uuid, hObjective.m_iInternalID);
 
     DataPack hData = new DataPack();
@@ -142,5 +156,5 @@ public void SaveObjectiveProgressToDB(int client, const char[] uuid, ContractObj
     hData.WriteCell(hObjective.IsObjectiveComplete());
     hData.WriteString(steamid64);
     hData.WriteString(uuid);
-    g_DB.Query(CB_ObjectiveProgressExists, query, hData);
+    g_DB.Query(CB_ObjectiveProgressExists, query, hData, DBPrio_High);
 }

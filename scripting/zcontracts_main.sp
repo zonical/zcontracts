@@ -15,16 +15,16 @@ Database g_DB;
 #include "zcontracts/contracts_timers.sp"
 #include "zcontracts/contracts_db.sp"
 
-// TODO: Save Contract style progress
-// TODO: Test new DB threaded code
-// TODO: Timed interval for database saving 
+// TODO: Put Contract progress in a menu.
+// TODO: Save Contract style progress.
+// TODO: Timed interval for database saving. 
 	// 	(either end of either round or 60 seconds)
-// TODO: CSGO testing
-// TODO: Implement more game events
-// TODO: Move debug functions to their own file
-// TODO: Implement team restrictions for contracts
+// TODO: CSGO testing.
+// TODO: Implement more game events.
+// TODO: Move debug functions to their own file.
+// TODO: Implement team restrictions for contracts.
 	// (e.g red, blu, terrorists, counterterrorists + aliases)
-// TODO: Documentation!!
+// TODO: Documentation!!.
 
 
 public Plugin myinfo =
@@ -61,13 +61,7 @@ public void OnPluginStart()
 	CreateContractMenu();
 
 	// Connect to our database.
-	char error[256];
-	g_DB = SQL_Connect("zcontracts", false, error, sizeof(error));
-	if (g_DB == null)
-	{
-		SetFailState("Failed to connect to database: %s", error);
-	}
-	PrintToServer("[ZContracts] Connected to database.");
+	Database.Connect(GotDatabase, "zcontracts");
 
 	for (int i = 0; i < MAXPLAYERS+1; i++)
 	{
@@ -149,6 +143,8 @@ public any Native_CallContrackerEvent(Handle plugin, int numParams)
 	// Try to increment all of our objectives.
 	for (int i = 0; i < MAX_CONTRACT_OBJECTIVES; i++)
 	{
+		if (i >= hContract.m_hObjectives.Length) break;
+		
 		ContractObjective hContractObjective;
 		hContract.m_hObjectives.GetArray(i, hContractObjective);
 		// Don't touch this objective if it shouldn't be doing anything.
@@ -215,6 +211,8 @@ public any Native_SetClientContract(Handle plugin, int numParams)
 	for (int i = 0; i < MAX_CONTRACT_OBJECTIVES; i++)
 	{
 		ContractObjective hContractObjective;
+		if (i >= m_hContracts[client].m_hObjectives.Length) break;
+
 		m_hContracts[client].m_hObjectives.GetArray(i, hContractObjective);
 		if (!hContractObjective.m_bInitalized) continue;
 		PrintContractObjective(client, hContractObjective);

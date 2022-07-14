@@ -217,6 +217,7 @@ enum struct Contract
 			{
 				for (int i = 0; i < MAX_CONTRACT_OBJECTIVES; i++)
 				{
+					if (i >= this.m_hObjectives.Length) break;
 					ContractObjective hContractObjective;
 					this.m_hObjectives.GetArray(i, hContractObjective);
 					if (!hContractObjective.m_bInitalized) continue;
