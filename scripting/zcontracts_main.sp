@@ -175,7 +175,7 @@ public any Native_CallContrackerEvent(Handle plugin, int numParams)
 	for (int i = 0; i < hContract.m_hObjectives.Length; i++)
 	{	
 		ContractObjective hContractObjective;
-		hContract.m_hObjectives.GetArray(i, hContractObjective);
+		hContract.GetObjective(i, hContractObjective);
 
 		// Don't touch this objective if it shouldn't be doing anything.
 		if (!hContractObjective.m_bInitalized || hContractObjective.IsObjectiveComplete()) 
@@ -302,11 +302,11 @@ public Action Timer_ProcessEvents(Handle hTimer)
 		}
 
 		ContractObjective hObjective;
-		hContract.m_hObjectives.GetArray(objective_id, hObjective);
+		hContract.GetObjective(objective_id, hObjective);
 
 		// Update progress.
 		TryIncrementObjectiveProgress(hObjective, client, event, value);
-		hContract.m_hObjectives.SetArray(objective_id, hObjective);
+		hContract.SaveObjective(objective_id, hObjective);
 
 		iProcessed++;
 		PrintToServer("Processed event %s", event);
@@ -658,7 +658,7 @@ public void CreateObjectiveDisplay(int client, Contract hContract)
 	for (int i = 0; i < hContract.m_hObjectives.Length; i++)
 	{
 		ContractObjective hObjective;
-		hContract.m_hObjectives.GetArray(i, hObjective);
+		hContract.GetObjective(i, hObjective);
 
 		char line[256];
 		Format(line, sizeof(line), "Objective #%d: \"%s\" [%d/%d] +%dCP", i+1,
@@ -740,7 +740,7 @@ public Action DebugContractInfo(int client, int args)
 		PrintToServer("%d", iID);
 
 		ContractObjective hContractObjective;
-		hContract.m_hObjectives.GetArray(iID, hContractObjective);
+		hContract.GetObjective(iID, hContractObjective);
 
 		PrintToConsole(client,
 			"---------------------------------------------\n"

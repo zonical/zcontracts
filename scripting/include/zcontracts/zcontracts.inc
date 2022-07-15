@@ -93,6 +93,8 @@ enum struct ContractObjective
 	
 	// Events for this Contract (see ContractObjectiveEvent).
 	ArrayList m_hEvents;
+
+	bool m_bNeedsDBSave;
 	
 	/**
 	 * Tries to add to the progress of an Objective by comparing the Objective Events'
@@ -116,6 +118,7 @@ enum struct ContractObjective
 			{
 				// Add to our event progress.
 				this.m_iProgress += this.m_iAward;
+				this.m_bNeedsDBSave = true;
 	
 				// Clamp.
 				if (!this.m_bInfinite) this.m_iProgress = Int_Min(this.m_iProgress, this.m_iMaxProgress);
@@ -159,6 +162,7 @@ enum struct ContractObjective
 	{
 		this.m_hEvents = new ArrayList(sizeof(ContractObjectiveEvent));
 		this.m_bInitalized = true;
+		this.m_bNeedsDBSave = false;
 	}
 	
 	/**
@@ -178,6 +182,7 @@ enum struct ContractObjective
 		
 		delete this.m_hEvents;
 		this.m_bInitalized = false;
+		this.m_bNeedsDBSave = false;
 	}
 }
 
@@ -231,6 +236,22 @@ enum struct Contract
 		
 		return false;
 	}
+	/**
+	 * Wrapper to easily get a Contract objective.
+	**/
+	void GetObjective(int index, ContractObjective hBuffer)
+	{
+		this.m_hObjectives.GetArray(index, hBuffer, sizeof(ContractObjective));
+	}
+
+	/**
+	 * Wrapper to easily save a Contract objective.
+	**/
+	void SaveObjective(int index, ContractObjective hBuffer)
+	{
+		this.m_hObjectives.SetArray(index, hBuffer, sizeof(ContractObjective));
+	}
+
 	/**
 	 * Creates the ArrayList for objectives.
 	**/

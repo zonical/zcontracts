@@ -30,15 +30,14 @@ public void CB_ObjectiveProgress(Database db, DBResultSet results, const char[] 
 
     Contract hContract;
     GetClientContract(client, hContract);
-    PrintToChat(client, error);
 
     int id = 0;
     while (results.FetchRow())
     {
         ContractObjective hObj;
-        hContract.m_hObjectives.GetArray(id, hObj, sizeof(ContractObjective));
+        hContract.GetObjective(id, hObj);
         hObj.m_iProgress = results.FetchInt(0); 
-        hContract.m_hObjectives.SetArray(id, hObj, sizeof(ContractObjective));
+        hContract.SaveObjective(id, hObj);
         id++;
     }
 
@@ -112,6 +111,14 @@ public void CB_Obj_OnUpdate(Database db, DBResultSet results, const char[] error
     {
         PrintToServer("[ZContracts] Updated player %N progress for objective id %d.", client, objective_id);
     }
+
+    // Reset our save status.
+    Contract hContract;
+    GetClientContract(client, hContract);
+    ContractObjective hObjective;
+    hContract.GetObjective(objective_id, hObjective);
+    hObjective.m_bNeedsDBSave = false;
+    hContract.SaveObjective(objective_id, hObjective);
 }
 
 public void CB_Obj_OnInsert(Database db, DBResultSet results, const char[] error, DataPack hData)
@@ -133,6 +140,14 @@ public void CB_Obj_OnInsert(Database db, DBResultSet results, const char[] error
     {
         PrintToServer("[ZContracts] Inserted player %N progress for objective id %d.", client, objective_id);
     }
+
+    // Reset our save status.
+    Contract hContract;
+    GetClientContract(client, hContract);
+    ContractObjective hObjective;
+    hContract.GetObjective(objective_id, hObjective);
+    hObjective.m_bNeedsDBSave = false;
+    hContract.SaveObjective(objective_id, hObjective);
 }
 
 public void CB_ObjectiveProgressExists(Database db, DBResultSet results, const char[] error, DataPack hData)
@@ -201,7 +216,12 @@ public void SaveContractToDB(int client, Contract hContract)
     for (int i = 0; i < hContract.m_hObjectives.Length; i++)
     {
         ContractObjective hObjective;
-        hContract.m_hObjectives.GetArray(i, hObjective, sizeof(ContractObjective));
+        hContract.GetObjective(i, hObjective);
+
+        // Only update if we've actually gained some progress.
+        if (hObjective.m_bNeedsDBSave == false) continue;
+        if (hObjective.IsObjectiveComplete()) continue;
+
         SaveObjectiveProgressToDB(client, hContract.m_sUUID, hObjective.m_iInternalID,
         hObjective.m_iProgress, hObjective.IsObjectiveComplete());
     }
