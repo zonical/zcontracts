@@ -2,6 +2,9 @@
 #include <sdkhooks>
 #include <zcontracts/zcontracts>
 
+int g_PlayerDamageDealt[MAXPLAYERS+1];
+int g_PlayerDamageTaken[MAXPLAYERS+1];
+
 public Plugin myinfo =
 {
 	name = "ZContracts - Event Logic",
@@ -18,9 +21,15 @@ public void OnPluginStart()
 	HookEvent("player_death", OnPlayerDeath);
 	HookEvent("player_hurt", OnPlayerHurt);
 	HookEvent("teamplay_round_win", OnRoundWin);
+
+	// Scoop damage related events and merge them into one event that gets fired
+	// once a second.
+	CreateTimer(5.0, Timer_ScoopDamage, _, TIMER_REPEAT);
 	
 	for (int i = 0; i < MAXPLAYERS + 1; i++)
 	{
+		g_PlayerDamageDealt[i] = 0;
+		g_PlayerDamageTaken[i] = 0;
 	}
 }
 
@@ -58,14 +67,33 @@ public Action OnPlayerHurt(Event event, const char[] name, bool dontBroadcast)
 		// Make sure we're not the same.
 		if (attacker != victim)
 		{
-			// Award an event for the killer.
-			CallContrackerEvent(attacker, "CONTRACTS_PLAYER_DEAL_DAMAGE", damage);
-			// Award an event for the person who died.
-			CallContrackerEvent(victim, "CONTRACTS_PLAYER_TAKE_DAMAGE", damage);
+			g_PlayerDamageDealt[attacker] += damage;
+			g_PlayerDamageTaken[victim] += damage;
 		}
 	}
-	
 
+	return Plugin_Continue;
+}
+
+public Action Timer_ScoopDamage(Handle hTimer)
+{
+	for (int i = 0; i < MAXPLAYERS + 1; i++)
+	{
+		if (!IsClientValid(i) || IsFakeClient(i)) continue;
+		
+		// Award damage dealt event.
+		if (g_PlayerDamageDealt[i] != 0)
+		{
+			CallContrackerEvent(i, "CONTRACTS_PLAYER_DEAL_DAMAGE", g_PlayerDamageDealt[i]);
+			g_PlayerDamageDealt[i] = 0;
+		}
+		// Award damage taken event.
+		if (g_PlayerDamageTaken[i] != 0)
+		{
+			CallContrackerEvent(i, "CONTRACTS_PLAYER_TAKE_DAMAGE", g_PlayerDamageTaken[i]);
+			g_PlayerDamageTaken[i] = 0;
+		}
+	}
 	return Plugin_Continue;
 }
 

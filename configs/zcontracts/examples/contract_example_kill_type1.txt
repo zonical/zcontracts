@@ -27,7 +27,10 @@
 				"description"		"Kill a player."
 			
 				// How many points required to complete this objective.
-				"required_progress"	"3"
+				"required_progress"	"999"
+				
+				// How many points should we give for successfully doing this objective?
+				"award"		"1"
 				
 				// The events that this objective looks out for.
 				"events"		
@@ -40,8 +43,26 @@
 						// How many times does this event need to trigger to add points?
 						"threshold"	"1"
 						
-						// How many points should we give for successfully doing this objective?
-						"award"		"1"
+					}
+				}
+			}
+			"2"
+			{
+				"description"		"Deal a bunch of damage."
+			
+				// How many points required to complete this objective.
+				"required_progress"	"99"
+				
+				// The events that this objective looks out for.
+				"events"		
+				{
+					"CONTRACTS_PLAYER_DEAL_DAMAGE"
+					{
+						// What this event should do.
+						"type"		"increment"
+						
+						// How many times does this event need to trigger to add points?
+						"threshold"	"500"
 					}
 				}
 			}

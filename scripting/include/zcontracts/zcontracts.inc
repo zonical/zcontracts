@@ -94,6 +94,14 @@ enum struct ContractObjective
 	// Events for this Contract (see ContractObjectiveEvent).
 	ArrayList m_hEvents;
 	
+	/**
+	 * Tries to add to the progress of an Objective by comparing the Objective Events'
+	 * threshold limit.
+	 *
+	 * @param client    	Client index.
+	 * @param hEvent    	Event to process.
+	 * @param value			Value sent alongside this event.
+	**/
 	void TryIncrementProgress(int client, ContractObjectiveEvent hEvent, int value)
 	{
 		if (this.IsObjectiveComplete()) return;
@@ -110,8 +118,7 @@ enum struct ContractObjective
 				this.m_iProgress += this.m_iAward;
 	
 				// Clamp.
-				if (!this.m_bInfinite) 
-					this.m_iProgress = Int_Min(this.m_iProgress, this.m_iMaxProgress);
+				if (!this.m_bInfinite) this.m_iProgress = Int_Min(this.m_iProgress, this.m_iMaxProgress);
 
 				// Reset our threshold.
 				hEvent.m_iCurrentThreshold = 0;
@@ -137,24 +144,26 @@ enum struct ContractObjective
 		}
 	}
 
-	void ResetProgress()
-	{ 
-		this.m_iProgress = 0;
-		return;
-	}
-	
+	/**
+	 * @return		If this Contract is complete.
+	**/
 	bool IsObjectiveComplete()
 	{
 		if (this.m_bInfinite) return false;
 		return this.m_iProgress >= this.m_iMaxProgress;
 	}
-
+	/**
+	 * Creates the ArrayList for Objective Events.
+	**/
 	void Initalize()
 	{
 		this.m_hEvents = new ArrayList(sizeof(ContractObjectiveEvent));
 		this.m_bInitalized = true;
 	}
 	
+	/**
+	 * Destory the ArrayList for Objective Events.
+	**/
 	void Destroy()
 	{
 		if (!this.m_bInitalized || !this.m_hEvents) return;
@@ -175,29 +184,27 @@ enum struct ContractObjective
 // Struct representing a Contract.
 enum struct Contract
 {
-	// UUID.
+	bool m_bInitalized;
+
 	char m_sUUID[MAX_UUID_SIZE];
-	
-	// Name of the contract.
 	char m_sContractName[MAX_CONTRACT_NAME_SIZE];
 	
-	// Directory path.
+	// Path of where this Contract should be stored in the global Contracker.
 	char m_sDirectoryPath[MAX_DIRECTORY_SIZE]; 
-
-	// Boolean value representing what classes can use this contract.
+	// Boolean value representing what classes can use this contract. (TF2 only!)
 	bool m_bClass[10];
-
-	// What type of Contract are we handling?
+	// What type of Contract are we handling? (see ContractType)
 	ContractType m_iContractType;
-
 	// If we're using "contract progress" mode, there is one central
 	// progress bar that is updated alongside our objective.
 	int m_iProgress;
 	int m_iMaxProgress;
 
-	// Contract objectives.
 	ArrayList m_hObjectives;
 	
+	/**
+	 * @return		If this Contract is complete.
+	**/
 	bool IsContractComplete()
 	{
 		switch (this.m_iContractType)
@@ -224,13 +231,18 @@ enum struct Contract
 		
 		return false;
 	}
-	
+	/**
+	 * Creates the ArrayList for objectives.
+	**/
 	void Initalize()
 	{
 		this.m_hObjectives = new ArrayList(sizeof(ContractObjective));
 		this.m_iProgress = 0;
+		this.m_bInitalized = true;
 	}
-
+	/**
+	 * Destroy the ArrayList for objectives.
+	**/
 	void Destroy()
 	{
 		for (int i = 0; i < MAX_CONTRACT_OBJECTIVES; i++)
@@ -242,7 +254,17 @@ enum struct Contract
 			this.m_hObjectives.SetArray(i, hContractObjective);
 		}
 		this.m_hObjectives.Clear();
+		this.m_bInitalized = false;
 	}
+}
+
+enum struct ObjectiveUpdate
+{
+	int m_iClient;
+	int m_iValue;
+	int m_iObjectiveID;
+	char m_sEvent[MAX_EVENT_SIZE];
+	char m_sUUID[MAX_UUID_SIZE];
 }
 
 /**
