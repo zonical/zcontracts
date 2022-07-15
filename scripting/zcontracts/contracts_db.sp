@@ -8,7 +8,49 @@ public void GotDatabase(Database db, const char[] error, any data)
     {
         PrintToServer("[ZContracts] Connected to database.");
         g_DB = db;
+
+        for (int i = 0; i < MAXPLAYERS+1; i++)
+	    {
+            // Grab the players Contract from the last session.
+            if (IsClientValid(i) && !IsFakeClient(i))
+            {
+                GrabContractFromLastSession(i);
+            }
+        }
     }
+}
+
+// NOTE: This assumes that hBuffer has already been assigned the default values and objectives
+// it needs. This function inserts the saved progress from the database.
+public bool PopulateProgressFromDB(int client, const char[] uuid, bool display_to_client)
+{
+    Contract hContract;
+    GetClientContract(client, hContract);
+
+    // Get the client's SteamID64.
+    char steamid64[64];
+    GetClientAuthId(client, AuthId_SteamID64, steamid64, sizeof(steamid64));
+
+    DataPack hData = new DataPack();
+    hData.WriteCell(client);
+    hData.WriteCell(display_to_client);
+
+    // If we're tracking Contract progress, get this value from the database first.
+    if (hContract.m_iContractType == Contract_ContractProgress)
+    {
+        char query[256];
+        g_DB.Format(query, sizeof(query), 
+        "SELECT progress FROM contract_progress WHERE steamid64 = '%s' AND contract_uuid = '%s'", steamid64, uuid);
+        g_DB.Query(CB_ContractProgress, query, hData);
+    }
+
+    char query[256];
+    g_DB.Format(query, sizeof(query), 
+    "SELECT progress FROM objective_progress WHERE steamid64 = '%s' AND contract_uuid = '%s' AND (objective_id BETWEEN 0 AND %d) ORDER BY objective_id ASC;", 
+    steamid64, uuid, hContract.m_hObjectives.Length);
+    g_DB.Query(CB_ObjectiveProgress, query, hData);
+
+    return true;
 }
 
 // Callback for getting ContractProgress progress.
@@ -48,39 +90,6 @@ public void CB_ObjectiveProgress(Database db, DBResultSet results, const char[] 
     }
 }
 
-// NOTE: This assumes that hBuffer has already been assigned the default values and objectives
-// it needs. This function inserts the saved progress from the database.
-public bool PopulateProgressFromDB(int client, const char[] uuid, bool display_to_client)
-{
-    Contract hContract;
-    GetClientContract(client, hContract);
-
-    // Get the client's SteamID64.
-    char steamid64[64];
-    GetClientAuthId(client, AuthId_SteamID64, steamid64, sizeof(steamid64));
-
-    DataPack hData = new DataPack();
-    hData.WriteCell(client);
-    hData.WriteCell(display_to_client);
-
-    // If we're tracking Contract progress, get this value from the database first.
-    if (hContract.m_iContractType == Contract_ContractProgress)
-    {
-        char query[256];
-        g_DB.Format(query, sizeof(query), 
-        "SELECT progress FROM contract_progress WHERE steamid64 = '%s' AND contract_uuid = '%s'", steamid64, uuid);
-        g_DB.Query(CB_ContractProgress, query, hData);
-    }
-
-    char query[256];
-    g_DB.Format(query, sizeof(query), 
-    "SELECT progress FROM objective_progress WHERE steamid64 = '%s' AND contract_uuid = '%s' AND (objective_id BETWEEN 0 AND %d) ORDER BY objective_id ASC;", 
-    steamid64, uuid, hContract.m_hObjectives.Length);
-    g_DB.Query(CB_ObjectiveProgress, query, hData);
-
-    return true;
-}
-
 public Action DebugGetProgress(int client, int args)
 {	
     // Grab UUID.
@@ -91,6 +100,68 @@ public Action DebugGetProgress(int client, int args)
     PopulateProgressFromDB(client, sUUID, false);
 
     return Plugin_Handled;
+}
+
+// ====================================================================================
+
+// Saves the current progress of this objective.
+public void SaveObjectiveProgressToDB(int client, const char[] uuid, int objective_id, int progress, bool is_complete)
+{
+    // Get the client's SteamID64.
+    char steamid64[64];
+    GetClientAuthId(client, AuthId_SteamID64, steamid64, sizeof(steamid64));
+
+    if (g_PrintQueryInfo.BoolValue)
+    {
+        PrintToServer("[ZContracts] Attempting to save progress for %N (%s) for objective id %d. Progress: %d",
+        client, steamid64, objective_id, progress);
+    }
+
+    char query[256];
+    g_DB.Format(query, sizeof(query), 
+    "SELECT progress FROM objective_progress WHERE steamid64 = '%s' AND contract_uuid = '%s' AND objective_id = %d", 
+    steamid64, uuid, objective_id);
+
+    DataPack hData = new DataPack();
+    hData.WriteCell(client);
+    hData.WriteCell(objective_id);
+    hData.WriteCell(progress);
+    hData.WriteCell(is_complete);
+    hData.WriteString(steamid64);
+    hData.WriteString(uuid);
+    g_DB.Query(CB_ObjectiveProgressExists, query, hData, DBPrio_High);
+}
+
+public void CB_ObjectiveProgressExists(Database db, DBResultSet results, const char[] error, DataPack hData)
+{
+    hData.Reset();
+    hData.ReadCell();
+    int objective_id = hData.ReadCell();
+    int progress = hData.ReadCell();
+    int is_complete = hData.ReadCell();
+    char steamid64[64];
+    hData.ReadString(steamid64, sizeof(steamid64));
+    char uuid[MAX_UUID_SIZE];
+    hData.ReadString(uuid, sizeof(uuid));
+
+    // Update.
+    if (results.RowCount > 0)
+    {
+        char query[256];
+        db.Format(query, sizeof(query), 
+        "UPDATE objective_progress SET progress = %d WHERE steamid64 = '%s' AND contract_uuid = '%s' AND objective_id = %d AND complete = %d", 
+        progress, steamid64, uuid, objective_id, is_complete);
+        db.Query(CB_Obj_OnUpdate, query, hData);
+    }
+    // Insert.
+    else
+    {
+        char query[256];
+        db.Format(query, sizeof(query), 
+        "INSERT INTO objective_progress (steamid64, contract_uuid, objective_id, progress, complete) VALUES ('%s', '%s', %d, %d, %d)", 
+        steamid64, uuid, objective_id, progress, is_complete);
+        db.Query(CB_Obj_OnInsert, query, hData);
+    }
 }
 
 public void CB_Obj_OnUpdate(Database db, DBResultSet results, const char[] error, DataPack hData)
@@ -105,7 +176,6 @@ public void CB_Obj_OnUpdate(Database db, DBResultSet results, const char[] error
             PrintToServer("[ZContracts] Failed to update player %N progress for objective id %d. [%s]", client, objective_id, error);
         }
         return;
-        //TODO: failsafe!
     }
     if (g_PrintQueryInfo.BoolValue)
     {
@@ -150,65 +220,7 @@ public void CB_Obj_OnInsert(Database db, DBResultSet results, const char[] error
     hContract.SaveObjective(objective_id, hObjective);
 }
 
-public void CB_ObjectiveProgressExists(Database db, DBResultSet results, const char[] error, DataPack hData)
-{
-    hData.Reset();
-    hData.ReadCell();
-    int objective_id = hData.ReadCell();
-    int progress = hData.ReadCell();
-    int is_complete = hData.ReadCell();
-    char steamid64[64];
-    hData.ReadString(steamid64, sizeof(steamid64));
-    char uuid[MAX_UUID_SIZE];
-    hData.ReadString(uuid, sizeof(uuid));
-
-    // Update.
-    if (results.RowCount > 0)
-    {
-        char query[256];
-        db.Format(query, sizeof(query), 
-        "UPDATE objective_progress SET progress = %d WHERE steamid64 = '%s' AND contract_uuid = '%s' AND objective_id = %d AND complete = %d", 
-        progress, steamid64, uuid, objective_id, is_complete);
-        db.Query(CB_Obj_OnUpdate, query, hData);
-    }
-    // Insert.
-    else
-    {
-        char query[256];
-        db.Format(query, sizeof(query), 
-        "INSERT INTO objective_progress (steamid64, contract_uuid, objective_id, progress, complete) VALUES ('%s', '%s', %d, %d, %d)", 
-        steamid64, uuid, objective_id, progress, is_complete);
-        db.Query(CB_Obj_OnInsert, query, hData);
-    }
-}
-
-// Saves the current progress of this objective.
-public void SaveObjectiveProgressToDB(int client, const char[] uuid, int objective_id, int progress, bool is_complete)
-{
-    // Get the client's SteamID64.
-    char steamid64[64];
-    GetClientAuthId(client, AuthId_SteamID64, steamid64, sizeof(steamid64));
-
-    if (g_PrintQueryInfo.BoolValue)
-    {
-        PrintToServer("[ZContracts] Attempting to save progress for %N (%s) for objective id %d. Progress: %d",
-        client, steamid64, objective_id, progress);
-    }
-
-    char query[256];
-    g_DB.Format(query, sizeof(query), 
-    "SELECT progress FROM objective_progress WHERE steamid64 = '%s' AND contract_uuid = '%s' AND objective_id = %d", 
-    steamid64, uuid, objective_id);
-
-    DataPack hData = new DataPack();
-    hData.WriteCell(client);
-    hData.WriteCell(objective_id);
-    hData.WriteCell(progress);
-    hData.WriteCell(is_complete);
-    hData.WriteString(steamid64);
-    hData.WriteString(uuid);
-    g_DB.Query(CB_ObjectiveProgressExists, query, hData, DBPrio_High);
-}
+// ====================================================================================
 
 public void SaveContractToDB(int client, Contract hContract)
 {
@@ -250,4 +262,112 @@ public Action Timer_SaveAllToDB(Handle hTimer)
         SaveContractToDB(i, hContract);
     }
     return Plugin_Continue;
+}
+
+// ====================================================================================
+
+public void GrabContractFromLastSession(int client)
+{
+    // Get the client's SteamID64.
+    char steamid64[64];
+    GetClientAuthId(client, AuthId_SteamID64, steamid64, sizeof(steamid64));
+
+    char query[256];
+    g_DB.Format(query, sizeof(query), 
+    "SELECT contract_uuid FROM selected_contract WHERE steamid64 = '%s'", steamid64);
+    g_DB.Query(CB_GetContractFromLastSession, query, client, DBPrio_High);
+}
+
+
+public void CB_GetContractFromLastSession(Database db, DBResultSet results, const char[] error, int client)
+{
+    char uuid[MAX_UUID_SIZE];
+    if (results.RowCount < 1) return;
+
+    while (results.FetchRow())
+    {
+        results.FetchString(0, uuid, sizeof(uuid));
+        SetClientContract(client, uuid);
+    }
+}
+
+public void SaveContractSession(int client)
+{
+    // Get the client's SteamID64.
+    char steamid64[64];
+    GetClientAuthId(client, AuthId_SteamID64, steamid64, sizeof(steamid64));
+
+    char query[256];
+    g_DB.Format(query, sizeof(query), 
+    "SELECT * FROM selected_contract WHERE steamid64 = '%s'", steamid64);
+    g_DB.Query(CB_DoesSessionExist, query, client);
+}
+
+public void CB_DoesSessionExist(Database db, DBResultSet results, const char[] error, int client)
+{
+    // Get the client's SteamID64.
+    char steamid64[64];
+    GetClientAuthId(client, AuthId_SteamID64, steamid64, sizeof(steamid64));
+
+    // Get our client's current contract.
+    Contract hContract;
+    GetClientContract(client, hContract);
+
+    if (results.RowCount < 1)
+    {
+        // Insert our new row into the database.
+        char query[256];
+        db.Format(query, sizeof(query), 
+        "INSERT INTO selected_contract (steamid64, contract_uuid) VALUES ('%s', '%s')", steamid64, hContract.m_sUUID);
+        db.Query(CB_Session_OnInsert, query, client);
+    }
+    else
+    {
+        // Is our UUID the same?
+        char stored_uuid[MAX_UUID_SIZE];
+        results.FetchString(1, stored_uuid, sizeof(stored_uuid));
+
+        if (!StrEqual(stored_uuid, hContract.m_sUUID))
+        {
+            // Update our row in the database.
+            char query[256];
+            db.Format(query, sizeof(query), 
+            "UPDATE selected_contract SET contract_uuid = '%s' WHERE steamid64 = '%s'", hContract.m_sUUID, steamid64);
+            db.Query(CB_Session_OnUpdate, query, client);
+        }
+    }
+}
+
+
+public void CB_Session_OnUpdate(Database db, DBResultSet results, const char[] error, int client)
+{
+    if (results.AffectedRows < 1)
+    {
+        if (g_PrintQueryInfo.BoolValue)
+        {
+            PrintToServer("[ZContracts] Failed to update player %N session. [%s]", client, error);
+        }
+        return;
+    }
+    if (g_PrintQueryInfo.BoolValue)
+    {
+        PrintToServer("[ZContracts] Updated player %N session.", client);
+    }
+}
+
+public void CB_Session_OnInsert(Database db, DBResultSet results, const char[] error, int client)
+{
+    if (results.AffectedRows < 1)
+    {
+        if (g_PrintQueryInfo.BoolValue)
+        {
+            PrintToServer("[ZContracts] Failed to insert player %N session. [%s]", client, error);
+        }
+        return;
+    }
+
+    if (g_PrintQueryInfo.BoolValue)
+    {
+        PrintToServer("[ZContracts] Inserted player %N session.", client);
+    }
 }

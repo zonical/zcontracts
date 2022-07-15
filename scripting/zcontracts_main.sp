@@ -1,6 +1,4 @@
 // TODO: Save Contract style progress.
-// TODO: Timed interval for database saving. 
-	// 	(either end of either round or 60 seconds)
 // TODO: CSGO testing.
 // TODO: Implement more game events.
 // TODO: Implement team restrictions for contracts.
@@ -24,6 +22,8 @@ Database g_DB;
 static Menu gContractMenu;
 Panel gContractObjeciveDisplay[MAXPLAYERS+1];
 char g_Menu_CurrentDirectory[MAXPLAYERS+1][MAX_DIRECTORY_SIZE];
+
+Contract m_hOldContract[MAXPLAYERS+1];
 Contract m_hContracts[MAXPLAYERS+1];
 
 ConVar g_PrintQueryInfo;
@@ -102,6 +102,16 @@ public void OnClientPostAdminCheck(int client)
 	// Reset variables.
 	Contract hBlankContract;
 	m_hContracts[client] = hBlankContract;
+	m_hOldContract[client] = hBlankContract;
+
+	// Grab the players Contract from the last session.
+	if (IsClientValid(client)
+	&& !IsFakeClient(client)
+	&& g_DB != null)
+	{
+		GrabContractFromLastSession(client);
+	}
+	
 	g_Menu_CurrentDirectory[client] = "root";
 }
 
@@ -192,7 +202,6 @@ public any Native_CallContrackerEvent(Handle plugin, int numParams)
 		hUpdate.m_sUUID = hContract.m_sUUID;
 		g_ObjectiveUpdateQueue.PushArray(hUpdate, sizeof(ObjectiveUpdate));
 	}
-
 	return true;
 }
 
@@ -206,24 +215,23 @@ public any Native_CallContrackerEvent(Handle plugin, int numParams)
 public any Native_SetClientContract(Handle plugin, int numParams)
 {
 	int client = GetNativeCell(1);
+	// Are we a bot?
+	if (!IsClientValid(client) || IsFakeClient(client))
+	{
+		return ThrowNativeError(SP_ERROR_NATIVE, "Invalid client index (%d)", client);
+	}
 
-	// TODO: Global SaveContractToDB() function.
 	// If we have a Contract already selected, save it's progress to the database.
 	Contract hOldContract;
 	GetClientContract(client, hOldContract);
 	if (hOldContract.m_hObjectives != null)
 	{
 		SaveContractToDB(client, hOldContract);
+		m_hOldContract[client] = hOldContract;
 	}
 	
 	char sUUID[MAX_UUID_SIZE];
 	GetNativeString(2, sUUID, sizeof(sUUID));
-
-	// Are we a bot?
-	if (!IsClientValid(client) || IsFakeClient(client))
-	{
-		return ThrowNativeError(SP_ERROR_NATIVE, "Invalid client index (%d)", client);
-	}
 
 	// Get our Contract definition.
 	Contract hContract;
@@ -236,6 +244,9 @@ public any Native_SetClientContract(Handle plugin, int numParams)
 	// values in the threaded callback functions.
 	m_hContracts[client] = hContract;
 	PopulateProgressFromDB(client, sUUID, true);
+
+	// Set this Contract as our current session.
+	SaveContractSession(client);
 	
 	// Print a specific type of message depending on what type of Contract we're doing.
 	char sMessage[128] = "{green}[ZC]{default} You have selected the contract: {lightgreen}\"%s\"{default}. To complete it, ";
@@ -294,22 +305,24 @@ public Action Timer_ProcessEvents(Handle hTimer)
 
 		// Do our UUID's match?
 		// TODO: Event's can trigger late and we might've switched Contracts. Add a failsafe!
-		if (!StrEqual(uuid, hContract.m_sUUID))
+		if (!StrEqual(uuid, hContract.m_sUUID) && StrEqual(uuid, m_hOldContract[client].m_sUUID))
 		{
-			// TODO: LaveSaveObjectiveToDB()
 			PrintToServer("[ZContracts] Processing late update for %N for contract %s and objective id %d", client, uuid, objective_id);
-			continue;
+			ProcessLogicForContractObjective(m_hOldContract[client], objective_id, client, event, value);
+
+			// Get the new progress and completion status for the old contract.
+			ContractObjective hOldObjective;
+			m_hOldContract[client].GetObjective(objective_id, hOldObjective);
+			SaveObjectiveProgressToDB(client, m_hOldContract[client].m_sUUID, objective_id,
+			hOldObjective.m_iProgress, hOldObjective.IsObjectiveComplete());
+		}
+		else
+		{
+			// Update progress.
+			ProcessLogicForContractObjective(hContract, objective_id, client, event, value);
 		}
 
-		ContractObjective hObjective;
-		hContract.GetObjective(objective_id, hObjective);
-
-		// Update progress.
-		TryIncrementObjectiveProgress(hObjective, client, event, value);
-		hContract.SaveObjective(objective_id, hObjective);
-
 		iProcessed++;
-		PrintToServer("Processed event %s", event);
 	}
 
 	return Plugin_Continue;
@@ -322,15 +335,17 @@ public Action Timer_ProcessEvents(Handle hTimer)
  * handled in the ContractObjective enum struct.
  * (see ContractObjective.TryIncrementProgress)
  *
- * @param hObjective 	Objective enum struct to update.
+ * @param hContract 	Contract struct to grab the objective from.
+ * @param objective_id 	ID of the objective to be processed.
  * @param client    	Client index.
  * @param event    		Event to process.
  * @param value			Value to send alongside this event.
  */
-public void TryIncrementObjectiveProgress(ContractObjective hObjective, int client, const char[] event, int value)
+public void ProcessLogicForContractObjective(Contract hContract, int objective_id, int client, const char[] event, int value)
 {
-	Contract hContract;
-	GetClientContract(client, hContract);
+	// Get our objective.
+	ContractObjective hObjective;
+	hContract.GetObjective(objective_id, hObjective);
 
 	// TODO: Class check
 	// TODO: Weapon check
@@ -371,6 +386,23 @@ public void TryIncrementObjectiveProgress(ContractObjective hObjective, int clie
 			int iOldProgress = hObjective.m_iProgress;
 			hObjective.TryIncrementProgress(client, hEvent, value);
 			hObjective.m_hEvents.SetArray(i, hEvent);
+			hContract.SaveObjective(objective_id, hObjective);
+		
+			// Is our contract now complete?
+			if (hContract.IsContractComplete())
+			{
+				// Print to chat.
+				MC_PrintToChat(client,
+				"{green}[ZC]{default} Congratulations! You have completed the contract: {lightgreen}\"%s\"{default}.",
+				hContract.m_sContractName);
+
+				// Set the client's contract to nothing.
+				Contract hBlankContract;
+				m_hContracts[client] = hBlankContract;
+
+				// TODO: Save full contract!
+			}
+
 
 			// Print to HUD that we've triggered this event and gained progress.
 			if (hObjective.m_iProgress > iOldProgress)
@@ -413,21 +445,6 @@ public void TryIncrementObjectiveProgress(ContractObjective hObjective, int clie
 				hObjective.m_iProgress, hObjective.IsObjectiveComplete());
 			}
 		}
-	}
-
-	// Is our contract now complete?
-	if (hContract.IsContractComplete())
-	{
-		// Print to chat.
-		MC_PrintToChat(client,
-		"{green}[ZC]{default} Congratulations! You have completed the contract: {lightgreen}\"%s\"{default}.",
-		hContract.m_sContractName);
-
-		// Set the client's contract to nothing.
-		Contract hBlankContract;
-		m_hContracts[client] = hBlankContract;
-
-		// TODO: Save contract!
 	}
 }
 
