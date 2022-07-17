@@ -106,7 +106,7 @@ enum struct ContractObjective
 	**/
 	void TryIncrementProgress(int client, ContractObjectiveEvent hEvent, int value)
 	{
-		if (this.IsObjectiveComplete()) return;
+		if (this.IsObjectiveComplete()) return; 
 
 		// Add to our event threshold.
 		hEvent.m_iCurrentThreshold += value;
@@ -128,7 +128,7 @@ enum struct ContractObjective
 			}
 			else if (StrEqual(hEvent.m_sEventType, "reset"))
 			{
-				// Reset all of the events' threshold.
+				// Reset all event thresholds.
 				for (int h = 0; h < this.m_hEvents.Length; h++)
 				{
 					ContractObjectiveEvent m_hEventToReset;

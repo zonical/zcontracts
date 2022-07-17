@@ -24,14 +24,16 @@ public Action EventTimer(Handle hTimer, DataPack hPack)
 	hEvent.m_iCurrentLoops++;
 	
 	// Call an event for when this loop of the timer ends.
-	TriggerTimeEvent(hObjective, hEvent, "OnTimerEnd");
+	TriggerTimeEvent(hObjective, hEvent, "OnLoopEnd");
 	
 	// Are we at the maximum of our loops?
 	if (hEvent.m_iCurrentLoops >= hEvent.m_iMaxLoops)
 	{
+		// Call an event for when the timer ends.
+		TriggerTimeEvent(hObjective, hEvent, "OnTimerEnd");
+
 		// Reset our variables.
 		hEvent.m_iCurrentLoops = 0;
-		hEvent.m_iCurrentThreshold = 0;
 		hEvent.m_hTimer = INVALID_HANDLE;
 		hObjective.m_hEvents.SetArray(iEventID, hEvent, sizeof(ContractObjectiveEvent));
 		// Exit out of the timer.
@@ -58,10 +60,11 @@ public void TriggerTimeEvent(ContractObjective hObjective, ContractObjectiveEven
 		if (StrEqual(hTimerEvent.m_sEventName, m_sEventName))
 		{
 			// What should we do here?
-			if (StrEqual(hTimerEvent.m_sAction, "add")) hObjective.m_iProgress += hTimerEvent.m_iVariable;
-			if (StrEqual(hTimerEvent.m_sAction, "subtract")) hObjective.m_iProgress -= hTimerEvent.m_iVariable;
-			if (StrEqual(hTimerEvent.m_sAction, "addloop")) hEvent.m_iMaxLoops += hTimerEvent.m_iVariable;
-			if (StrEqual(hTimerEvent.m_sAction, "subtractloop")) hEvent.m_iMaxLoops -= hTimerEvent.m_iVariable;
+			if (StrEqual(hTimerEvent.m_sAction, "add_reward")) hObjective.m_iProgress += hTimerEvent.m_iVariable;
+			if (StrEqual(hTimerEvent.m_sAction, "subtract_reward")) hObjective.m_iProgress -= hTimerEvent.m_iVariable;
+			if (StrEqual(hTimerEvent.m_sAction, "add_loop")) hEvent.m_iMaxLoops += hTimerEvent.m_iVariable;
+			if (StrEqual(hTimerEvent.m_sAction, "subtract_loop")) hEvent.m_iMaxLoops -= hTimerEvent.m_iVariable;
+			if (StrEqual(hTimerEvent.m_sAction, "subtract_threshold")) hEvent.m_iCurrentThreshold -= hTimerEvent.m_iVariable;
 		}
 	}
 }

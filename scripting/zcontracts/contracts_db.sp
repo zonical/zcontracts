@@ -203,7 +203,6 @@ public void CB_Obj_OnInsert(Database db, DBResultSet results, const char[] error
             PrintToServer("[ZContracts] Failed to insert player %N progress for objective id %d. [%s]", client, objective_id, error);
         }
         return;
-        //TODO: failsafe!
     }
 
     if (g_PrintQueryInfo.BoolValue)

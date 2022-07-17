@@ -74,6 +74,7 @@ public void OnPluginStart()
 
 	g_ObjectiveUpdateQueue = new ArrayList(sizeof(ObjectiveUpdate));
 	CreateTimer(1.0, Timer_ProcessEvents, _, TIMER_REPEAT);
+	// TODO changehook
 	CreateTimer(g_DatabaseUpdateTime.FloatValue, Timer_SaveAllToDB, _, TIMER_REPEAT);
 
 	// ================ DATABASE ================
@@ -396,39 +397,30 @@ public void ProcessLogicForContractObjective(Contract hContract, int objective_i
 				"{green}[ZC]{default} Congratulations! You have completed the contract: {lightgreen}\"%s\"{default}.",
 				hContract.m_sContractName);
 
+				// Save now.
+				SaveContractToDB(client, hContract);
+
 				// Set the client's contract to nothing.
 				Contract hBlankContract;
 				m_hContracts[client] = hBlankContract;
-
-				// TODO: Save full contract!
 			}
-
 
 			// Print to HUD that we've triggered this event and gained progress.
 			if (hObjective.m_iProgress > iOldProgress)
 			{
-				if (hObjective.m_bInfinite)
+				switch (hContract.m_iContractType)
 				{
-					switch (hContract.m_iContractType)
+					case Contract_ObjectiveProgress:
 					{
-						case Contract_ObjectiveProgress:
-						{
-							PrintHintText(client, "%s (%s) +%dCP",
-							hObjective.m_sDescription, hContract.m_sContractName, hObjective.m_iAward);
-						}
-						case Contract_ContractProgress:
-						{
-							PrintHintText(client, "%s (%s [%d/%dCP]) +%dCP",
-							hObjective.m_sDescription, hContract.m_sContractName,
-							hContract.m_iProgress, hContract.m_iMaxProgress, hObjective.m_iAward);
-						}
+						PrintHintText(client, "%s (%s) +%dCP",
+						hObjective.m_sDescription, hContract.m_sContractName, hObjective.m_iAward);
 					}
-				}
-				else
-				{
-					PrintHintText(client, "[%d/%dCP] %s (%s) +%dCP", 
-					hObjective.m_iProgress, hObjective.m_iMaxProgress, hObjective.m_sDescription,
-					hContract.m_sContractName, hObjective.m_iAward);
+					case Contract_ContractProgress:
+					{
+						PrintHintText(client, "%s (%s [%d/%dCP]) +%dCP",
+						hObjective.m_sDescription, hContract.m_sContractName,
+						hContract.m_iProgress, hContract.m_iMaxProgress, hObjective.m_iAward);
+					}
 				}
 			}
 
@@ -440,7 +432,7 @@ public void ProcessLogicForContractObjective(Contract hContract, int objective_i
 				"{green}[ZC]{default} Congratulations! You have completed the contract objective: {lightgreen}\"%s\"{default}.",
 				hObjective.m_sDescription);
 
-				// Update in the database to reflect that we've completed this objective.
+				// Save now.
 				SaveObjectiveProgressToDB(client, hContract.m_sUUID, hObjective.m_iInternalID,
 				hObjective.m_iProgress, hObjective.IsObjectiveComplete());
 			}
@@ -678,9 +670,18 @@ public void CreateObjectiveDisplay(int client, Contract hContract)
 		hContract.GetObjective(i, hObjective);
 
 		char line[256];
-		Format(line, sizeof(line), "Objective #%d: \"%s\" [%d/%d] +%dCP", i+1,
-		hObjective.m_sDescription, hObjective.m_iProgress, hObjective.m_iMaxProgress, hObjective.m_iAward);
-		gContractObjeciveDisplay[client].DrawText(line);
+		if (hObjective.m_bInfinite)
+		{
+			Format(line, sizeof(line), "Objective #%d: \"%s\" +%dCP", i+1,
+			hObjective.m_sDescription, hObjective.m_iAward);
+			gContractObjeciveDisplay[client].DrawText(line);
+		}
+		else
+		{
+			Format(line, sizeof(line), "Objective #%d: \"%s\" [%d/%d] +%dCP", i+1,
+			hObjective.m_sDescription, hObjective.m_iProgress, hObjective.m_iMaxProgress, hObjective.m_iAward);
+			gContractObjeciveDisplay[client].DrawText(line);
+		}
 	}
 
 	// Send this to our client.
