@@ -25,7 +25,7 @@
 			"1"
 			{
 				"description"		"Kill a player."
-				"required_progress"			"5"
+				"maximum_cp"		"5"
 				
 				// How many points should we give for successfully doing this objective?
 				"award"		"1"
@@ -48,7 +48,7 @@
 				"description"		"Kill three players in one life."
 				
 				// How many points required to complete this objective.
-				"required_progress"	"3"
+				"maximum_cp"	"3"
 
 				// How many points should we give for successfully doing this objective?
 				"award"		"1"

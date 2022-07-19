@@ -117,7 +117,8 @@ public void CreateContractObjective(KeyValues hObjectiveConf, ContractObjective 
 
 	hObjectiveConf.GetString("description", hObjective.m_sDescription, sizeof(hObjective.m_sDescription));
 	hObjectiveConf.GetString("weapon_restriction", hObjective.m_sWeaponRestriction, sizeof(hObjective.m_sWeaponRestriction));
-	hObjective.m_iMaxProgress = hObjectiveConf.GetNum("required_progress", 1);
+	hObjective.m_iMaxProgress = hObjectiveConf.GetNum("maximum_cp", 0);
+	hObjective.m_iMaxFires = hObjectiveConf.GetNum("maximum_uses", 0);
 	hObjective.m_iAward = hObjectiveConf.GetNum("award", 1);
 	hObjective.m_bInfinite = view_as<bool>(hObjectiveConf.GetNum("infinite", 0));
 	if (hObjective.m_bInfinite)
@@ -159,7 +160,7 @@ public void CreateContract(KeyValues hContractConf, Contract hContract)
 	hContractConf.GetString("name", hContract.m_sContractName, sizeof(hContract.m_sContractName));
 	hContractConf.GetString("directory", hContract.m_sDirectoryPath, sizeof(hContract.m_sDirectoryPath), "root");
 	hContract.m_iContractType = view_as<ContractType>(hContractConf.GetNum("type", view_as<int>(Contract_ObjectiveProgress))); // stops a warning
-	hContract.m_iMaxProgress = hContractConf.GetNum("required_progress", -1);
+	hContract.m_iMaxProgress = hContractConf.GetNum("maximum_cp", -1);
 
 	// Grab the classes that can do this contract.
 #if defined ZC_TF2
@@ -198,6 +199,7 @@ public void CreateContract(KeyValues hContractConf, Contract hContract)
 				ContractObjective m_hObjective;
 				CreateContractObjective(hContractConf, m_hObjective);
 				m_hObjective.m_iInternalID = obj;
+				m_hObjective.m_iContractType = hContract.m_iContractType;
 				hContract.m_hObjectives.PushArray(m_hObjective);
 				obj++;
 			} while (hContractConf.GotoNextKey());

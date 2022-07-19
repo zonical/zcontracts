@@ -31,45 +31,55 @@ public bool PopulateProgressFromDB(int client, const char[] uuid, bool display_t
     char steamid64[64];
     GetClientAuthId(client, AuthId_SteamID64, steamid64, sizeof(steamid64));
 
-    DataPack hData = new DataPack();
-    hData.WriteCell(client);
-    hData.WriteCell(display_to_client);
-
     // If we're tracking Contract progress, get this value from the database first.
     if (hContract.m_iContractType == Contract_ContractProgress)
     {
         char query[256];
         g_DB.Format(query, sizeof(query), 
-        "SELECT progress FROM contract_progress WHERE steamid64 = '%s' AND contract_uuid = '%s'", steamid64, uuid);
-        g_DB.Query(CB_ContractProgress, query, hData);
+        "SELECT * FROM contract_progress WHERE steamid64 = '%s' AND contract_uuid = '%s'", steamid64, uuid);
+        g_DB.Query(CB_ContractProgress, query, client);
     }
 
     char query[256];
     g_DB.Format(query, sizeof(query), 
-    "SELECT progress FROM objective_progress WHERE steamid64 = '%s' AND contract_uuid = '%s' AND (objective_id BETWEEN 0 AND %d) ORDER BY objective_id ASC;", 
+    "SELECT * FROM objective_progress WHERE steamid64 = '%s' AND contract_uuid = '%s' AND (objective_id BETWEEN 0 AND %d) ORDER BY objective_id ASC;", 
     steamid64, uuid, hContract.m_hObjectives.Length);
-    g_DB.Query(CB_ObjectiveProgress, query, hData);
+    g_DB.Query(CB_ObjectiveProgress, query, client);
+
+    // Create our display.
+    if (display_to_client)
+    {
+        CreateObjectiveDisplay(client, hContract, true);
+        CreateTimer(3.0, Timer_DisplayContractInfo, client);
+    }
 
     return true;
 }
 
-// Callback for getting ContractProgress progress.
-public void CB_ContractProgress(Database db, DBResultSet results, const char[] error, any data)
+public Action Timer_DisplayContractInfo(Handle hTimer, int client)
 {
-    while (results.FetchRow())
-    {
-        Contract hContract;
-        GetClientContract(data, hContract);
-        hContract.m_iProgress = results.FetchInt(0);
-    }
+    Contract hContract;
+    GetClientContract(client, hContract);
+    CreateObjectiveDisplay(client, hContract, false);
+    return Plugin_Stop;
 }
 
-public void CB_ObjectiveProgress(Database db, DBResultSet results, const char[] error, DataPack hData)
+// Callback for getting ContractProgress progress.
+public void CB_ContractProgress(Database db, DBResultSet results, const char[] error, int client)
 {
-    hData.Reset();
-    int client = hData.ReadCell();
-    bool display_to_client = hData.ReadCell();
+    Contract hContract;
+    GetClientContract(client, hContract);
 
+    while (results.FetchRow())
+    {
+        hContract.m_iProgress = results.FetchInt(2);
+    }
+
+    m_hContracts[client] = hContract;
+}
+
+public void CB_ObjectiveProgress(Database db, DBResultSet results, const char[] error, int client)
+{
     Contract hContract;
     GetClientContract(client, hContract);
 
@@ -78,16 +88,13 @@ public void CB_ObjectiveProgress(Database db, DBResultSet results, const char[] 
     {
         ContractObjective hObj;
         hContract.GetObjective(id, hObj);
-        hObj.m_iProgress = results.FetchInt(0); 
+        hObj.m_iProgress = results.FetchInt(3);
+        hObj.m_iFires = results.FetchInt(4); 
         hContract.SaveObjective(id, hObj);
         id++;
     }
 
-    // Should we display to the client?
-    if (display_to_client)
-    {
-        CreateObjectiveDisplay(client, hContract);
-    }
+    m_hContracts[client] = hContract;
 }
 
 public Action DebugGetProgress(int client, int args)
@@ -104,39 +111,29 @@ public Action DebugGetProgress(int client, int args)
 
 // ====================================================================================
 
-// Saves the current progress of this objective.
-public void SaveObjectiveProgressToDB(int client, const char[] uuid, int objective_id, int progress, bool is_complete)
+public void SaveContractProgressToDB(int client, const char[] uuid, int progress, bool is_complete)
 {
     // Get the client's SteamID64.
     char steamid64[64];
     GetClientAuthId(client, AuthId_SteamID64, steamid64, sizeof(steamid64));
 
-    if (g_PrintQueryInfo.BoolValue)
-    {
-        PrintToServer("[ZContracts] Attempting to save progress for %N (%s) for objective id %d. Progress: %d",
-        client, steamid64, objective_id, progress);
-    }
-
     char query[256];
     g_DB.Format(query, sizeof(query), 
-    "SELECT progress FROM objective_progress WHERE steamid64 = '%s' AND contract_uuid = '%s' AND objective_id = %d", 
-    steamid64, uuid, objective_id);
+    "SELECT * FROM contract_progress WHERE steamid64 = '%s' AND contract_uuid = '%s'", steamid64, uuid);
 
     DataPack hData = new DataPack();
     hData.WriteCell(client);
-    hData.WriteCell(objective_id);
     hData.WriteCell(progress);
     hData.WriteCell(is_complete);
     hData.WriteString(steamid64);
     hData.WriteString(uuid);
-    g_DB.Query(CB_ObjectiveProgressExists, query, hData, DBPrio_High);
+    g_DB.Query(CB_ContractProgressExists, query, hData, DBPrio_High);
 }
 
-public void CB_ObjectiveProgressExists(Database db, DBResultSet results, const char[] error, DataPack hData)
+public void CB_ContractProgressExists(Database db, DBResultSet results, const char[] error, DataPack hData)
 {
     hData.Reset();
-    hData.ReadCell();
-    int objective_id = hData.ReadCell();
+    int client = hData.ReadCell();
     int progress = hData.ReadCell();
     int is_complete = hData.ReadCell();
     char steamid64[64];
@@ -147,19 +144,163 @@ public void CB_ObjectiveProgressExists(Database db, DBResultSet results, const c
     // Update.
     if (results.RowCount > 0)
     {
-        char query[256];
-        db.Format(query, sizeof(query), 
-        "UPDATE objective_progress SET progress = %d WHERE steamid64 = '%s' AND contract_uuid = '%s' AND objective_id = %d AND complete = %d", 
-        progress, steamid64, uuid, objective_id, is_complete);
-        db.Query(CB_Obj_OnUpdate, query, hData);
+        // Is this data already the same as what we have? Why are we updating?
+        while (results.FetchRow())
+        {
+            if (results.FetchInt(2) == progress)
+            {
+                // Reset our save status.
+                Contract hContract;
+                GetClientContract(client, hContract);
+                hContract.m_bNeedsDBSave = false;
+                m_hContracts[client] = hContract;
+            }
+            else
+            {
+                // Update our current progress.
+                char query[256];
+                db.Format(query, sizeof(query), 
+                "UPDATE contract_progress SET progress = %d, complete = %d WHERE steamid64 = '%s' AND contract_uuid = '%s'", 
+                progress, is_complete, steamid64, uuid);
+                db.Query(CB_Con_OnUpdate, query, client);
+            }
+        }
     }
     // Insert.
     else
     {
         char query[256];
         db.Format(query, sizeof(query), 
-        "INSERT INTO objective_progress (steamid64, contract_uuid, objective_id, progress, complete) VALUES ('%s', '%s', %d, %d, %d)", 
-        steamid64, uuid, objective_id, progress, is_complete);
+        "INSERT INTO contract_progress (steamid64, contract_uuid, progress, complete) VALUES ('%s', '%s', %d, %d)", 
+        steamid64, uuid, progress, is_complete);
+        db.Query(CB_Con_OnInsert, query, client);
+    }
+}
+
+public void CB_Con_OnUpdate(Database db, DBResultSet results, const char[] error, int client)
+{
+    if (results.AffectedRows < 1)
+    {
+        if (g_PrintQueryInfo.BoolValue)
+        {
+            PrintToServer("[ZContracts] Failed to update player %N contract progress. [%s]", client, error);
+        }
+        return;
+    }
+    if (g_PrintQueryInfo.BoolValue)
+    {
+        PrintToServer("[ZContracts] Updated player %N progress for contract.", client);
+    }
+
+    // Reset our save status.
+    Contract hContract;
+    GetClientContract(client, hContract);
+    hContract.m_bNeedsDBSave = false;
+    m_hContracts[client] = hContract;
+}
+
+public void CB_Con_OnInsert(Database db, DBResultSet results, const char[] error, int client)
+{
+    if (results.AffectedRows < 1)
+    {
+        if (g_PrintQueryInfo.BoolValue)
+        {
+            PrintToServer("[ZContracts] Failed to insert player %N progress for contract. [%s]", client, error);
+        }
+        return;
+    }
+
+    if (g_PrintQueryInfo.BoolValue)
+    {
+        PrintToServer("[ZContracts] Inserted player %N progress for contract.", client);
+    }
+
+    // Reset our save status.
+    Contract hContract;
+    GetClientContract(client, hContract);
+    hContract.m_bNeedsDBSave = false;
+    m_hContracts[client] = hContract;
+}
+
+// ====================================================================================
+
+// Saves the current progress of this objective.
+public void SaveObjectiveProgressToDB(int client, const char[] uuid, ContractObjective hObjective)
+{
+    // Get the client's SteamID64.
+    char steamid64[64];
+    GetClientAuthId(client, AuthId_SteamID64, steamid64, sizeof(steamid64));
+
+    if (g_PrintQueryInfo.BoolValue)
+    {
+        PrintToServer("[ZContracts] Attempting to save progress for %N (%s) for objective id %d. Progress: %d",
+        client, steamid64, hObjective.m_iInternalID, hObjective.m_iProgress);
+    }
+
+    char query[256];
+    g_DB.Format(query, sizeof(query), 
+    "SELECT * FROM objective_progress WHERE steamid64 = '%s' AND contract_uuid = '%s' AND objective_id = %d", 
+    steamid64, uuid, hObjective.m_iInternalID);
+
+    DataPack hData = new DataPack();
+    hData.WriteCell(client);
+    hData.WriteCell(hObjective.m_iInternalID);
+    hData.WriteCell(hObjective.m_iProgress);
+    hData.WriteCell(hObjective.m_iFires);
+    hData.WriteCell(hObjective.IsObjectiveComplete());
+    hData.WriteString(steamid64);
+    hData.WriteString(uuid);
+    g_DB.Query(CB_ObjectiveProgressExists, query, hData, DBPrio_High);
+}
+
+public void CB_ObjectiveProgressExists(Database db, DBResultSet results, const char[] error, DataPack hData)
+{
+    hData.Reset();
+    int client = hData.ReadCell();
+    int objective_id = hData.ReadCell();
+    int progress = hData.ReadCell();
+    int fires = hData.ReadCell();
+    int is_complete = hData.ReadCell();
+    char steamid64[64];
+    hData.ReadString(steamid64, sizeof(steamid64));
+    char uuid[MAX_UUID_SIZE];
+    hData.ReadString(uuid, sizeof(uuid));
+
+    // Update.
+    if (results.RowCount > 0)
+    {
+        while (results.FetchRow())
+        {
+            // Is this data already the same as what we have? Why are we updating?
+            if (results.FetchInt(3) == progress)
+            {
+                // Reset our save status.
+                Contract hContract;
+                GetClientContract(client, hContract);
+                ContractObjective hObjective;
+                hContract.GetObjective(objective_id, hObjective);
+                hObjective.m_bNeedsDBSave = false;
+                hContract.SaveObjective(objective_id, hObjective);
+                m_hContracts[client] = hContract;
+            }
+            else
+            {
+                char query[256];
+                db.Format(query, sizeof(query), 
+                "UPDATE objective_progress SET progress = %d, fires = %d, complete = %d WHERE steamid64 = '%s' AND contract_uuid = '%s' AND objective_id = %d", 
+                progress, fires, is_complete, steamid64, uuid, objective_id);
+                db.Query(CB_Obj_OnUpdate, query, hData);   
+            }
+        }
+
+    }
+    // Insert.
+    else
+    {
+        char query[256];
+        db.Format(query, sizeof(query), 
+        "INSERT INTO objective_progress (steamid64, contract_uuid, objective_id, progress, fires, complete) VALUES ('%s', '%s', %d, %d, %d, %d)", 
+        steamid64, uuid, objective_id, progress, fires, is_complete);
         db.Query(CB_Obj_OnInsert, query, hData);
     }
 }
@@ -189,6 +330,7 @@ public void CB_Obj_OnUpdate(Database db, DBResultSet results, const char[] error
     hContract.GetObjective(objective_id, hObjective);
     hObjective.m_bNeedsDBSave = false;
     hContract.SaveObjective(objective_id, hObjective);
+    m_hContracts[client] = hContract;
 }
 
 public void CB_Obj_OnInsert(Database db, DBResultSet results, const char[] error, DataPack hData)
@@ -217,13 +359,22 @@ public void CB_Obj_OnInsert(Database db, DBResultSet results, const char[] error
     hContract.GetObjective(objective_id, hObjective);
     hObjective.m_bNeedsDBSave = false;
     hContract.SaveObjective(objective_id, hObjective);
+    m_hContracts[client] = hContract;
 }
 
 // ====================================================================================
 
 public void SaveContractToDB(int client, Contract hContract)
 {
-    // TODO: ContractProgress saving
+    
+    // Save the overall progress of this Contract.
+    if (hContract.m_iContractType == Contract_ContractProgress)
+    {
+        SaveContractProgressToDB(client, hContract.m_sUUID, 
+        hContract.m_iProgress, hContract.IsContractComplete());
+    }
+
+    // Save the contract objectives.
     for (int i = 0; i < hContract.m_hObjectives.Length; i++)
     {
         ContractObjective hObjective;
@@ -233,8 +384,7 @@ public void SaveContractToDB(int client, Contract hContract)
         if (hObjective.m_bNeedsDBSave == false) continue;
         if (hObjective.IsObjectiveComplete()) continue;
 
-        SaveObjectiveProgressToDB(client, hContract.m_sUUID, hObjective.m_iInternalID,
-        hObjective.m_iProgress, hObjective.IsObjectiveComplete());
+        SaveObjectiveProgressToDB(client, hContract.m_sUUID, hObjective);
     }
 }
 

@@ -34,6 +34,7 @@ public Action EventTimer(Handle hTimer, DataPack hPack)
 
 		// Reset our variables.
 		hEvent.m_iCurrentLoops = 0;
+		hEvent.m_iCurrentThreshold = 0;
 		hEvent.m_hTimer = INVALID_HANDLE;
 		hObjective.m_hEvents.SetArray(iEventID, hEvent, sizeof(ContractObjectiveEvent));
 		// Exit out of the timer.

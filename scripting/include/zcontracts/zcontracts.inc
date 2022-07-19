@@ -74,6 +74,9 @@ enum struct ContractObjectiveEvent
 // Contract objectives.
 enum struct ContractObjective
 {
+	// Store the original type of Contract.
+	ContractType m_iContractType;
+
 	int m_iInternalID;
 	bool m_bInitalized;
 	bool m_bInfinite;	// Objective doesn't have a maximum progress.
@@ -83,9 +86,15 @@ enum struct ContractObjective
 	// Award to give when this event is triggered.
 	int m_iAward;
 
-	// Progress of this objective.
+	// For an Objective-Progress type of Contract, store the progress
+	// of this objective.
 	int m_iMaxProgress;
 	int m_iProgress;
+
+	// For an Contract-Progress type of Contract, we can limit how many times
+	// this objective can be used to gain Contract progress.
+	int m_iFires;
+	int m_iMaxFires;
 	
 	// Restrictions for triggering progress.
 	char m_sWeaponRestriction[MAX_UUID_SIZE];
@@ -94,58 +103,8 @@ enum struct ContractObjective
 	// Events for this Contract (see ContractObjectiveEvent).
 	ArrayList m_hEvents;
 
+	// If this objective needs to be updated in the database.
 	bool m_bNeedsDBSave;
-	
-	/**
-	 * Tries to add to the progress of an Objective by comparing the Objective Events'
-	 * threshold limit.
-	 *
-	 * @param client    	Client index.
-	 * @param hEvent    	Event to process.
-	 * @param value			Value sent alongside this event.
-	**/
-	void TryIncrementProgress(int client, ContractObjectiveEvent hEvent, int value)
-	{
-		if (this.IsObjectiveComplete()) return; 
-
-		// Add to our event threshold.
-		hEvent.m_iCurrentThreshold += value;
-
-		if (hEvent.m_iCurrentThreshold >= hEvent.m_iThreshold)
-		{
-			// What type of value are we? Are we incrementing or resetting?
-			if (StrEqual(hEvent.m_sEventType, "increment"))
-			{
-				// Add to our event progress.
-				this.m_iProgress += this.m_iAward;
-				this.m_bNeedsDBSave = true;
-	
-				// Clamp.
-				if (!this.m_bInfinite) this.m_iProgress = Int_Min(this.m_iProgress, this.m_iMaxProgress);
-
-				// Reset our threshold.
-				hEvent.m_iCurrentThreshold = 0;
-			}
-			else if (StrEqual(hEvent.m_sEventType, "reset"))
-			{
-				// Reset all event thresholds.
-				for (int h = 0; h < this.m_hEvents.Length; h++)
-				{
-					ContractObjectiveEvent m_hEventToReset;
-					this.m_hEvents.GetArray(h, m_hEventToReset);
-					m_hEventToReset.m_iCurrentThreshold = 0;
-					this.m_hEvents.SetArray(h, m_hEventToReset);
-				}
-			}
-			
-			// Cancel our timer now that we've reached our threshold.
-			if (hEvent.m_hTimer != INVALID_HANDLE)
-			{
-				CloseHandle(hEvent.m_hTimer);
-				hEvent.m_hTimer = INVALID_HANDLE;
-			}
-		}
-	}
 
 	/**
 	 * @return		If this Contract is complete.
@@ -153,7 +112,13 @@ enum struct ContractObjective
 	bool IsObjectiveComplete()
 	{
 		if (this.m_bInfinite) return false;
-		return this.m_iProgress >= this.m_iMaxProgress;
+		switch (this.m_iContractType)
+		{
+			case Contract_ObjectiveProgress: return this.m_iProgress >= this.m_iMaxProgress;
+			case Contract_ContractProgress: return this.m_iFires >= this.m_iMaxFires;
+		}
+		return false;
+		
 	}
 	/**
 	 * Creates the ArrayList for Objective Events.
@@ -196,14 +161,20 @@ enum struct Contract
 	
 	// Path of where this Contract should be stored in the global Contracker.
 	char m_sDirectoryPath[MAX_DIRECTORY_SIZE]; 
+
 	// Boolean value representing what classes can use this contract. (TF2 only!)
 	bool m_bClass[10];
+
 	// What type of Contract are we handling? (see ContractType)
 	ContractType m_iContractType;
+
 	// If we're using "contract progress" mode, there is one central
 	// progress bar that is updated alongside our objective.
 	int m_iProgress;
 	int m_iMaxProgress;
+
+	// If the Contract progress needs to be updated in the database.
+	bool m_bNeedsDBSave;
 
 	ArrayList m_hObjectives;
 	

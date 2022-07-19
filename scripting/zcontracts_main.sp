@@ -1,4 +1,3 @@
-// TODO: Save Contract style progress.
 // TODO: CSGO testing.
 // TODO: Implement more game events.
 // TODO: Implement team restrictions for contracts.
@@ -305,7 +304,6 @@ public Action Timer_ProcessEvents(Handle hTimer)
 		GetClientContract(client, hContract);
 
 		// Do our UUID's match?
-		// TODO: Event's can trigger late and we might've switched Contracts. Add a failsafe!
 		if (!StrEqual(uuid, hContract.m_sUUID) && StrEqual(uuid, m_hOldContract[client].m_sUUID))
 		{
 			PrintToServer("[ZContracts] Processing late update for %N for contract %s and objective id %d", client, uuid, objective_id);
@@ -314,8 +312,7 @@ public Action Timer_ProcessEvents(Handle hTimer)
 			// Get the new progress and completion status for the old contract.
 			ContractObjective hOldObjective;
 			m_hOldContract[client].GetObjective(objective_id, hOldObjective);
-			SaveObjectiveProgressToDB(client, m_hOldContract[client].m_sUUID, objective_id,
-			hOldObjective.m_iProgress, hOldObjective.IsObjectiveComplete());
+			SaveObjectiveProgressToDB(client, m_hOldContract[client].m_sUUID, hOldObjective);
 		}
 		else
 		{
@@ -344,9 +341,12 @@ public Action Timer_ProcessEvents(Handle hTimer)
  */
 public void ProcessLogicForContractObjective(Contract hContract, int objective_id, int client, const char[] event, int value)
 {
+	if (hContract.IsContractComplete()) return;
+
 	// Get our objective.
 	ContractObjective hObjective;
 	hContract.GetObjective(objective_id, hObjective);
+	if (hObjective.IsObjectiveComplete()) return;
 
 	// TODO: Class check
 	// TODO: Weapon check
@@ -383,59 +383,98 @@ public void ProcessLogicForContractObjective(Contract hContract, int objective_i
 				}
 			}
 
-			// Increment logic.
-			int iOldProgress = hObjective.m_iProgress;
-			hObjective.TryIncrementProgress(client, hEvent, value);
-			hObjective.m_hEvents.SetArray(i, hEvent);
-			hContract.SaveObjective(objective_id, hObjective);
-		
-			// Is our contract now complete?
-			if (hContract.IsContractComplete())
+			// Add to our event threshold.
+			hEvent.m_iCurrentThreshold += value;
+			if (hEvent.m_iCurrentThreshold >= hEvent.m_iThreshold)
 			{
-				// Print to chat.
-				MC_PrintToChat(client,
-				"{green}[ZC]{default} Congratulations! You have completed the contract: {lightgreen}\"%s\"{default}.",
-				hContract.m_sContractName);
-
-				// Save now.
-				SaveContractToDB(client, hContract);
-
-				// Set the client's contract to nothing.
-				Contract hBlankContract;
-				m_hContracts[client] = hBlankContract;
-			}
-
-			// Print to HUD that we've triggered this event and gained progress.
-			if (hObjective.m_iProgress > iOldProgress)
-			{
-				switch (hContract.m_iContractType)
+				// What type of value are we? Are we incrementing or resetting?
+				if (StrEqual(hEvent.m_sEventType, "increment"))
 				{
-					case Contract_ObjectiveProgress:
+					switch (hContract.m_iContractType)
 					{
-						PrintHintText(client, "%s (%s) +%dCP",
-						hObjective.m_sDescription, hContract.m_sContractName, hObjective.m_iAward);
+						case Contract_ObjectiveProgress:
+						{
+							hObjective.m_iProgress += hObjective.m_iAward;
+							if (!hObjective.m_bInfinite)
+							{
+								hObjective.m_iProgress = Int_Min(hObjective.m_iProgress, hObjective.m_iMaxProgress);
+							}
+
+							PrintHintText(client, "%s (%s [%d/%dCP]) +%dCP",
+							hObjective.m_sDescription, hContract.m_sContractName, 
+							hObjective.m_iProgress, hObjective.m_iMaxProgress, hObjective.m_iAward);
+							hObjective.m_bNeedsDBSave = true;
+						}
+						case Contract_ContractProgress:
+						{
+							hContract.m_iProgress += hObjective.m_iAward;
+							hContract.m_iProgress = Int_Min(hContract.m_iProgress, hContract.m_iMaxProgress);
+							if (!hObjective.m_bInfinite)
+							{
+								hObjective.m_iFires++;
+								hObjective.m_iFires = Int_Min(hObjective.m_iFires, hObjective.m_iMaxFires);
+								// There's no need to save objective progress for this style of
+								// Contract progression if the value is infinite.
+								hObjective.m_bNeedsDBSave = true;
+							}		
+							
+							PrintHintText(client, "%s (%s [%d/%dCP]) +%dCP",
+							hObjective.m_sDescription, hContract.m_sContractName,
+							hContract.m_iProgress, hContract.m_iMaxProgress, hObjective.m_iAward);
+						}
 					}
-					case Contract_ContractProgress:
+
+					// Reset our threshold.
+					hEvent.m_iCurrentThreshold = 0;
+				}
+				else if (StrEqual(hEvent.m_sEventType, "reset"))
+				{
+					// Reset all event thresholds.
+					for (int h = 0; h < hObjective.m_hEvents.Length; h++)
 					{
-						PrintHintText(client, "%s (%s [%d/%dCP]) +%dCP",
-						hObjective.m_sDescription, hContract.m_sContractName,
-						hContract.m_iProgress, hContract.m_iMaxProgress, hObjective.m_iAward);
+						ContractObjectiveEvent m_hEventToReset;
+						hObjective.m_hEvents.GetArray(h, m_hEventToReset);
+						m_hEventToReset.m_iCurrentThreshold = 0;
+						hObjective.m_hEvents.SetArray(h, m_hEventToReset);
 					}
 				}
+				
+				// Cancel our timer now that we've reached our threshold.
+				if (hEvent.m_hTimer != INVALID_HANDLE)
+				{
+					CloseHandle(hEvent.m_hTimer);
+					hEvent.m_hTimer = INVALID_HANDLE;
+				}
 			}
-
+		
 			// Print that this objective is complete.
 			if (hObjective.IsObjectiveComplete())
 			{
 				// Print to chat.
 				MC_PrintToChat(client,
-				"{green}[ZC]{default} Congratulations! You have completed the contract objective: {lightgreen}\"%s\"{default}.",
+				"{green}[ZC]{default} Congratulations! You have completed the contract objective: {lightgreen}\"%s\"{default}",
 				hObjective.m_sDescription);
 
 				// Save now.
-				SaveObjectiveProgressToDB(client, hContract.m_sUUID, hObjective.m_iInternalID,
-				hObjective.m_iProgress, hObjective.IsObjectiveComplete());
+				SaveObjectiveProgressToDB(client, hContract.m_sUUID, hObjective);
 			}
+
+			hObjective.m_hEvents.SetArray(i, hEvent);
+			hContract.SaveObjective(objective_id, hObjective);
+
+			// Is our contract now complete?
+			if (hContract.IsContractComplete())
+			{
+				// Print to chat.
+				MC_PrintToChat(client,
+				"{green}[ZC]{default} Congratulations! You have completed the contract: {lightgreen}\"%s\"{default}",
+				hContract.m_sContractName);
+
+				// Save now.
+				SaveContractToDB(client, hContract);
+			}
+			
+			m_hContracts[client] = hContract;
 		}
 	}
 }
@@ -632,7 +671,7 @@ public Action OpenContrackerForClient(int client, int args)
 	if (hContract.m_sUUID[0] == '{')
 	{
 		// Display our objective display instead.
-		CreateObjectiveDisplay(client, hContract);
+		CreateObjectiveDisplay(client, hContract, false);
 	}
 	else
 	{
@@ -641,7 +680,6 @@ public Action OpenContrackerForClient(int client, int args)
 	return Plugin_Handled;
 }
 
-
 /**
  * Creates the Objective display for the client. This menu displays
  * all of the objective progress for the selected Contract, as well
@@ -649,8 +687,9 @@ public Action OpenContrackerForClient(int client, int args)
  * 
  * @param client 		Client index.
  * @param hContract    	Contract struct to grab Objective information from.
+ * @param unknown		If true, progress values will be replaced with "?"
 **/
-public void CreateObjectiveDisplay(int client, Contract hContract)
+public void CreateObjectiveDisplay(int client, Contract hContract, bool unknown)
 {
 	// Construct our panel for the client.
 	delete gContractObjeciveDisplay[client];
@@ -661,6 +700,11 @@ public void CreateObjectiveDisplay(int client, Contract hContract)
 	{
 		char line[256];
 		Format(line, sizeof(line), "Progress: [%d/%d]", hContract.m_iProgress, hContract.m_iMaxProgress);
+		if (unknown)
+		{
+			Format(line, sizeof(line), "Progress: [?/%d]", hContract.m_iMaxProgress);
+		}
+		gContractObjeciveDisplay[client].DrawText(line);
 	}
 
 	// TODO: Should we split this up into two pages?
@@ -674,14 +718,36 @@ public void CreateObjectiveDisplay(int client, Contract hContract)
 		{
 			Format(line, sizeof(line), "Objective #%d: \"%s\" +%dCP", i+1,
 			hObjective.m_sDescription, hObjective.m_iAward);
-			gContractObjeciveDisplay[client].DrawText(line);
 		}
 		else
 		{
-			Format(line, sizeof(line), "Objective #%d: \"%s\" [%d/%d] +%dCP", i+1,
-			hObjective.m_sDescription, hObjective.m_iProgress, hObjective.m_iMaxProgress, hObjective.m_iAward);
-			gContractObjeciveDisplay[client].DrawText(line);
+			switch (hContract.m_iContractType)
+			{
+				case Contract_ObjectiveProgress:
+				{
+					Format(line, sizeof(line), "Objective #%d: \"%s\" [%d/%d] +%dCP", i+1,
+					hObjective.m_sDescription, hObjective.m_iProgress, hObjective.m_iMaxProgress, hObjective.m_iAward);
+					
+					if (unknown)
+					{
+						Format(line, sizeof(line), "Objective #%d: \"%s\" [?/%d] +%dCP", i+1,
+						hObjective.m_sDescription, hObjective.m_iMaxProgress, hObjective.m_iAward);
+					}
+
+				}
+				case Contract_ContractProgress:
+				{
+					Format(line, sizeof(line), "Objective #%d: \"%s\" [%d/%d] +%dCP", i+1,
+					hObjective.m_sDescription, hObjective.m_iFires, hObjective.m_iMaxFires, hObjective.m_iAward);
+					if (unknown)
+					{
+						Format(line, sizeof(line), "Objective #%d: \"%s\" [?/%d] +%dCP", i+1,
+						hObjective.m_sDescription, hObjective.m_iMaxFires, hObjective.m_iAward);				
+					}
+				}
+			}
 		}
+		gContractObjeciveDisplay[client].DrawText(line);
 	}
 
 	// Send this to our client.
