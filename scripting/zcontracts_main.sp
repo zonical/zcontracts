@@ -3,8 +3,6 @@
 // TODO: Implement team restrictions for contracts.
 	// (e.g red, blu, terrorists, counterterrorists + aliases)
 // TODO: Documentation (contracts_db)!!
-// TODO: Implement forwards for contract and objective completion
-
 
 #include <sourcemod>
 #include <sdktools>
@@ -28,6 +26,11 @@ Contract m_hContracts[MAXPLAYERS+1];
 ConVar g_PrintQueryInfo;
 ConVar g_UpdatesPerSecond;
 ConVar g_DatabaseUpdateTime;
+
+GlobalForward g_fOnObjectiveCompleted;
+GlobalForward g_fOnContractCompleted;
+
+Handle g_DatabaseUpdateTimer;
 
 // This arraylist contains a list of objectives that we need to update.
 ArrayList g_ObjectiveUpdateQueue;
@@ -62,7 +65,8 @@ public void OnPluginStart()
 	g_DisabledPath = CreateConVar("zc_disabled_path", "configs/zcontracts/disabled", "If a search path has this string in it, any Contract's loaded in or derived from this path will not be loaded. Changing this Value will cause a reload of the Contract schema.");
 	g_UpdatesPerSecond = CreateConVar("zc_updates_per_second", "4", "Process this many objective updates per second.");
 	g_DatabaseUpdateTime = CreateConVar("zc_database_update_time", "30", "How long to wait before sending Contract updates to the database.");
-	g_PrintQueryInfo = CreateConVar("zc_print_query_info", "1", "If not zero, prints to server console when a query is sent to the datbase. Mainly used for debugging.");
+	g_PrintQueryInfo = CreateConVar("zc_print_query_info", "0", "If not zero, prints to server console when a query is sent to the datbase. Mainly used for debugging.");
+	g_DatabaseUpdateTime.AddChangeHook(OnDatabaseUpdateChange);
 	g_ConfigSearchPath.AddChangeHook(OnSchemaConVarChange);
 	g_RequiredFileExt.AddChangeHook(OnSchemaConVarChange);
 	g_DisabledPath.AddChangeHook(OnSchemaConVarChange);
@@ -73,8 +77,7 @@ public void OnPluginStart()
 
 	g_ObjectiveUpdateQueue = new ArrayList(sizeof(ObjectiveUpdate));
 	CreateTimer(1.0, Timer_ProcessEvents, _, TIMER_REPEAT);
-	// TODO changehook
-	CreateTimer(g_DatabaseUpdateTime.FloatValue, Timer_SaveAllToDB, _, TIMER_REPEAT);
+	g_DatabaseUpdateTimer = CreateTimer(g_DatabaseUpdateTime.FloatValue, Timer_SaveAllToDB, _, TIMER_REPEAT);
 
 	// ================ DATABASE ================
 	Database.Connect(GotDatabase, "zcontracts");
@@ -85,6 +88,10 @@ public void OnPluginStart()
 		OnClientPostAdminCheck(i);
 	}
 	
+	// ================ FORWARDS ================
+	g_fOnObjectiveCompleted = new GlobalForward("OnContractObjectiveCompleted", ET_Ignore, Param_Cell, Param_String, Param_Array);
+	g_fOnContractCompleted = new GlobalForward("OnContractCompleted", ET_Ignore, Param_Cell, Param_String, Param_Array);
+
 	// ================ COMMANDS ================
 	RegConsoleCmd("sm_setcontract", DebugSetContract);
 	RegConsoleCmd("sm_debugcontract", DebugContractInfo);
@@ -454,6 +461,12 @@ public void ProcessLogicForContractObjective(Contract hContract, int objective_i
 				MC_PrintToChat(client,
 				"{green}[ZC]{default} Congratulations! You have completed the contract objective: {lightgreen}\"%s\"{default}",
 				hObjective.m_sDescription);
+				
+				Call_StartForward(g_fOnObjectiveCompleted);
+				Call_PushCell(client);
+				Call_PushString(hContract.m_sUUID);
+				Call_PushArray(hObjective, sizeof(ContractObjective));
+				Call_Finish();
 
 				// Save now.
 				SaveObjectiveProgressToDB(client, hContract.m_sUUID, hObjective);
@@ -469,6 +482,12 @@ public void ProcessLogicForContractObjective(Contract hContract, int objective_i
 				MC_PrintToChat(client,
 				"{green}[ZC]{default} Congratulations! You have completed the contract: {lightgreen}\"%s\"{default}",
 				hContract.m_sContractName);
+
+				Call_StartForward(g_fOnContractCompleted);
+				Call_PushCell(client);
+				Call_PushString(hContract.m_sUUID);
+				Call_PushArray(hContract, sizeof(Contract));
+				Call_Finish();
 
 				// Save now.
 				SaveContractToDB(client, hContract);

@@ -20,6 +20,12 @@ public void GotDatabase(Database db, const char[] error, any data)
     }
 }
 
+public void OnDatabaseUpdateChange(ConVar convar, char[] oldValue, char[] newValue)
+{
+    delete g_DatabaseUpdateTimer;
+    g_DatabaseUpdateTimer = CreateTimer(StringToFloat(newValue), Timer_SaveAllToDB, _, TIMER_REPEAT);
+}
+
 // NOTE: This assumes that hBuffer has already been assigned the default values and objectives
 // it needs. This function inserts the saved progress from the database.
 public bool PopulateProgressFromDB(int client, const char[] uuid, bool display_to_client)

@@ -287,3 +287,20 @@ native bool GetClientContract(int client, any buffer[sizeof(Contract)]);
  * @error           Client index is invalid or is a bot.   
  */
 native bool CallContrackerEvent(int client, char event[MAX_EVENT_SIZE], int value);
+
+/**
+ * Sent on client completion of a Contract objective.
+ *
+ * @param client    	Client index.
+ * @param uuid    		The UUID of the original Contract.
+ * @param hObjective	Handle to the completed objective.
+ */
+forward void OnContractObjectiveCompleted(int client, const char[] uuid, ContractObjective hObjective);
+/**
+ * Sent on client completion of a Contract.
+ *
+ * @param client    	Client index.
+ * @param uuid    		The UUID of the original Contract.
+ * @param hObjective	Handle to the completed Contract.
+ */
+forward void OnContractCompleted(int client, const char[] uuid, Contract hContract);
