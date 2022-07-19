@@ -355,7 +355,11 @@ void ProcessLogicForContractObjective(Contract hContract, int objective_id, int 
 
 	// TODO: Class check
 	// TODO: Weapon check
-	// TODO: Map check
+	
+	// Check to see if we have the required map for this Contract.
+	char sMap[256];
+	GetCurrentMap(sMap, sizeof(sMap));
+	if (!StrEqual(sMap, "") && StrContains(sMap, hContract.m_sMapRestriction) == -1) return;
 	
 	// Loop over all of our objectives and see if this event matches.
 	for (int i = 0; i < hObjective.m_hEvents.Length; i++)

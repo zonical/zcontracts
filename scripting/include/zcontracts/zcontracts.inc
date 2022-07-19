@@ -96,10 +96,6 @@ enum struct ContractObjective
 	int m_iFires;
 	int m_iMaxFires;
 	
-	// Restrictions for triggering progress.
-	char m_sWeaponRestriction[MAX_UUID_SIZE];
-	char m_sMapRestriction[MAX_UUID_SIZE];
-	
 	// Events for this Contract (see ContractObjectiveEvent).
 	ArrayList m_hEvents;
 
@@ -164,6 +160,10 @@ enum struct Contract
 
 	// Boolean value representing what classes can use this contract. (TF2 only!)
 	bool m_bClass[10];
+
+	// Restrictions.
+	char m_sWeaponRestriction[MAX_UUID_SIZE]; // TODO: Account for tf_weapon_*, item indexes, etc...
+	char m_sMapRestriction[MAX_UUID_SIZE];
 
 	// What type of Contract are we handling? (see ContractType)
 	ContractType m_iContractType;
