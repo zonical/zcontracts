@@ -343,7 +343,7 @@ public Action Timer_ProcessEvents(Handle hTimer)
  * @param event    		Event to process.
  * @param value			Value to send alongside this event.
  */
-public void ProcessLogicForContractObjective(Contract hContract, int objective_id, int client, const char[] event, int value)
+void ProcessLogicForContractObjective(Contract hContract, int objective_id, int client, const char[] event, int value)
 {
 	if (hContract.IsContractComplete()) return;
 
@@ -500,7 +500,7 @@ public void ProcessLogicForContractObjective(Contract hContract, int objective_i
  * Creates the global Contracker menu. This reads through the directories
  * list and Contract schema to insert all of the needed items.
 **/
-public void CreateContractMenu()
+void CreateContractMenu()
 {
 	// Delete our menu if it exists.
 	delete gContractMenu;
@@ -547,7 +547,7 @@ public void CreateContractMenu()
  * The client's current directory will decide which items in the menu should be
  * shown and how to display them.
 **/
-public int ContractMenuHandler(Menu menu, MenuAction action, int param1, int param2)
+int ContractMenuHandler(Menu menu, MenuAction action, int param1, int param2)
 {
 	switch (action)
 	{
@@ -705,7 +705,7 @@ public Action OpenContrackerForClient(int client, int args)
  * @param hContract    	Contract struct to grab Objective information from.
  * @param unknown		If true, progress values will be replaced with "?"
 **/
-public void CreateObjectiveDisplay(int client, Contract hContract, bool unknown)
+void CreateObjectiveDisplay(int client, Contract hContract, bool unknown)
 {
 	// Construct our panel for the client.
 	delete gContractObjeciveDisplay[client];

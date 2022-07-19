@@ -42,7 +42,7 @@ public void OnDatabaseUpdateChange(ConVar convar, char[] oldValue, char[] newVal
  * @param display_to_client		If true, this function will call CreateObjectiveDisplay to display the progress of the client's Contract.
  * @error                       Client index is invalid. 
  */
-public bool PopulateProgressFromDB(int client, bool display_to_client)
+bool PopulateProgressFromDB(int client, bool display_to_client)
 {
     if (!IsClientValid(client) || IsFakeClient(client))
 	{
@@ -141,7 +141,7 @@ public void CB_ObjectiveProgress(Database db, DBResultSet results, const char[] 
  * @param display_to_client		If true, this function will call CreateObjectiveDisplay to display the progress of the client's Contract.
  * @error                       Client index is invalid. 
  */
-public void SaveContractProgressToDB(int client, const char[] uuid, int progress, bool is_complete)
+void SaveContractProgressToDB(int client, const char[] uuid, int progress, bool is_complete)
 {
     if (!IsClientValid(client) || IsFakeClient(client))
 	{
@@ -267,7 +267,7 @@ public void CB_Con_OnInsert(Database db, DBResultSet results, const char[] error
  * @param hObjective		    Objective to save to the Database.
  * @error                       Client index is invalid. 
  */
-public void SaveObjectiveProgressToDB(int client, const char[] uuid, ContractObjective hObjective)
+void SaveObjectiveProgressToDB(int client, const char[] uuid, ContractObjective hObjective)
 {
     if (!IsClientValid(client) || IsFakeClient(client))
 	{
@@ -419,7 +419,7 @@ public void CB_Obj_OnInsert(Database db, DBResultSet results, const char[] error
  * @param hContract		        The Contract to save to the database.
  * @error                       Client index is invalid. 
  */
-public void SaveContractToDB(int client, Contract hContract)
+void SaveContractToDB(int client, Contract hContract)
 {
     if (!IsClientValid(client) || IsFakeClient(client))
 	{
@@ -473,7 +473,7 @@ public Action Timer_SaveAllToDB(Handle hTimer)
  * @param client    	        Client index.
  * @error                       Client index is invalid. 
  */
-public void GrabContractFromLastSession(int client)
+void GrabContractFromLastSession(int client)
 {
     if (!IsClientValid(client) || IsFakeClient(client))
 	{
@@ -509,7 +509,7 @@ public void CB_GetContractFromLastSession(Database db, DBResultSet results, cons
  * @param client    	        Client index.
  * @error                       Client index is invalid. 
  */
-public void SaveContractSession(int client)
+void SaveContractSession(int client)
 {
     // Get the client's SteamID64.
     char steamid64[64];
