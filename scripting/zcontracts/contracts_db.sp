@@ -56,7 +56,7 @@ public bool PopulateProgressFromDB(int client, const char[] uuid, bool display_t
     if (display_to_client)
     {
         CreateObjectiveDisplay(client, hContract, true);
-        CreateTimer(3.0, Timer_DisplayContractInfo, client);
+        CreateTimer(1.0, Timer_DisplayContractInfo, client);
     }
 
     return true;
