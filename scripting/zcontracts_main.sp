@@ -25,6 +25,7 @@ Contract m_hContracts[MAXPLAYERS+1];
 ConVar g_PrintQueryInfo;
 ConVar g_UpdatesPerSecond;
 ConVar g_DatabaseUpdateTime;
+ConVar g_DisplayHudMessages;
 
 GlobalForward g_fOnObjectiveCompleted;
 GlobalForward g_fOnContractCompleted;
@@ -59,12 +60,13 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 public void OnPluginStart()
 {
 	// ================ CONVARS ================
-	g_ConfigSearchPath = CreateConVar("zc_contract_search_path", "configs/zcontracts", "The path, relative to the \"sourcemods/\" directory, to find Contract definition files. Changing this Value will cause a reload of the Contract schema.");
-	g_RequiredFileExt = CreateConVar("zc_required_file_ext", ".txt", "The file extension that Contract definition files must have in order to be considered valid. Changing this Value will cause a reload of the Contract schema.");
-	g_DisabledPath = CreateConVar("zc_disabled_path", "configs/zcontracts/disabled", "If a search path has this string in it, any Contract's loaded in or derived from this path will not be loaded. Changing this Value will cause a reload of the Contract schema.");
-	g_UpdatesPerSecond = CreateConVar("zc_updates_per_second", "4", "Process this many objective updates per second.");
-	g_DatabaseUpdateTime = CreateConVar("zc_database_update_time", "30", "How long to wait before sending Contract updates to the database.");
-	g_PrintQueryInfo = CreateConVar("zc_print_query_info", "0", "If not zero, prints to server console when a query is sent to the datbase. Mainly used for debugging.");
+	g_ConfigSearchPath = CreateConVar("zc_schema_search_path", "configs/zcontracts", "The path, relative to the \"sourcemods/\" directory, to find Contract definition files. Changing this Value will cause a reload of the Contract schema.");
+	g_RequiredFileExt = CreateConVar("zc_schema_required_ext", ".txt", "The file extension that Contract definition files must have in order to be considered valid. Changing this Value will cause a reload of the Contract schema.");
+	g_DisabledPath = CreateConVar("zc_schema_disabled_path", "configs/zcontracts/disabled", "If a search path has this string in it, any Contract's loaded in or derived from this path will not be loaded. Changing this Value will cause a reload of the Contract schema.");
+	g_UpdatesPerSecond = CreateConVar("zc_updates_per_second", "4", "How many objective updates to process per second.");
+	g_DatabaseUpdateTime = CreateConVar("zc_database_update_time", "30", "How long to wait before sending Contract updates to the database for all players.");
+	g_PrintQueryInfo = CreateConVar("zc_print_query_info", "0", "If enabled, queries will print to the console when they're about to be sent to the datbase. Mainly used for debugging.");
+	g_DisplayHudMessages = CreateConVar("zc_display_hud_messages", "1", "If enabled, players will see a hint-box in their HUD when they gain progress on their Contract or an Objective.");
 	g_DatabaseUpdateTime.AddChangeHook(OnDatabaseUpdateChange);
 	g_ConfigSearchPath.AddChangeHook(OnSchemaConVarChange);
 	g_RequiredFileExt.AddChangeHook(OnSchemaConVarChange);
@@ -310,7 +312,6 @@ public Action Timer_ProcessEvents(Handle hTimer)
 		// Do our UUID's match?
 		if (!StrEqual(uuid, hContract.m_sUUID) && StrEqual(uuid, m_hOldContract[client].m_sUUID))
 		{
-			PrintToServer("[ZContracts] Processing late update for %N for contract %s and objective id %d", client, uuid, objective_id);
 			ProcessLogicForContractObjective(m_hOldContract[client], objective_id, client, event, value);
 
 			// Get the new progress and completion status for the old contract.
@@ -404,10 +405,14 @@ void ProcessLogicForContractObjective(Contract hContract, int objective_id, int 
 								hObjective.m_iProgress = Int_Min(hObjective.m_iProgress, hObjective.m_iMaxProgress);
 							}
 
-							PrintHintText(client, "%s (%s [%d/%dCP]) +%dCP",
-							hObjective.m_sDescription, hContract.m_sContractName, 
-							hObjective.m_iProgress, hObjective.m_iMaxProgress, hObjective.m_iAward);
-							hObjective.m_bNeedsDBSave = true;
+							if (g_DisplayHudMessages.BoolValue)
+							{
+								PrintHintText(client, "%s (%s [%d/%dCP]) +%dCP",
+								hObjective.m_sDescription, hContract.m_sContractName, 
+								hObjective.m_iProgress, hObjective.m_iMaxProgress, hObjective.m_iAward);
+								hObjective.m_bNeedsDBSave = true;
+							}
+
 						}
 						case Contract_ContractProgress:
 						{
@@ -421,10 +426,12 @@ void ProcessLogicForContractObjective(Contract hContract, int objective_id, int 
 								// Contract progression if the value is infinite.
 								hObjective.m_bNeedsDBSave = true;
 							}		
-							
-							PrintHintText(client, "%s (%s [%d/%dCP]) +%dCP",
-							hObjective.m_sDescription, hContract.m_sContractName,
-							hContract.m_iProgress, hContract.m_iMaxProgress, hObjective.m_iAward);
+							if (g_DisplayHudMessages.BoolValue)
+							{							
+								PrintHintText(client, "%s (%s [%d/%dCP]) +%dCP",
+								hObjective.m_sDescription, hContract.m_sContractName,
+								hContract.m_iProgress, hContract.m_iMaxProgress, hObjective.m_iAward);
+							}
 						}
 					}
 
