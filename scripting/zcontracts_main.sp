@@ -2,7 +2,6 @@
 // TODO: Implement more game events.
 // TODO: Implement team restrictions for contracts.
 	// (e.g red, blu, terrorists, counterterrorists + aliases)
-// TODO: Documentation (contracts_db)!!
 
 #include <sourcemod>
 #include <sdktools>
@@ -95,8 +94,6 @@ public void OnPluginStart()
 	// ================ COMMANDS ================
 	RegConsoleCmd("sm_setcontract", DebugSetContract);
 	RegConsoleCmd("sm_debugcontract", DebugContractInfo);
-	RegConsoleCmd("sm_debug_getprogress", DebugGetProgress);
-	RegConsoleCmd("sm_debug_saveprogress", DebugForceSave);
 
 	RegServerCmd("sm_reloadcontracts", ReloadContracts);
 	RegConsoleCmd("sm_contract", OpenContrackerForClient);
@@ -250,7 +247,7 @@ public any Native_SetClientContract(Handle plugin, int numParams)
 	// Set our client contract here so we can populate it's progress
 	// values in the threaded callback functions.
 	m_hContracts[client] = hContract;
-	PopulateProgressFromDB(client, sUUID, true);
+	PopulateProgressFromDB(client, true);
 
 	// Set this Contract as our current session.
 	SaveContractSession(client);

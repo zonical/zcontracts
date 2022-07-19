@@ -1,3 +1,7 @@
+/**
+ * This is called when we connect to the database. If we do,
+ * load player session data for all of the current clients.
+*/
 public void GotDatabase(Database db, const char[] error, any data)
 {
     if (db == null)
@@ -20,16 +24,31 @@ public void GotDatabase(Database db, const char[] error, any data)
     }
 }
 
+/**
+ * The ConVar "zc_database_update_time" controls how often we update the database
+ * with all of the player Contract information.
+*/
 public void OnDatabaseUpdateChange(ConVar convar, char[] oldValue, char[] newValue)
 {
     delete g_DatabaseUpdateTimer;
     g_DatabaseUpdateTimer = CreateTimer(StringToFloat(newValue), Timer_SaveAllToDB, _, TIMER_REPEAT);
 }
 
-// NOTE: This assumes that hBuffer has already been assigned the default values and objectives
-// it needs. This function inserts the saved progress from the database.
-public bool PopulateProgressFromDB(int client, const char[] uuid, bool display_to_client)
+/**
+ * Inserts the progression data for the current clients Contract. This assumes that
+ * the client has already had a Contract constructed for them (see CreateContractFromUUID).
+ *
+ * @param client    	        Client index.
+ * @param display_to_client		If true, this function will call CreateObjectiveDisplay to display the progress of the client's Contract.
+ * @error                       Client index is invalid. 
+ */
+public bool PopulateProgressFromDB(int client, bool display_to_client)
 {
+    if (!IsClientValid(client) || IsFakeClient(client))
+	{
+		ThrowError("Invalid client index. (%d)", client);
+	}
+
     Contract hContract;
     GetClientContract(client, hContract);
 
@@ -42,14 +61,14 @@ public bool PopulateProgressFromDB(int client, const char[] uuid, bool display_t
     {
         char query[256];
         g_DB.Format(query, sizeof(query), 
-        "SELECT * FROM contract_progress WHERE steamid64 = '%s' AND contract_uuid = '%s'", steamid64, uuid);
+        "SELECT * FROM contract_progress WHERE steamid64 = '%s' AND contract_uuid = '%s'", steamid64, hContract.m_sUUID);
         g_DB.Query(CB_ContractProgress, query, client);
     }
 
     char query[256];
     g_DB.Format(query, sizeof(query), 
     "SELECT * FROM objective_progress WHERE steamid64 = '%s' AND contract_uuid = '%s' AND (objective_id BETWEEN 0 AND %d) ORDER BY objective_id ASC;", 
-    steamid64, uuid, hContract.m_hObjectives.Length);
+    steamid64, hContract.m_sUUID, hContract.m_hObjectives.Length);
     g_DB.Query(CB_ObjectiveProgress, query, client);
 
     // Create our display.
@@ -62,6 +81,10 @@ public bool PopulateProgressFromDB(int client, const char[] uuid, bool display_t
     return true;
 }
 
+/**
+ * There is a *very small* delay in getting the information from the database
+ * and inserting it into the client's Contract.
+*/
 public Action Timer_DisplayContractInfo(Handle hTimer, int client)
 {
     Contract hContract;
@@ -70,7 +93,9 @@ public Action Timer_DisplayContractInfo(Handle hTimer, int client)
     return Plugin_Stop;
 }
 
-// Callback for getting ContractProgress progress.
+/**
+ * Populates the progress for a client's Contract progress.
+*/
 public void CB_ContractProgress(Database db, DBResultSet results, const char[] error, int client)
 {
     Contract hContract;
@@ -84,6 +109,9 @@ public void CB_ContractProgress(Database db, DBResultSet results, const char[] e
     m_hContracts[client] = hContract;
 }
 
+/**
+ * Populates the progress a client's Contract objectives.
+*/
 public void CB_ObjectiveProgress(Database db, DBResultSet results, const char[] error, int client)
 {
     Contract hContract;
@@ -103,22 +131,23 @@ public void CB_ObjectiveProgress(Database db, DBResultSet results, const char[] 
     m_hContracts[client] = hContract;
 }
 
-public Action DebugGetProgress(int client, int args)
-{	
-    // Grab UUID.
-    char sUUID[64];
-    GetCmdArg(1, sUUID, sizeof(sUUID));
-
-    PrintToChat(client, "[DEBUG] Getting progress data for contract: %s", sUUID);
-    PopulateProgressFromDB(client, sUUID, false);
-
-    return Plugin_Handled;
-}
-
 // ====================================================================================
 
+/**
+ * Saves the progression data for Contract-Style progression Contract's. This does NOT
+ * save objectives (see SaveObjectiveProgressToDB and SaveContractToDB). 
+ *
+ * @param client    	        Client index.
+ * @param display_to_client		If true, this function will call CreateObjectiveDisplay to display the progress of the client's Contract.
+ * @error                       Client index is invalid. 
+ */
 public void SaveContractProgressToDB(int client, const char[] uuid, int progress, bool is_complete)
 {
+    if (!IsClientValid(client) || IsFakeClient(client))
+	{
+		ThrowError("Invalid client index. (%d)", client);
+	}
+
     // Get the client's SteamID64.
     char steamid64[64];
     GetClientAuthId(client, AuthId_SteamID64, steamid64, sizeof(steamid64));
@@ -230,9 +259,21 @@ public void CB_Con_OnInsert(Database db, DBResultSet results, const char[] error
 
 // ====================================================================================
 
-// Saves the current progress of this objective.
+/**
+ * Saves the progression data for a Contract objective..
+ *
+ * @param client    	        Client index.
+ * @param uuid                  The UUID of the original Contract
+ * @param hObjective		    Objective to save to the Database.
+ * @error                       Client index is invalid. 
+ */
 public void SaveObjectiveProgressToDB(int client, const char[] uuid, ContractObjective hObjective)
 {
+    if (!IsClientValid(client) || IsFakeClient(client))
+	{
+		ThrowError("Invalid client index. (%d)", client);
+	}
+
     // Get the client's SteamID64.
     char steamid64[64];
     GetClientAuthId(client, AuthId_SteamID64, steamid64, sizeof(steamid64));
@@ -370,9 +411,21 @@ public void CB_Obj_OnInsert(Database db, DBResultSet results, const char[] error
 
 // ====================================================================================
 
+/**
+ * Saves the progression data for a Contract to the database. This is a handy wrapper
+ * that calls SaveContractProgressToDB and SaveObjectiveProgressToDB for you.
+ *
+ * @param client    	        Client index.
+ * @param hContract		        The Contract to save to the database.
+ * @error                       Client index is invalid. 
+ */
 public void SaveContractToDB(int client, Contract hContract)
 {
-    
+    if (!IsClientValid(client) || IsFakeClient(client))
+	{
+		ThrowError("Invalid client index. (%d)", client);
+	}
+
     // Save the overall progress of this Contract.
     if (hContract.m_iContractType == Contract_ContractProgress)
     {
@@ -394,18 +447,10 @@ public void SaveContractToDB(int client, Contract hContract)
     }
 }
 
-public Action DebugForceSave(int client, int args)
-{	
-    // Grab UUID.
-    Contract hContract;
-    GetClientContract(client, hContract);
-
-    PrintToChat(client, "[DEBUG] Saving progress data for contract: %s", hContract.m_sUUID);
-    SaveContractToDB(client, hContract);
-
-    return Plugin_Handled;
-}
-
+/**
+ * The ConVar "zc_database_update_time" controls how often we update the database
+ * with all of the player Contract information.
+ */
 public Action Timer_SaveAllToDB(Handle hTimer)
 {
     for (int i = 0; i < MAXPLAYERS+1; i++)
@@ -421,8 +466,20 @@ public Action Timer_SaveAllToDB(Handle hTimer)
 
 // ====================================================================================
 
+/**
+ * Gets the last Contract the client selected from their last game session and
+ * sets it as the active Contract.
+ *
+ * @param client    	        Client index.
+ * @error                       Client index is invalid. 
+ */
 public void GrabContractFromLastSession(int client)
 {
+    if (!IsClientValid(client) || IsFakeClient(client))
+	{
+		ThrowError("Invalid client index. (%d)", client);
+	}
+
     // Get the client's SteamID64.
     char steamid64[64];
     GetClientAuthId(client, AuthId_SteamID64, steamid64, sizeof(steamid64));
@@ -432,7 +489,6 @@ public void GrabContractFromLastSession(int client)
     "SELECT contract_uuid FROM selected_contract WHERE steamid64 = '%s'", steamid64);
     g_DB.Query(CB_GetContractFromLastSession, query, client, DBPrio_High);
 }
-
 
 public void CB_GetContractFromLastSession(Database db, DBResultSet results, const char[] error, int client)
 {
@@ -446,6 +502,13 @@ public void CB_GetContractFromLastSession(Database db, DBResultSet results, cons
     }
 }
 
+/**
+ * Saves the client's Contract UUID to the database. If the client disconnects,
+ * this value will be used to grab the Contract again on reconnect.
+ *
+ * @param client    	        Client index.
+ * @error                       Client index is invalid. 
+ */
 public void SaveContractSession(int client)
 {
     // Get the client's SteamID64.
