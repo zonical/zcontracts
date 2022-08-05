@@ -20,11 +20,13 @@ public void OnPluginStart()
 	// Hook player events.
 	HookEvent("player_death", OnPlayerDeath);
 	HookEvent("player_hurt", OnPlayerHurt);
+	HookEvent("player_spawn", OnPlayerSpawn);
+
 	HookEvent("teamplay_round_win", OnRoundWin);
 
 	// Scoop damage related events and merge them into one event that gets fired
 	// once a second.
-	CreateTimer(5.0, Timer_ScoopDamage, _, TIMER_REPEAT);
+	CreateTimer(3.0, Timer_ScoopDamage, _, TIMER_REPEAT);
 	
 	for (int i = 0; i < MAXPLAYERS + 1; i++)
 	{
@@ -97,6 +99,12 @@ public Action Timer_ScoopDamage(Handle hTimer)
 	return Plugin_Continue;
 }
 
+public Action OnPlayerSpawn(Event event, const char[] name, bool dontBroadcast)
+{
+	int client = GetClientOfUserId(event.GetInt("useird"));
+	CallContrackerEvent(client, "CONTRACTS_PLAYER_SPAWN", 1);
+}
+
 // Events relating to the round ending
 public Action OnRoundWin(Event event, const char[] name, bool dontBroadcast)
 {
@@ -105,11 +113,15 @@ public Action OnRoundWin(Event event, const char[] name, bool dontBroadcast)
 
 	for (int i = 0; i < MAXPLAYERS+1; i++)
 	{
-		if (IsClientValid(i)) continue;
+		if (!IsClientValid(i) || IsFakeClient(i)) continue;
 		// Are we on the same team?
 		if (GetClientTeam(i) == team)
 		{
-			CallContrackerEvent(i, "CONTRACTS_PLAYER_WIN_ROUND", 1);
+			CallContrackerEvent(i, "CONTRACTS_GAME_WIN_ROUND", 1);
+		}
+		else
+		{
+			CallContrackerEvent(i, "CONTRACTS_GAME_LOSE_ROUND", 1);
 		}
 	}
 	return Plugin_Continue;

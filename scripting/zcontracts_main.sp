@@ -7,6 +7,7 @@
 #include <sdktools>
 #include <tf2>
 #include <tf2_stocks>
+#include <cstrike>
 #include <morecolors>
 
 #include <zcontracts/zcontracts>
@@ -353,9 +354,16 @@ void ProcessLogicForContractObjective(Contract hContract, int objective_id, int 
 	hContract.GetObjective(objective_id, hObjective);
 	if (hObjective.IsObjectiveComplete()) return;
 
-	// TODO: Class check
+	// For TF2, perform a class check.
+	if (GetEngineVersion() == Engine_TF2)
+	{
+		TFClassType iClass = TF2_GetPlayerClass(client);
+		if (iClass == TFClass_Unknown) return;
+		if (!hContract.m_bClass[iClass]) return;
+	}
+
 	// TODO: Weapon check
-	
+
 	// Check to see if we have the required map for this Contract.
 	char sMap[256];
 	GetCurrentMap(sMap, sizeof(sMap));

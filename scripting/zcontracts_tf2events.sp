@@ -43,7 +43,16 @@ public Action OnEscortProgress(Event event, const char[] name, bool dontBroadcas
 
 public Action OnPointCaptured(Event event, const char[] name, bool dontBroadcast)
 {
-
+	char cappers[1024];
+	event.GetString(hEvent, "cappers", cappers, sizeof(cappers));
+	int len = strlen(cappers);
+	for (int i = 0; i < len; i++)
+	{
+		int client = cappers[i];
+		if (!IsClientValid(i) || IsFakeClient(i)) continue;
+		CallContrackerEvent(i, "CONTRACTS_TF2_CAPTURE_POINT", 1);
+	}
+	return Plugin_Continue;
 }
 
 public bool IsClientValid(int client)

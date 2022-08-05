@@ -10,6 +10,8 @@ ConVar g_ConfigSearchPath;
 ConVar g_RequiredFileExt;
 ConVar g_DisabledPath;
 
+#define MAXIMUM_TEAMS 4
+
 public KeyValues LoadContractsSchema()
 {
 	KeyValues contractSchema = new KeyValues("Items");
@@ -158,30 +160,80 @@ public void CreateContract(KeyValues hContractConf, Contract hContract)
 	hContractConf.GetSectionName(hContract.m_sUUID, sizeof(hContract.m_sUUID));
 	hContractConf.GetString("name", hContract.m_sContractName, sizeof(hContract.m_sContractName));
 	hContractConf.GetString("directory", hContract.m_sDirectoryPath, sizeof(hContract.m_sDirectoryPath), "root");
+	hContractConf.GetString("weapon_restriction", hContract.m_sWeaponRestriction, sizeof(hContract.m_sWeaponRestriction));
+	hContractConf.GetString("map_restriction", hContract.m_sMapRestriction, sizeof(hContract.m_sMapRestriction));
 	hContract.m_iContractType = view_as<ContractType>(hContractConf.GetNum("type", view_as<int>(Contract_ObjectiveProgress))); // stops a warning
 	hContract.m_iMaxProgress = hContractConf.GetNum("maximum_cp", -1);
 
-	hContractConf.GetString("weapon_restriction", hContract.m_sWeaponRestriction, sizeof(hContract.m_sWeaponRestriction));
-	hContractConf.GetString("map_restriction", hContract.m_sMapRestriction, sizeof(hContract.m_sMapRestriction));
-
 	// Grab the classes that can do this contract.
-#if defined ZC_TF2
-	if (hContractConf.JumpToKey("classes", false))
+	if (GetEngineVersion() == Engine_TF2)
 	{
-		hContract.m_bClass[TFClass_Scout] 		= view_as<bool>(hContractConf.GetNum("scout", 0));
-		hContract.m_bClass[TFClass_Soldier] 	= view_as<bool>(hContractConf.GetNum("soldier", 0));
-		hContract.m_bClass[TFClass_Pyro] 		= view_as<bool>(hContractConf.GetNum("pyro", 0));
-		hContract.m_bClass[TFClass_DemoMan] 	= view_as<bool>(hContractConf.GetNum("demoman", 0));
-		hContract.m_bClass[TFClass_Heavy]		= view_as<bool>(hContractConf.GetNum("heavy", 0));
-		hContract.m_bClass[TFClass_Engineer] 	= view_as<bool>(hContractConf.GetNum("engineer", 0));
-		hContract.m_bClass[TFClass_Sniper] 		= view_as<bool>(hContractConf.GetNum("sniper", 0));
-		hContract.m_bClass[TFClass_Medic] 		= view_as<bool>(hContractConf.GetNum("medic", 0));
-		hContract.m_bClass[TFClass_Spy] 		= view_as<bool>(hContractConf.GetNum("spy", 0));
-		
-		// Return.
-		hContractConf.GoBack();
-	}	
-#endif
+		if (hContractConf.JumpToKey("classes", false))
+		{
+			hContract.m_bClass[TFClass_Scout] 		= view_as<bool>(hContractConf.GetNum("scout", 0));
+			hContract.m_bClass[TFClass_Soldier] 	= view_as<bool>(hContractConf.GetNum("soldier", 0));
+			hContract.m_bClass[TFClass_Pyro] 		= view_as<bool>(hContractConf.GetNum("pyro", 0));
+			hContract.m_bClass[TFClass_DemoMan] 	= view_as<bool>(hContractConf.GetNum("demoman", 0));
+			hContract.m_bClass[TFClass_Heavy]		= view_as<bool>(hContractConf.GetNum("heavy", 0));
+			hContract.m_bClass[TFClass_Engineer] 	= view_as<bool>(hContractConf.GetNum("engineer", 0));
+			hContract.m_bClass[TFClass_Sniper] 		= view_as<bool>(hContractConf.GetNum("sniper", 0));
+			hContract.m_bClass[TFClass_Medic] 		= view_as<bool>(hContractConf.GetNum("medic", 0));
+			hContract.m_bClass[TFClass_Spy] 		= view_as<bool>(hContractConf.GetNum("spy", 0));
+			
+			// Return.
+			hContractConf.GoBack();
+		}
+	}
+
+	// Grab the teams that can do this contract.
+	char sTeamBuffer[64];
+	hContractConf.GetString("team_restriction", sTeamBuffer, sizeof(sTeamBuffer));
+	// Is this an int? We can easily grab the team index and set it from there.
+	int iTeamIndex = StringToInt(sTeamBuffer);
+	// CS:GO and TF2 team indexes don't go any higher than three. If this plugin
+	// is ported to another Engine with more teams, you will need to change the
+	// value of MAXIMUM_TEAMS to be max+1.
+	if (iTeamIndex != 0 && iTeamIndex < MAXIMUM_TEAMS)
+	{
+		hContract.m_iTeamRestriction = iTeamIndex;
+	}
+	else
+	{
+		// Set the  incoming restriction string to be all lowercase.
+		for (int i = 0; i < strlen(sTeamBuffer); i++)
+		{
+			CharToLower(sTeamBuffer[i]);
+		}
+
+		// Depending on the engine version, we can specify aliases
+		// to use instead of intergers. 
+		switch (GetEngineVersion())
+		{
+			case Engine_TF2:
+			{
+				if (StrEqual(sTeamBuffer, "red")) iTeamIndex = view_as<int>(TFTeam_Red);
+				if (StrEqual(sTeamBuffer, "blue") 
+				|| StrEqual(sTeamBuffer, "blu")) 
+				{
+					iTeamIndex = view_as<int>(TFTeam_Blue);
+				}
+			}
+			case Engine_CSGO:
+			{
+				if (StrEqual(sTeamBuffer, "t") || StrEqual(sTeamBuffer, "terrorists")) 
+				{
+					iTeamIndex = CS_TEAM_T;
+				}
+				if (StrEqual(sTeamBuffer, "ct")
+				|| StrEqual(sTeamBuffer, "counterterrorists")
+				|| StrEqual(sTeamBuffer, "counter-terrorists")) 
+				{
+					iTeamIndex = CS_TEAM_CT;
+				}
+			}
+		}
+		hContract.m_iTeamRestriction = iTeamIndex;
+	}
 	
 	// Create our objectives.
 	if (hContractConf.JumpToKey("objectives", false))
@@ -191,13 +243,6 @@ public void CreateContract(KeyValues hContractConf, Contract hContract)
 			int obj = 0;
 			do 
 			{
-				if (hContract.m_hObjectives.Length > MAX_CONTRACT_OBJECTIVES)
-				{
-					LogMessage("[ZContracts] Warning: Contract %s has too many objectives (max: %d), skipping extra objectives...", 
-					hContract.m_sUUID, MAX_CONTRACT_OBJECTIVES);
-					break;
-				}
-
 				ContractObjective m_hObjective;
 				CreateContractObjective(hContractConf, m_hObjective);
 				m_hObjective.m_iInternalID = obj;

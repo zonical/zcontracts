@@ -1,0 +1,73 @@
+"Contract"
+{
+	"{18c82d12-8172-4996-b28f-b260152997d8}"
+	{
+		"name"		"Test: Payload Events"
+		"directory"	"root/tf2/pl"
+		"type"		"2"
+		"maximum_cp"	"50"
+		"map_restriction" "pl_"
+
+		// What classes can do this contract?
+		"classes"
+		{
+			"soldier"	"1"
+			"pyro"		"1"
+			"heavy"		"1"
+			"engineer"	"1"
+			"scout"		"1"
+			"demoman"	"1"
+			"sniper"	"1"
+			"medic"		"1"
+			"spy"		"1"
+		}
+		
+		"objectives"
+		{
+			"1"
+			{
+				"description"		"Push the Payload."
+				"infinite"			"1"
+				
+				// How many points should we give for successfully doing this objective?
+				"award"		"3"
+				
+				// The events that this objective looks out for.
+				"events"		
+				{
+					"CONTRACTS_TF2_PL_ESCORT"
+					{
+						// What this event should do.
+						"type"		"increment"
+						
+						// How many times does this event need to trigger to add points?
+						"threshold"	"1"	
+					}
+				}
+			}
+			"2"
+			{
+				"description"		"Capture a point."
+				
+				// How many times can we complete this objective?
+				"maximum_uses"	"3"
+
+				// How many points should we give for successfully doing this objective?
+				"award"		"7"
+				
+				// The events that this objective looks out for.
+				"events"		
+				{
+					"CONTRACTS_TF2_CAPTURE_POINT"
+					{
+						// What this event should do.
+						"type"		"increment"
+						
+						// How many times does this event need to trigger to add points?
+						"threshold"	"1"	
+					}
+				}
+			}
+		}
+	}
+}

@@ -6,7 +6,6 @@
 
 #define MAX_UUID_SIZE 64
 #define MAX_CONTRACT_NAME_SIZE 64
-#define MAX_CONTRACT_OBJECTIVES 8
 #define MAX_OBJECTIVE_DESC_SIZE 128
 #define MAX_EVENT_SIZE 64
 #define MAX_DIRECTORY_SIZE 128
@@ -164,6 +163,7 @@ enum struct Contract
 	// Restrictions.
 	char m_sWeaponRestriction[MAX_UUID_SIZE]; // TODO: Account for tf_weapon_*, item indexes, etc...
 	char m_sMapRestriction[MAX_UUID_SIZE];
+	int m_iTeamRestriction;
 
 	// What type of Contract are we handling? (see ContractType)
 	ContractType m_iContractType;
@@ -187,9 +187,8 @@ enum struct Contract
 		{
 			case Contract_ObjectiveProgress: // All objectives must be complete.
 			{
-				for (int i = 0; i < MAX_CONTRACT_OBJECTIVES; i++)
+				for (int i = 0; i < this.m_hObjectives.Length; i++)
 				{
-					if (i >= this.m_hObjectives.Length) break;
 					ContractObjective hContractObjective;
 					this.m_hObjectives.GetArray(i, hContractObjective);
 					if (!hContractObjective.m_bInitalized) continue;
@@ -237,7 +236,7 @@ enum struct Contract
 	**/
 	void Destroy()
 	{
-		for (int i = 0; i < MAX_CONTRACT_OBJECTIVES; i++)
+		for (int i = 0; i < this.m_hObjectives.Length; i++)
 		{
 			ContractObjective hContractObjective;
 			this.m_hObjectives.GetArray(i, hContractObjective);
