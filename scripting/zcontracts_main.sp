@@ -372,7 +372,7 @@ void ProcessLogicForContractObjective(Contract hContract, int objective_id, int 
 		if (iClass == TFClass_Unknown) return;
 		if (!hContract.m_bClass[iClass]) return;
 	}
-	
+
 	// Check to see if we have the required map for this Contract.
 	char sMap[256];
 	GetCurrentMap(sMap, sizeof(sMap));
@@ -488,7 +488,7 @@ void ProcessLogicForContractObjective(Contract hContract, int objective_id, int 
 			{
 				// Print to chat.
 				MC_PrintToChat(client,
-				"{green}[ZC]{default} Congratulations! You have completed the contract objective: {lightgreen}\"%s\"{default}",
+				"{green}[ZC]{default} Congratulations! You have completed the objective: {lightgreen}\"%s\"{default}",
 				hObjective.m_sDescription);
 				
 				Call_StartForward(g_fOnObjectiveCompleted);

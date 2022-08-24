@@ -2,10 +2,10 @@
 {
 	"{f6731a1a-bf09-4c21-accb-0cd90ced61fc}"
 	{
-		"name"		"Test Contract - Kills (Type 2)"
+		"name"		"Test: Kills (Type 2)"
 		"directory"	"root"
 		"type"		"2"
-		"maximum_cp"	"25"
+		"maximum_cp"	"50"
 
 		// What classes can do this contract?
 		"classes"
@@ -69,6 +69,29 @@
 					{
 						// What this event should do.
 						"type"		"reset"
+						
+						// How many times does this event need to trigger to add points?
+						"threshold"	"1"	
+					}
+				}
+			}
+			"3"
+			{
+				"description"		"Dominate a player."
+				
+				// How many times can we complete this objective?
+				"maximum_uses"	"2"
+
+				// How many points should we give for successfully doing this objective?
+				"award"		"7"
+				
+				// The events that this objective looks out for.
+				"events"		
+				{
+					"CONTRACTS_TF2_PLAYER_KILL_DOMINATION"
+					{
+						// What this event should do.
+						"type"		"increment"
 						
 						// How many times does this event need to trigger to add points?
 						"threshold"	"1"	
