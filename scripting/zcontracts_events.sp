@@ -101,7 +101,7 @@ public Action Timer_ScoopDamage(Handle hTimer)
 
 public Action OnPlayerSpawn(Event event, const char[] name, bool dontBroadcast)
 {
-	int client = GetClientOfUserId(event.GetInt("useird"));
+	int client = GetClientOfUserId(event.GetInt("userid"));
 	CallContrackerEvent(client, "CONTRACTS_PLAYER_SPAWN", 1);
 }
 

@@ -24,6 +24,12 @@ public void GotDatabase(Database db, const char[] error, any data)
     }
 }
 
+public Action ReloadDatabase(int client, int args)
+{
+    Database.Connect(GotDatabase, "zcontracts");
+    return Plugin_Continue;
+}
+
 /**
  * The ConVar "zc_database_update_time" controls how often we update the database
  * with all of the player Contract information.
@@ -541,21 +547,23 @@ public void CB_DoesSessionExist(Database db, DBResultSet results, const char[] e
     }
     else
     {
-        // Is our UUID the same?
-        char stored_uuid[MAX_UUID_SIZE];
-        results.FetchString(1, stored_uuid, sizeof(stored_uuid));
-
-        if (!StrEqual(stored_uuid, hContract.m_sUUID))
+        while (results.FetchRow())
         {
-            // Update our row in the database.
-            char query[256];
-            db.Format(query, sizeof(query), 
-            "UPDATE selected_contract SET contract_uuid = '%s' WHERE steamid64 = '%s'", hContract.m_sUUID, steamid64);
-            db.Query(CB_Session_OnUpdate, query, client);
+            // Is our UUID the same?
+            char stored_uuid[MAX_UUID_SIZE];
+            results.FetchString(1, stored_uuid, sizeof(stored_uuid));
+
+            if (!StrEqual(stored_uuid, hContract.m_sUUID))
+            {
+                // Update our row in the database.
+                char query[256];
+                db.Format(query, sizeof(query), 
+                "UPDATE selected_contract SET contract_uuid = '%s' WHERE steamid64 = '%s'", hContract.m_sUUID, steamid64);
+                db.Query(CB_Session_OnUpdate, query, client);
+            }
         }
     }
 }
-
 
 public void CB_Session_OnUpdate(Database db, DBResultSet results, const char[] error, int client)
 {
@@ -589,3 +597,56 @@ public void CB_Session_OnInsert(Database db, DBResultSet results, const char[] e
         PrintToServer("[ZContracts] Inserted player %N session.", client);
     }
 }
+
+// ====================================================================================
+
+/**
+ * Resets Contract's for a group of clients. If a UUID isn't provided, ALL contract
+ * progress will be removed for clients.
+ *
+ * @param client    	        Client index.
+ * @error                       Client index is invalid. 
+ */
+
+/*
+void ResetMultipleClientsContract(int clients[MAXPLAYERS], const char[] uuid = "")
+{
+    // Loop over all clients and grab their SteamID64's.
+    char steamid64[MAXPLAYERS][64];
+    for (int i = 1; i < MAXPLAYERS+1; i++)
+    {
+        if (!IsClientValid(i) && IsFakeClient(i)) continue;
+        GetClientAuthId(i, AuthId_SteamID64, steamid64[i], sizeof(steamid64[]));
+    }
+
+    // Remove Contract-style progress:
+
+    // Prepare a query.
+    char query[2048]; // 2048 - just in case we have a ton of clients.
+    query = "DELETE FROM contract_progress WHERE ";
+    for (int i = 0; i < MAXPLAYERS+1; i++)
+    {
+        if (!IsClientValid(i) && IsFakeClient(i)) continue;
+        char str_to_add[128];
+        Format(str_to_add, sizeof(str_to_add), "steamid64 = '%s'", steamid64);
+        StrCat(query, sizeof(query), str_to_add);
+        PrintToChatAll(query);
+
+        if (clients[i+1] != 0)
+        {
+            StrCat(query, sizeof(query), " AND ");
+        }
+        else break;
+    }
+    
+
+    // Are we removing by UUID?
+    if (uuid[0] != '{')
+    {
+        StrCat(query, sizeof(query), " AND contract_uuid = '%s'");
+        Format(query, sizeof(query), query, uuid);
+    }
+
+    
+    //g_DB.Query(CB_ResetMultipleClients, query, clients);
+}*/

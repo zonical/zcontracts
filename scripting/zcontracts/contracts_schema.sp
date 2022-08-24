@@ -80,9 +80,10 @@ public KeyValues LoadContractsSchema()
 public void CreateContractObjectiveEvent(KeyValues hEventConf, ContractObjectiveEvent hEvent)
 {
 	hEvent.Initalize();
+
+	hEvent.m_bUseForAward = view_as<bool>(hEventConf.GetNum("use_for_reward"));
 	
 	hEventConf.GetSectionName(hEvent.m_sEventName, sizeof(hEvent.m_sEventName)); 	// Our event trigger is the section name.
-	hEventConf.GetString("exclusive_description", hEvent.m_sExclusiveDescription, sizeof(hEvent.m_sExclusiveDescription));
 	hEventConf.GetString("type", hEvent.m_sEventType, sizeof(hEvent.m_sEventType), "increment");
 	hEvent.m_iThreshold = hEventConf.GetNum("threshold", 1);
 	
@@ -160,7 +161,9 @@ public void CreateContract(KeyValues hContractConf, Contract hContract)
 	hContractConf.GetSectionName(hContract.m_sUUID, sizeof(hContract.m_sUUID));
 	hContractConf.GetString("name", hContract.m_sContractName, sizeof(hContract.m_sContractName));
 	hContractConf.GetString("directory", hContract.m_sDirectoryPath, sizeof(hContract.m_sDirectoryPath), "root");
-	hContractConf.GetString("weapon_restriction", hContract.m_sWeaponRestriction, sizeof(hContract.m_sWeaponRestriction));
+	hContractConf.GetString("weapon_name_restriction", hContract.m_sWeaponNameRestriction, sizeof(hContract.m_sWeaponNameRestriction));
+	hContractConf.GetString("weapon_itemdef_restriction", hContract.m_sWeaponItemDefRestriction, sizeof(hContract.m_sWeaponItemDefRestriction));
+	hContractConf.GetString("weapon_classname_restriction", hContract.m_sWeaponClassnameRestriction, sizeof(hContract.m_sWeaponClassnameRestriction));
 	hContractConf.GetString("map_restriction", hContract.m_sMapRestriction, sizeof(hContract.m_sMapRestriction));
 	hContract.m_iContractType = view_as<ContractType>(hContractConf.GetNum("type", view_as<int>(Contract_ObjectiveProgress))); // stops a warning
 	hContract.m_iMaxProgress = hContractConf.GetNum("maximum_cp", -1);

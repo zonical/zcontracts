@@ -7,7 +7,7 @@
 #define MAX_UUID_SIZE 64
 #define MAX_CONTRACT_NAME_SIZE 64
 #define MAX_OBJECTIVE_DESC_SIZE 128
-#define MAX_EVENT_SIZE 64
+#define MAX_EVENT_SIZE 128
 #define MAX_DIRECTORY_SIZE 128
 
 stock int Int_Min(int a, int b) { return a < b ? a : b; }
@@ -43,7 +43,11 @@ enum struct ContractObjectiveEvent
 	// Threshold for how many times this event should called before giving an award.
 	int m_iThreshold;
 	int m_iCurrentThreshold;
-	
+
+	// If this is set to true, the value passed alongside this event
+	// will be used as the "award" instead of the default value of the objective.
+	bool m_bUseForAward;
+
 	char m_sEventType[16];
 	
 	// Timer logic.
@@ -161,7 +165,10 @@ enum struct Contract
 	bool m_bClass[10];
 
 	// Restrictions.
-	char m_sWeaponRestriction[MAX_UUID_SIZE]; // TODO: Account for tf_weapon_*, item indexes, etc...
+	char m_sWeaponNameRestriction[64];
+	char m_sWeaponItemDefRestriction[64];
+	char m_sWeaponClassnameRestriction[64];
+
 	char m_sMapRestriction[MAX_UUID_SIZE];
 	int m_iTeamRestriction;
 

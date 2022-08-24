@@ -1,7 +1,9 @@
 // TODO: CSGO testing.
-// TODO: Implement more game events.
-// TODO: Implement team restrictions for contracts.
-	// (e.g red, blu, terrorists, counterterrorists + aliases)
+
+#pragma semicolon 1
+
+// There are engine checks for game extensions!
+#undef REQUIRE_EXTENSIONS
 
 #include <sourcemod>
 #include <sdktools>
@@ -12,13 +14,12 @@
 
 #include <zcontracts/zcontracts>
 
-#pragma semicolon 1
-
 // Global variables.
 Database g_DB;
 static Menu gContractMenu;
 Panel gContractObjeciveDisplay[MAXPLAYERS+1];
 char g_Menu_CurrentDirectory[MAXPLAYERS+1][MAX_DIRECTORY_SIZE];
+int g_Menu_DirectoryDeepness[MAXPLAYERS+1] = { 1, ... };
 
 Contract m_hOldContract[MAXPLAYERS+1];
 Contract m_hContracts[MAXPLAYERS+1];
@@ -64,7 +65,7 @@ public void OnPluginStart()
 	g_ConfigSearchPath = CreateConVar("zc_schema_search_path", "configs/zcontracts", "The path, relative to the \"sourcemods/\" directory, to find Contract definition files. Changing this Value will cause a reload of the Contract schema.");
 	g_RequiredFileExt = CreateConVar("zc_schema_required_ext", ".txt", "The file extension that Contract definition files must have in order to be considered valid. Changing this Value will cause a reload of the Contract schema.");
 	g_DisabledPath = CreateConVar("zc_schema_disabled_path", "configs/zcontracts/disabled", "If a search path has this string in it, any Contract's loaded in or derived from this path will not be loaded. Changing this Value will cause a reload of the Contract schema.");
-	g_UpdatesPerSecond = CreateConVar("zc_updates_per_second", "4", "How many objective updates to process per second.");
+	g_UpdatesPerSecond = CreateConVar("zc_updates_per_second", "8", "How many objective updates to process per second.");
 	g_DatabaseUpdateTime = CreateConVar("zc_database_update_time", "30", "How long to wait before sending Contract updates to the database for all players.");
 	g_PrintQueryInfo = CreateConVar("zc_print_query_info", "0", "If enabled, queries will print to the console when they're about to be sent to the datbase. Mainly used for debugging.");
 	g_DisplayHudMessages = CreateConVar("zc_display_hud_messages", "1", "If enabled, players will see a hint-box in their HUD when they gain progress on their Contract or an Objective.");
@@ -95,10 +96,17 @@ public void OnPluginStart()
 	g_fOnContractCompleted = new GlobalForward("OnContractCompleted", ET_Ignore, Param_Cell, Param_String, Param_Array);
 
 	// ================ COMMANDS ================
-	RegConsoleCmd("sm_setcontract", DebugSetContract);
-	RegConsoleCmd("sm_debugcontract", DebugContractInfo);
+	RegAdminCmd("sm_setcontract", DebugSetContract, ADMFLAG_BAN);
+	//RegAdminCmd("sm_resetobjective", DebugResetObjective, ADMFLAG_BAN);
+	//RegAdminCmd("sm_setprogress", DebugSetProgress, ADMFLAG_BAN);
+	//RegAdminCmd("sm_triggerevent", DebugTriggerEvent, ADMFLAG_BAN);
 
-	RegServerCmd("sm_reloadcontracts", ReloadContracts);
+	//RegAdminCmd("sm_resetcontract", DebugResetContract, ADMFLAG_ROOT);
+	RegAdminCmd("sm_debugcontract", DebugContractInfo, ADMFLAG_ROOT);
+	RegAdminCmd("zc_reload_contracts", ReloadContracts, ADMFLAG_ROOT);
+	RegAdminCmd("zc_reload_database", ReloadDatabase, ADMFLAG_ROOT);
+
+
 	RegConsoleCmd("sm_contract", OpenContrackerForClient);
 	RegConsoleCmd("sm_contracts", OpenContrackerForClient);
 	RegConsoleCmd("sm_c", OpenContrackerForClient);
@@ -120,6 +128,7 @@ public void OnClientPostAdminCheck(int client)
 	}
 	
 	g_Menu_CurrentDirectory[client] = "root";
+	g_Menu_DirectoryDeepness[client] = 1;
 }
 
 public void OnSchemaConVarChange(ConVar convar, char[] oldValue, char[] newValue)
@@ -128,7 +137,7 @@ public void OnSchemaConVarChange(ConVar convar, char[] oldValue, char[] newValue
 	CreateContractMenu();
 }
 
-public Action ReloadContracts(int args)
+public Action ReloadContracts(int client, int args)
 {
 	ProcessContractsSchema();
 	CreateContractMenu();
@@ -275,6 +284,8 @@ public any Native_SetClientContract(Handle plugin, int numParams)
 
 	// Reset our current directory in the Contracker.
 	g_Menu_CurrentDirectory[client] = "root";
+	g_Menu_DirectoryDeepness[client] = 1;
+
 	return true;
 }
 
@@ -361,14 +372,14 @@ void ProcessLogicForContractObjective(Contract hContract, int objective_id, int 
 		if (iClass == TFClass_Unknown) return;
 		if (!hContract.m_bClass[iClass]) return;
 	}
-
-	// TODO: Weapon check
-
+	
 	// Check to see if we have the required map for this Contract.
 	char sMap[256];
 	GetCurrentMap(sMap, sizeof(sMap));
 	if (!StrEqual(sMap, "") && StrContains(sMap, hContract.m_sMapRestriction) == -1) return;
 	
+	if (!PerformWeaponCheck(hContract, client)) return;
+
 	// Loop over all of our objectives and see if this event matches.
 	for (int i = 0; i < hObjective.m_hEvents.Length; i++)
 	{
@@ -411,7 +422,9 @@ void ProcessLogicForContractObjective(Contract hContract, int objective_id, int 
 					{
 						case Contract_ObjectiveProgress:
 						{
-							hObjective.m_iProgress += hObjective.m_iAward;
+							if (hEvent.m_bUseForAward) hObjective.m_iProgress += value;
+							else hObjective.m_iProgress += hObjective.m_iAward;
+							
 							if (!hObjective.m_bInfinite)
 							{
 								hObjective.m_iProgress = Int_Min(hObjective.m_iProgress, hObjective.m_iMaxProgress);
@@ -514,6 +527,33 @@ void ProcessLogicForContractObjective(Contract hContract, int objective_id, int 
 	}
 }
 
+bool PerformWeaponCheck(Contract hContract, int client)
+{
+	// TODO: Weapon check
+	if (!StrEqual("", hContract.m_sWeaponItemDefRestriction)
+	|| !StrEqual("", hContract.m_sWeaponClassnameRestriction))
+	{
+		int hClientWeapon = GetEntPropEnt(client, Prop_Send, "m_hActiveWeapon");
+		if (IsValidEntity(hClientWeapon))
+		{
+			// Classname check:
+			if (!StrEqual("", hContract.m_sWeaponClassnameRestriction))
+			{
+				char sClassname[64];
+				GetEntityClassname(hClientWeapon, sClassname, sizeof(sClassname));
+				if (!StrContains(sClassname, hContract.m_sWeaponClassnameRestriction)) return false;
+			}
+			// Item definition index check:
+			if (!StrEqual("", hContract.m_sWeaponItemDefRestriction))
+			{
+				int iDefIndex = GetEntProp(hClientWeapon, Prop_Send, "m_iItemDefinitionIndex");
+				if (iDefIndex != StringToInt(hContract.m_sWeaponItemDefRestriction)) return false;
+			}
+		}
+	}
+	return true;
+}
+
 // ============ MENU FUNCTIONS ============
 /**
  * Creates the global Contracker menu. This reads through the directories
@@ -577,7 +617,8 @@ int ContractMenuHandler(Menu menu, MenuAction action, int param1, int param2)
 			
 			// Grab the item name.
 			char sKey[64];
-			menu.GetItem(param2, sKey, sizeof(sKey), style);
+			char sDisplay[64];
+			menu.GetItem(param2, sKey, sizeof(sKey), style, sDisplay, sizeof(sDisplay));
 
 			// Special directory key:
 			if (StrEqual(sKey, "#directory"))
@@ -611,6 +652,17 @@ int ContractMenuHandler(Menu menu, MenuAction action, int param1, int param2)
 				{
 					return ITEMDRAW_IGNORE;
 				}
+
+				// Depending on our deepness, see how many times the slash character shows
+				// up in this directory choice. If there's more than there should be, don't
+				// show this menu option.
+				int slashes = 0;
+				for (int i = 0; i < strlen(sDisplay); i++)
+				{
+					char check = sDisplay[i];
+					if (check == '/') slashes++;
+				}
+				if (g_Menu_DirectoryDeepness[param1] < slashes) return ITEMDRAW_IGNORE;
 			}
 	
 			return style;
@@ -678,6 +730,7 @@ int ContractMenuHandler(Menu menu, MenuAction action, int param1, int param2)
 			else
 			{
 				g_Menu_CurrentDirectory[param1] = sKey;
+				g_Menu_DirectoryDeepness[param1]++;
 				gContractMenu.Display(param1, MENU_TIME_FOREVER);
 			}
 		}
@@ -686,6 +739,7 @@ int ContractMenuHandler(Menu menu, MenuAction action, int param1, int param2)
 		case MenuAction_Cancel:
 		{	
 			g_Menu_CurrentDirectory[param1] = "root";
+			g_Menu_DirectoryDeepness[param1] = 1;
 		}
 	}
 	return 0;
@@ -883,6 +937,49 @@ public Action DebugContractInfo(int client, int args)
 	
 	return Plugin_Handled;
 }
+
+/**
+ * Usage: Resets client contracts.
+**/
+/*
+public Action DebugResetContract(int client, int args)
+{	
+	char sTarget[64];
+	GetCmdArg(1, sTarget, sizeof(sTarget));
+
+	// Optional UUID argument.
+	char sUUID[64];
+	if (args >= 2)
+	{
+		GetCmdArg(2, sUUID, sizeof(sUUID));
+	}
+
+	// (this is copy-pasted from https://wiki.alliedmods.net/Introduction_to_SourceMod_Plugins)
+	char target_name[MAX_TARGET_LENGTH];
+	int target_list[MAXPLAYERS], target_count;
+	bool tn_is_ml;
+ 
+	if ((target_count = ProcessTargetString(
+		sTarget, client, target_list,
+		MAXPLAYERS, COMMAND_FILTER_CONNECTED | COMMAND_FILTER_NO_BOTS,
+		target_name, sizeof(target_name),
+		tn_is_ml)) <= 0)
+	{
+		// This function replies to the admin with a failure message
+		ReplyToTargetError(client, target_count);
+		return Plugin_Handled;
+	}
+
+	// If we're targetting a group of players, do one statement to delete
+	// all of their contract progress.
+	if (target_count > 0)
+	{
+		ResetMultipleClientsContract(target_list, sUUID);
+	}
+
+	return Plugin_Handled;
+}
+*/
 
 // ============ UTILITY FUNCTIONS ============
 
