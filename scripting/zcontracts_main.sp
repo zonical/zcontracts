@@ -467,10 +467,6 @@ void ProcessLogicForContractObjective(Contract hContract, int objective_id, int 
 				// What type of value are we? Are we incrementing or resetting?
 				if (StrEqual(hEvent.m_sEventType, "increment"))
 				{
-					PrintToChat(client, "%d/%d", hEvent.m_iCurrentThreshold, hEvent.m_iThreshold);
-					int dummy = hEvent.m_iCurrentThreshold/hEvent.m_iThreshold;
-					PrintToChat(client, "%d", dummy);
-
 					switch (hContract.m_iContractType)
 					{
 						case Contract_ObjectiveProgress:
