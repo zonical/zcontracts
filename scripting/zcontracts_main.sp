@@ -11,28 +11,34 @@
 #include <tf2_stocks>
 #include <cstrike>
 #include <morecolors>
+#include <float>
 
 #include <zcontracts/zcontracts>
 
-// Global variables.
 Database g_DB;
+Handle g_DatabaseUpdateTimer;
+
+// Menu objects.
 static Menu gContractMenu;
 Panel gContractObjeciveDisplay[MAXPLAYERS+1];
 char g_Menu_CurrentDirectory[MAXPLAYERS+1][MAX_DIRECTORY_SIZE];
 int g_Menu_DirectoryDeepness[MAXPLAYERS+1] = { 1, ... };
 
+// Player Contracts.
 Contract m_hOldContract[MAXPLAYERS+1];
 Contract m_hContracts[MAXPLAYERS+1];
 
+// ConVars.
 ConVar g_PrintQueryInfo;
 ConVar g_UpdatesPerSecond;
 ConVar g_DatabaseUpdateTime;
 ConVar g_DisplayHudMessages;
+ConVar g_DebugEvents;
+ConVar g_DebugProcessing;
 
+// Forwards
 GlobalForward g_fOnObjectiveCompleted;
 GlobalForward g_fOnContractCompleted;
-
-Handle g_DatabaseUpdateTimer;
 
 // This arraylist contains a list of objectives that we need to update.
 ArrayList g_ObjectiveUpdateQueue;
@@ -69,6 +75,9 @@ public void OnPluginStart()
 	g_DatabaseUpdateTime = CreateConVar("zc_database_update_time", "30", "How long to wait before sending Contract updates to the database for all players.");
 	g_PrintQueryInfo = CreateConVar("zc_print_query_info", "0", "If enabled, queries will print to the console when they're about to be sent to the datbase. Mainly used for debugging.");
 	g_DisplayHudMessages = CreateConVar("zc_display_hud_messages", "1", "If enabled, players will see a hint-box in their HUD when they gain progress on their Contract or an Objective.");
+	g_DebugEvents = CreateConVar("zc_debug_print_events", "0", "Logs every time an event is sent.");
+	g_DebugProcessing = CreateConVar("zc_debug_processing", "0", "Logs every time an event is processed.");
+
 	g_DatabaseUpdateTime.AddChangeHook(OnDatabaseUpdateChange);
 	g_ConfigSearchPath.AddChangeHook(OnSchemaConVarChange);
 	g_RequiredFileExt.AddChangeHook(OnSchemaConVarChange);
@@ -129,6 +138,7 @@ public void OnClientPostAdminCheck(int client)
 	
 	g_Menu_CurrentDirectory[client] = "root";
 	g_Menu_DirectoryDeepness[client] = 1;
+
 }
 
 public void OnSchemaConVarChange(ConVar convar, char[] oldValue, char[] newValue)
@@ -178,44 +188,77 @@ public any Native_CallContrackerEvent(Handle plugin, int numParams)
 	int client = GetNativeCell(1);
 	char event[MAX_EVENT_SIZE];
 	GetNativeString(2, event, sizeof(event));
-	int value = GetNativeCell(3); 
+	int value = GetNativeCell(3);
+	bool can_combine = GetNativeCell(4);
 
 	if (!IsClientValid(client))
 	{
 		return ThrowNativeError(SP_ERROR_NATIVE, "Invalid client index (%d)", client);
 	}
-
-	// If we're a bot, fail silently.
 	if (IsFakeClient(client)) return false;
 
 	Contract hContract;
 	GetClientContract(client, hContract);
 	
 	// Do we have a contract currently active?
-	if (hContract.m_sUUID[0] != '{' || hContract.IsContractComplete())
+	if (!hContract.IsContractInitalized() || hContract.IsContractComplete()) return false;
+
+	if (g_DebugEvents.BoolValue)
 	{
-		return false;
+		PrintToServer("[ZContracts] Event triggered by %N: %s, VALUE: %d", client, event, value);
 	}
 
-	// Try to increment all of our objectives.
+	// Try to add our objectives to the increment queue.
 	for (int i = 0; i < hContract.m_hObjectives.Length; i++)
 	{	
 		ContractObjective hContractObjective;
 		hContract.GetObjective(i, hContractObjective);
 
-		// Don't touch this objective if it shouldn't be doing anything.
-		if (!hContractObjective.m_bInitalized || hContractObjective.IsObjectiveComplete()) 
-		{
-			continue;
-		}
+		if (!hContractObjective.m_bInitalized || hContractObjective.IsObjectiveComplete()) continue;
 
-		// Add to the global queue.
+		// Check to see if we have this event in any of our objective event triggers.
+		bool EventCheckPassed = false;
+		for (int j = 0; j < hContractObjective.m_hEvents.Length; j++)
+		{
+			ContractObjectiveEvent hEvent;
+			hContractObjective.m_hEvents.GetArray(j, hEvent, sizeof(ContractObjectiveEvent));
+			if (StrEqual(hEvent.m_sEventName, event))
+			{
+				EventCheckPassed = true;
+				break;
+			}
+		}
+		if (!EventCheckPassed) return false;
+
+		// Add to the queue for this client.
+		if (can_combine && g_ObjectiveUpdateQueue.Length > 0)
+		{
+			bool ObjectiveUpdated = false;
+			ObjectiveUpdate hUpdate;
+			for (int k = 0; k < g_ObjectiveUpdateQueue.Length; k++)
+			{
+				g_ObjectiveUpdateQueue.GetArray(k, hUpdate);
+				if (hUpdate.m_iClient != client) continue;
+				if (hUpdate.m_iObjectiveID != hContractObjective.m_iInternalID) continue;
+				if (!StrEqual(hUpdate.m_sUUID, hContract.m_sUUID)) continue;
+				if (!StrEqual(hUpdate.m_sEvent, event)) continue;
+
+				hUpdate.m_iValue += value;
+				g_ObjectiveUpdateQueue.SetArray(k, hUpdate);
+				ObjectiveUpdated = true;
+				break;
+			}
+
+			// Move to the next objective to be added to the queue.
+			if (ObjectiveUpdated) continue;
+		}
+		
 		ObjectiveUpdate hUpdate;
 		hUpdate.m_iClient = client;
 		hUpdate.m_iValue = value;
 		hUpdate.m_iObjectiveID = hContractObjective.m_iInternalID;
-		hUpdate.m_sEvent = event;
 		hUpdate.m_sUUID = hContract.m_sUUID;
+		hUpdate.m_sEvent = event;
 		g_ObjectiveUpdateQueue.PushArray(hUpdate, sizeof(ObjectiveUpdate));
 	}
 	return true;
@@ -240,7 +283,7 @@ public any Native_SetClientContract(Handle plugin, int numParams)
 	// If we have a Contract already selected, save it's progress to the database.
 	Contract hOldContract;
 	GetClientContract(client, hOldContract);
-	if (hOldContract.m_hObjectives != null)
+	if (hOldContract.IsContractInitalized())
 	{
 		SaveContractToDB(client, hOldContract);
 		m_hOldContract[client] = hOldContract;
@@ -280,7 +323,7 @@ public any Native_SetClientContract(Handle plugin, int numParams)
 			StrCat(sMessage, sizeof(sMessage), sAppendText);
 		}
 	}
-	MC_PrintToChat(client, sMessage, hContract.m_sContractName);
+	CPrintToChat(client, sMessage, hContract.m_sContractName);
 
 	// Reset our current directory in the Contracker.
 	g_Menu_CurrentDirectory[client] = "root";
@@ -358,7 +401,13 @@ public Action Timer_ProcessEvents(Handle hTimer)
  */
 void ProcessLogicForContractObjective(Contract hContract, int objective_id, int client, const char[] event, int value)
 {
+	if (!hContract.IsContractInitalized()) return;
 	if (hContract.IsContractComplete()) return;
+
+	if (g_DebugProcessing.BoolValue)
+	{
+		PrintToServer("[ZContracts] Processing event [%s, %d] for %N", event, value, client);
+	}
 
 	// Get our objective.
 	ContractObjective hObjective;
@@ -418,12 +467,16 @@ void ProcessLogicForContractObjective(Contract hContract, int objective_id, int 
 				// What type of value are we? Are we incrementing or resetting?
 				if (StrEqual(hEvent.m_sEventType, "increment"))
 				{
+					PrintToChat(client, "%d/%d", hEvent.m_iCurrentThreshold, hEvent.m_iThreshold);
+					int dummy = hEvent.m_iCurrentThreshold/hEvent.m_iThreshold;
+					PrintToChat(client, "%d", dummy);
+
 					switch (hContract.m_iContractType)
 					{
 						case Contract_ObjectiveProgress:
 						{
 							if (hEvent.m_bUseForAward) hObjective.m_iProgress += value;
-							else hObjective.m_iProgress += hObjective.m_iAward;
+							else hObjective.m_iProgress += hObjective.m_iAward * value; // TODO: CHECK THIS!
 							
 							if (!hObjective.m_bInfinite)
 							{
@@ -434,14 +487,14 @@ void ProcessLogicForContractObjective(Contract hContract, int objective_id, int 
 							{
 								PrintHintText(client, "%s (%s [%d/%dCP]) +%dCP",
 								hObjective.m_sDescription, hContract.m_sContractName, 
-								hObjective.m_iProgress, hObjective.m_iMaxProgress, hObjective.m_iAward);
+								hObjective.m_iProgress, hObjective.m_iMaxProgress, hObjective.m_iAward * value);
 								hObjective.m_bNeedsDBSave = true;
 							}
 
 						}
 						case Contract_ContractProgress:
 						{
-							hContract.m_iProgress += hObjective.m_iAward;
+							hContract.m_iProgress += hObjective.m_iAward * value;
 							hContract.m_iProgress = Int_Min(hContract.m_iProgress, hContract.m_iMaxProgress);
 							if (!hObjective.m_bInfinite)
 							{
@@ -455,7 +508,7 @@ void ProcessLogicForContractObjective(Contract hContract, int objective_id, int 
 							{							
 								PrintHintText(client, "%s (%s [%d/%dCP]) +%dCP",
 								hObjective.m_sDescription, hContract.m_sContractName,
-								hContract.m_iProgress, hContract.m_iMaxProgress, hObjective.m_iAward);
+								hContract.m_iProgress, hContract.m_iMaxProgress, hObjective.m_iAward * value);
 							}
 						}
 					}
@@ -487,7 +540,7 @@ void ProcessLogicForContractObjective(Contract hContract, int objective_id, int 
 			if (hObjective.IsObjectiveComplete())
 			{
 				// Print to chat.
-				MC_PrintToChat(client,
+				CPrintToChat(client,
 				"{green}[ZC]{default} Congratulations! You have completed the objective: {lightgreen}\"%s\"{default}",
 				hObjective.m_sDescription);
 				
@@ -508,7 +561,7 @@ void ProcessLogicForContractObjective(Contract hContract, int objective_id, int 
 			if (hContract.IsContractComplete())
 			{
 				// Print to chat.
-				MC_PrintToChat(client,
+				CPrintToChat(client,
 				"{green}[ZC]{default} Congratulations! You have completed the contract: {lightgreen}\"%s\"{default}",
 				hContract.m_sContractName);
 
@@ -757,7 +810,7 @@ public Action OpenContrackerForClient(int client, int args)
 	GetClientContract(client, hContract);
 
 	// Are we doing a Contract?
-	if (hContract.m_sUUID[0] == '{')
+	if (hContract.IsContractInitalized())
 	{
 		// Display our objective display instead.
 		CreateObjectiveDisplay(client, hContract, false);
@@ -893,6 +946,7 @@ public Action DebugContractInfo(int client, int args)
 	{
 		PrintToConsole(client,
 			"---------------------------------------------\n"
+		... "Contract Initalized: %d\n"
 		... "Contract Name: %s\n"
 		... "Contract UUID: %s\n"
 		... "Contract Directory: %s\n"
@@ -902,7 +956,7 @@ public Action DebugContractInfo(int client, int args)
 		... "Is Contract Complete: %d\n"
 		... "[INFO] To debug an objective, type sm_debugcontract [objective_index]"
 		... "---------------------------------------------",
-		hContract.m_sContractName, hContract.m_sUUID, hContract.m_sDirectoryPath, hContract.m_iContractType,
+		hContract.IsContractInitalized(), hContract.m_sContractName, hContract.m_sUUID, hContract.m_sDirectoryPath, hContract.m_iContractType,
 		hContract.m_iProgress, hContract.m_iMaxProgress, hContract.m_hObjectives.Length, hContract.IsContractComplete());
 	}
 	if (args == 1)
@@ -925,14 +979,15 @@ public Action DebugContractInfo(int client, int args)
 		... "Objective Is Infinite: %d\n"
 		... "Objective Award: %d\n"
 		... "Objective Progress: %d/%d\n"
+		... "Objective Fires: %d/%d\n"
 		... "Objective Event Count: %d\n"
 		... "Is Objective Complete %d\n"
 		... "[INFO] To debug an objective, type sm_debugcontract [objective_index]"
 		... "---------------------------------------------",
 		hContract.m_sContractName, hContract.m_sUUID, hContract.m_iContractType, hContractObjective.m_bInitalized,
 		hContractObjective.m_iInternalID, hContractObjective.m_bInfinite, hContractObjective.m_iAward,
-		hContractObjective.m_iProgress, hContractObjective.m_iMaxProgress, hContractObjective.m_hEvents.Length,
-		hContractObjective.IsObjectiveComplete());
+		hContractObjective.m_iProgress, hContractObjective.m_iMaxProgress, hContractObjective.m_iFires, hContractObjective.m_iMaxFires,
+		hContractObjective.m_hEvents.Length, hContractObjective.IsObjectiveComplete());
 	}
 	
 	return Plugin_Handled;

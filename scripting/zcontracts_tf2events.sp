@@ -3,9 +3,6 @@
 #include <zcontracts/zcontracts>
 #include <tf2_stocks>
 
-int g_PlayerFullCritDamageDealt[MAXPLAYERS+1];
-int g_PlayerMiniCritDamageDealt[MAXPLAYERS+1];
-
 public Plugin myinfo =
 {
 	name = "ZContracts - TF2 Event Logic",
@@ -24,38 +21,6 @@ public void OnPluginStart()
 
 	HookEvent("payload_pushed", OnPayloadPushed);
 	HookEvent("teamplay_point_captured", OnPointCaptured);
-
-	// Scoop damage related events and merge them into one event that gets fired
-	// every three seconds.
-	CreateTimer(3.0, Timer_ScoopDamage, _, TIMER_REPEAT);
-	
-	for (int i = 0; i < MAXPLAYERS + 1; i++)
-	{
-		g_PlayerFullCritDamageDealt[i] = 0;
-		g_PlayerMiniCritDamageDealt[i] = 0;
-	}
-}
-
-public Action Timer_ScoopDamage(Handle hTimer)
-{
-	for (int i = 0; i < MAXPLAYERS + 1; i++)
-	{
-		if (!IsClientValid(i) || IsFakeClient(i)) continue;
-		
-		// Award full crit damage event.
-		if (g_PlayerFullCritDamageDealt[i] != 0)
-		{
-			CallContrackerEvent(i, "CONTRACTS_TF2_PLAYER_DEAL_FULLCRIT", g_PlayerFullCritDamageDealt[i]);
-			g_PlayerFullCritDamageDealt[i] = 0;
-		}
-		// Award damage taken event.
-		if (g_PlayerMiniCritDamageDealt[i] != 0)
-		{
-			CallContrackerEvent(i, "CONTRACTS_TF2_PLAYER_DEAL_MINICRIT", g_PlayerMiniCritDamageDealt[i]);
-			g_PlayerMiniCritDamageDealt[i] = 0;
-		}
-	}
-	return Plugin_Continue;
 }
 
 // Events relating to the attacker killing a victim.
@@ -65,17 +30,20 @@ public Action OnPlayerDeath(Event event, const char[] name, bool dontBroadcast)
 	int attacker = GetClientOfUserId(event.GetInt("attacker"));
 	int victim = GetClientOfUserId(event.GetInt("userid"));
 	int death_flags = event.GetInt("death_flags");
+
+	CallContrackerEvent(attacker, "CONTRACTS_TF2_PLAYER_KILL", 1, true);
+	CallContrackerEvent(victim, "CONTRACTS_TF2_PLAYER_DEATH", 1);
 	
 	// Make sure we're not the same.
 	if (IsClientValid(attacker) && IsClientValid(victim) && attacker != victim)
 	{
-		if (death_flags & TF_DEATHFLAG_KILLERDOMINATION) CallContrackerEvent(attacker, "CONTRACTS_TF2_PLAYER_KILL_DOMINATION", 1);
-		if (death_flags & TF_DEATHFLAG_KILLERREVENGE) CallContrackerEvent(attacker, "CONTRACTS_TF2_PLAYER_KILL_REVENGE", 1);
+		if (death_flags & TF_DEATHFLAG_KILLERDOMINATION) CallContrackerEvent(attacker, "CONTRACTS_TF2_PLAYER_KILL_DOMINATION", 1, true);
+		if (death_flags & TF_DEATHFLAG_KILLERREVENGE) CallContrackerEvent(attacker, "CONTRACTS_TF2_PLAYER_KILL_REVENGE", 1, true);
 
 		switch (event.GetInt("crit_type"))
 		{
-			case 1: CallContrackerEvent(attacker, "CONTRACTS_TF2_PLAYER_KILL_MINICRIT", 1);
-			case 2: CallContrackerEvent(attacker, "CONTRACTS_TF2_PLAYER_KILL_FULLCRIT", 1);
+			case 1: CallContrackerEvent(attacker, "CONTRACTS_TF2_PLAYER_KILL_MINICRIT", 1, true);
+			case 2: CallContrackerEvent(attacker, "CONTRACTS_TF2_PLAYER_KILL_FULLCRIT", 1, true);
 		}
 
 		switch (event.GetInt("customkill"))
@@ -141,8 +109,8 @@ public Action OnPlayerHurt(Event event, const char[] name, bool dontBroadcast)
 		// Make sure we're not the same.
 		if (attacker == victim) return Plugin_Continue;
 
-		if (event.GetBool("crit")) g_PlayerFullCritDamageDealt[attacker] += damage;
-		if (event.GetBool("minicrit")) g_PlayerMiniCritDamageDealt[attacker] += damage;
+		if (event.GetBool("crit")) CallContrackerEvent(attacker, "CONTRACTS_TF2_PLAYER_DEAL_FULLCRIT", damage, true);
+		if (event.GetBool("minicrit")) CallContrackerEvent(attacker, "CONTRACTS_TF2_PLAYER_DEAL_MINICRIT", damage, true);
 
 
 	}

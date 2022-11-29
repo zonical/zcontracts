@@ -23,11 +23,7 @@
 			"1"
 			{
 				"description"		"Kill three players within ten seconds."
-				
-				// How many points required to complete this objective.
-				"required_progress"	"3"
-
-				// How many points should we give for successfully doing this objective?
+				"maximum_uses"	"1"
 				"award"		"1"
 				
 				// The events that this objective looks out for.

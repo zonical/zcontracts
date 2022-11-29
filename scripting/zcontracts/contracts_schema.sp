@@ -250,6 +250,8 @@ public void CreateContract(KeyValues hContractConf, Contract hContract)
 				CreateContractObjective(hContractConf, m_hObjective);
 				m_hObjective.m_iInternalID = obj;
 				m_hObjective.m_iContractType = hContract.m_iContractType;
+				m_hObjective.m_bInitalized = true;
+				m_hObjective.m_bNeedsDBSave = false;
 				hContract.m_hObjectives.PushArray(m_hObjective);
 				obj++;
 			} while (hContractConf.GotoNextKey());
@@ -292,10 +294,12 @@ public void ProcessContractsSchema()
 
 bool CreateContractFromUUID(const char[] sUUID, Contract hBuffer)
 {
+	hBuffer.m_bInitalized = false;
 	if (g_ContractSchema.JumpToKey(sUUID))
 	{
 		CreateContract(g_ContractSchema, hBuffer);
 		g_ContractSchema.GoBack();
+		hBuffer.m_bInitalized = true;
 		return true;
 	}
 	return false;

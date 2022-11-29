@@ -46,7 +46,7 @@ public Action OnPlayerDeath(Event event, const char[] name, bool dontBroadcast)
 	// Make sure we're not the same.
 	if (IsClientValid(attacker) && IsClientValid(victim) && attacker != victim)
 	{
-		CallContrackerEvent(attacker, "CONTRACTS_PLAYER_KILL", 1);
+		CallContrackerEvent(attacker, "CONTRACTS_PLAYER_KILL", 1, true);
 		CallContrackerEvent(victim, "CONTRACTS_PLAYER_DEATH", 1);
 		if (IsClientValid(assister) && assister != attacker)
 		{

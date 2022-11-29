@@ -128,8 +128,8 @@ public void CB_ObjectiveProgress(Database db, DBResultSet results, const char[] 
     {
         ContractObjective hObj;
         hContract.GetObjective(id, hObj);
-        hObj.m_iProgress = results.FetchInt(3);
-        hObj.m_iFires = results.FetchInt(4); 
+        hObj.m_iProgress = results.FetchInt(4);
+        hObj.m_iFires = results.FetchInt(5); 
         hContract.SaveObjective(id, hObj);
         id++;
     }
@@ -431,6 +431,8 @@ void SaveContractToDB(int client, Contract hContract)
 	{
 		ThrowError("Invalid client index. (%d)", client);
 	}
+
+    if (!hContract.IsContractInitalized()) return;
 
     // Save the overall progress of this Contract.
     if (hContract.m_iContractType == Contract_ContractProgress)

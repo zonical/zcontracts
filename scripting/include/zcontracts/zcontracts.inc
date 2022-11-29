@@ -185,6 +185,11 @@ enum struct Contract
 
 	ArrayList m_hObjectives;
 	
+	bool IsContractInitalized()
+	{
+		return this.m_sUUID[0] == '{';
+	}
+
 	/**
 	 * @return		If this Contract is complete.
 	**/
@@ -289,10 +294,11 @@ native bool GetClientContract(int client, any buffer[sizeof(Contract)]);
  * @param client    Client index.
  * @param event    	Event to process.
  * @param value		Value to send alongside this event.
+ * @param can_combine 	If true, if this event was recently sent to the event queue, the value from this function will be added to the first event.
  * @return			True if an event is successfully called, false if the client's contract isn't active.
  * @error           Client index is invalid or is a bot.   
  */
-native bool CallContrackerEvent(int client, char event[MAX_EVENT_SIZE], int value);
+native bool CallContrackerEvent(int client, char event[MAX_EVENT_SIZE], int value, bool can_combine = false);
 
 /**
  * Sent on client completion of a Contract objective.
