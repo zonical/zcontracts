@@ -259,7 +259,7 @@ public void CreateContract(KeyValues hContractConf, Contract hContract)
 		hContractConf.GoBack();
 	}
 
-	LogMessage("[ZContracts] Created Contract %s in directory: %s", hContract.m_sUUID, hContract.m_sDirectoryPath);
+	//LogMessage("[ZContracts] Created Contract %s in directory: %s", hContract.m_sUUID, hContract.m_sDirectoryPath);
 	hContractConf.GoBack();
 }
 

@@ -275,9 +275,10 @@ enum struct ObjectiveUpdate
  *
  * @param client    Client index.
  * @param UUID    	The UUID of the contract.
+ * @param dont_save	Optional argument: doesn't save this as the active Contract in the database.
  * @error           Client index is invalid or UUID is invalid.         
  */
-native bool SetClientContract(int client, char event[MAX_UUID_SIZE]);
+native bool SetClientContract(int client, char event[MAX_UUID_SIZE], bool dont_save = false);
 
 /**
  * Obtains a client's active Contract.

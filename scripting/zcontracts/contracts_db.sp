@@ -62,6 +62,11 @@ bool PopulateProgressFromDB(int client, bool display_to_client)
     char steamid64[64];
     GetClientAuthId(client, AuthId_SteamID64, steamid64, sizeof(steamid64));
 
+    if (g_DebugQuery.BoolValue)
+    {
+        LogMessage("[ZContracts] %N LOAD: Attempting to load progress from database [ID: %s].", client, hContract.m_sUUID);
+    }
+
     // If we're tracking Contract progress, get this value from the database first.
     if (hContract.m_iContractType == Contract_ContractProgress)
     {
@@ -75,6 +80,7 @@ bool PopulateProgressFromDB(int client, bool display_to_client)
     g_DB.Format(query, sizeof(query), 
     "SELECT * FROM objective_progress WHERE steamid64 = '%s' AND contract_uuid = '%s' AND (objective_id BETWEEN 0 AND %d) ORDER BY objective_id ASC;", 
     steamid64, hContract.m_sUUID, hContract.m_hObjectives.Length);
+    LogMessage(query);
     g_DB.Query(CB_ObjectiveProgress, query, client);
 
     // Create our display.
@@ -110,6 +116,10 @@ public void CB_ContractProgress(Database db, DBResultSet results, const char[] e
     while (results.FetchRow())
     {
         hContract.m_iProgress = results.FetchInt(2);
+        if (g_DebugQuery.BoolValue)
+        {
+            LogMessage("[ZContracts] %N LOAD: Successfully grabbed Contract progress from database (%d/%d).", client, hContract.m_iProgress, hContract.m_iMaxProgress);
+        }
     }
 
     m_hContracts[client] = hContract;
@@ -128,9 +138,16 @@ public void CB_ObjectiveProgress(Database db, DBResultSet results, const char[] 
     {
         ContractObjective hObj;
         hContract.GetObjective(id, hObj);
-        hObj.m_iProgress = results.FetchInt(4);
-        hObj.m_iFires = results.FetchInt(5); 
+        hObj.m_iProgress = results.FetchInt(3);
+        hObj.m_iFires = results.FetchInt(4); 
         hContract.SaveObjective(id, hObj);
+
+        if (g_DebugQuery.BoolValue)
+        {
+            LogMessage("[ZContracts] %N LOAD: Successfully grabbed ContractObjective %d progress from database CP: (%d/%d), FIRES: (%d/%d).",
+            client, id, hObj.m_iProgress, hObj.m_iMaxProgress, hObj.m_iFires, hObj.m_iMaxFires);
+        }
+
         id++;
     }
 
@@ -222,15 +239,15 @@ public void CB_Con_OnUpdate(Database db, DBResultSet results, const char[] error
 {
     if (results.AffectedRows < 1)
     {
-        if (g_PrintQueryInfo.BoolValue)
+        if (g_DebugQuery.BoolValue)
         {
-            PrintToServer("[ZContracts] Failed to update player %N contract progress. [%s]", client, error);
+            LogMessage("[ZContracts] %N SAVE: Failed to save progress for contract [SQL ERR: %s]", client, error);
         }
         return;
     }
-    if (g_PrintQueryInfo.BoolValue)
+    if (g_DebugQuery.BoolValue)
     {
-        PrintToServer("[ZContracts] Updated player %N progress for contract.", client);
+        LogMessage("[ZContracts] %N SAVE: Sucessfully saved progress for contract.", client);
     }
 
     // Reset our save status.
@@ -244,16 +261,16 @@ public void CB_Con_OnInsert(Database db, DBResultSet results, const char[] error
 {
     if (results.AffectedRows < 1)
     {
-        if (g_PrintQueryInfo.BoolValue)
+        if (g_DebugQuery.BoolValue)
         {
-            PrintToServer("[ZContracts] Failed to insert player %N progress for contract. [%s]", client, error);
+            LogMessage("[ZContracts] %N SAVE: Failed to save progress for contract [SQL ERR: %s]", client, error);
         }
         return;
     }
 
-    if (g_PrintQueryInfo.BoolValue)
+    if (g_DebugQuery.BoolValue)
     {
-        PrintToServer("[ZContracts] Inserted player %N progress for contract.", client);
+        LogMessage("[ZContracts] %N SAVE: Sucessfully saved progress for contract.", client);
     }
 
     // Reset our save status.
@@ -284,10 +301,10 @@ void SaveObjectiveProgressToDB(int client, const char[] uuid, ContractObjective 
     char steamid64[64];
     GetClientAuthId(client, AuthId_SteamID64, steamid64, sizeof(steamid64));
 
-    if (g_PrintQueryInfo.BoolValue)
+    if (g_DebugQuery.BoolValue)
     {
-        PrintToServer("[ZContracts] Attempting to save progress for %N (%s) for objective id %d. Progress: %d",
-        client, steamid64, hObjective.m_iInternalID, hObjective.m_iProgress);
+        LogMessage("[ZContracts] %N SAVE: Attempting to save progress for ContractObjective %d, Progress: %d",
+        client, hObjective.m_iInternalID, hObjective.m_iProgress);
     }
 
     char query[256];
@@ -365,15 +382,15 @@ public void CB_Obj_OnUpdate(Database db, DBResultSet results, const char[] error
     int objective_id = hData.ReadCell();
     if (results.AffectedRows < 1)
     {
-        if (g_PrintQueryInfo.BoolValue)
+        if (g_DebugQuery.BoolValue)
         {
-            PrintToServer("[ZContracts] Failed to update player %N progress for objective id %d. [%s]", client, objective_id, error);
+            LogMessage("[ZContracts] %N SAVE: Failed to save progress for ContractObjective %d. [SQL ERR: %s]", client, objective_id, error);
         }
         return;
     }
-    if (g_PrintQueryInfo.BoolValue)
+    if (g_DebugQuery.BoolValue)
     {
-        PrintToServer("[ZContracts] Updated player %N progress for objective id %d.", client, objective_id);
+        LogMessage("[ZContracts] %N SAVE: Successfully saved progress for ContractObjective %d.", client, objective_id);
     }
 
     // Reset our save status.
@@ -393,16 +410,16 @@ public void CB_Obj_OnInsert(Database db, DBResultSet results, const char[] error
     int objective_id = hData.ReadCell();
     if (results.AffectedRows < 1)
     {
-        if (g_PrintQueryInfo.BoolValue)
+        if (g_DebugQuery.BoolValue)
         {
-            PrintToServer("[ZContracts] Failed to insert player %N progress for objective id %d. [%s]", client, objective_id, error);
+            LogMessage("[ZContracts] %N SAVE: Failed to save progress for ContractObjective %d. [SQL ERR: %s]", client, objective_id, error);
         }
         return;
     }
 
-    if (g_PrintQueryInfo.BoolValue)
+    if (g_DebugQuery.BoolValue)
     {
-        PrintToServer("[ZContracts] Inserted player %N progress for objective id %d.", client, objective_id);
+        LogMessage("[ZContracts] %N SAVE: Successfully saved progress for ContractObjective %d.", client, objective_id);
     }
 
     // Reset our save status.
@@ -437,6 +454,11 @@ void SaveContractToDB(int client, Contract hContract)
     // Save the overall progress of this Contract.
     if (hContract.m_iContractType == Contract_ContractProgress)
     {
+        if (!hContract.m_bNeedsDBSave) return;
+        if (g_DebugSaveAttempts.BoolValue)
+        {
+            LogMessage("[ZContracts] %N SAVE: Attempted to save Contract progress to the database.", client);
+        }
         SaveContractProgressToDB(client, hContract.m_sUUID, 
         hContract.m_iProgress, hContract.IsContractComplete());
     }
@@ -448,9 +470,13 @@ void SaveContractToDB(int client, Contract hContract)
         hContract.GetObjective(i, hObjective);
 
         // Only update if we've actually gained some progress.
-        if (hObjective.m_bNeedsDBSave == false) continue;
+        if (!hObjective.m_bNeedsDBSave) continue;
         if (hObjective.IsObjectiveComplete()) continue;
 
+        if (g_DebugSaveAttempts.BoolValue)
+        {
+            LogMessage("[ZContracts] %N SAVE: Attempted to save ContractObjective %d progress to the database.", client, hObjective.m_iInternalID);
+        }
         SaveObjectiveProgressToDB(client, hContract.m_sUUID, hObjective);
     }
 }
@@ -488,6 +514,11 @@ void GrabContractFromLastSession(int client)
 		ThrowError("Invalid client index. (%d)", client);
 	}
 
+    if (g_DebugSessions.BoolValue)
+    {
+        LogMessage("[ZContracts] %N SESSION: Attempting to grab last Contract session.", client);
+    }
+
     // Get the client's SteamID64.
     char steamid64[64];
     GetClientAuthId(client, AuthId_SteamID64, steamid64, sizeof(steamid64));
@@ -501,12 +532,19 @@ void GrabContractFromLastSession(int client)
 public void CB_GetContractFromLastSession(Database db, DBResultSet results, const char[] error, int client)
 {
     char uuid[MAX_UUID_SIZE];
-    if (results.RowCount < 1) return;
+    if (results.RowCount < 1)
+    {
+        if (g_DebugSessions.BoolValue)
+        {
+            LogMessage("[ZContracts] %N SESSION: No previous Contract session exists.", client);
+        } 
+        return;  
+    }
 
     while (results.FetchRow())
     {
         results.FetchString(0, uuid, sizeof(uuid));
-        SetClientContract(client, uuid);
+        SetClientContract(client, uuid, true);
     }
 }
 
@@ -522,6 +560,11 @@ void SaveContractSession(int client)
     // Get the client's SteamID64.
     char steamid64[64];
     GetClientAuthId(client, AuthId_SteamID64, steamid64, sizeof(steamid64));
+
+    if (g_DebugSessions.BoolValue)
+    {
+        LogMessage("[ZContracts] %N SESSION: Attempting to save Contract session.", client);
+    }
 
     char query[256];
     g_DB.Format(query, sizeof(query), 
@@ -571,15 +614,15 @@ public void CB_Session_OnUpdate(Database db, DBResultSet results, const char[] e
 {
     if (results.AffectedRows < 1)
     {
-        if (g_PrintQueryInfo.BoolValue)
+        if (g_DebugQuery.BoolValue)
         {
-            PrintToServer("[ZContracts] Failed to update player %N session. [%s]", client, error);
+            LogMessage("[ZContracts] %N SESSION: Failed to save Contract session. [SQL ERR: %s]", client, error);
         }
         return;
     }
-    if (g_PrintQueryInfo.BoolValue)
+    if (g_DebugQuery.BoolValue)
     {
-        PrintToServer("[ZContracts] Updated player %N session.", client);
+        LogMessage("[ZContracts] %N SESSION: Successfuly saved Contract session.", client);
     }
 }
 
@@ -587,16 +630,16 @@ public void CB_Session_OnInsert(Database db, DBResultSet results, const char[] e
 {
     if (results.AffectedRows < 1)
     {
-        if (g_PrintQueryInfo.BoolValue)
+        if (g_DebugQuery.BoolValue)
         {
-            PrintToServer("[ZContracts] Failed to insert player %N session. [%s]", client, error);
+            LogMessage("[ZContracts] %N SESSION: Failed to save Contract session. [SQL ERR: %s]", client, error);
         }
         return;
     }
 
-    if (g_PrintQueryInfo.BoolValue)
+    if (g_DebugQuery.BoolValue)
     {
-        PrintToServer("[ZContracts] Inserted player %N session.", client);
+        LogMessage("[ZContracts] %N SESSION: Successfuly saved Contract session.", client);
     }
 }
 

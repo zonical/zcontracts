@@ -4,6 +4,7 @@
 
 // There are engine checks for game extensions!
 #undef REQUIRE_EXTENSIONS
+#define DEBUG
 
 #include <sourcemod>
 #include <sdktools>
@@ -29,12 +30,17 @@ Contract m_hOldContract[MAXPLAYERS+1];
 Contract m_hContracts[MAXPLAYERS+1];
 
 // ConVars.
-ConVar g_PrintQueryInfo;
 ConVar g_UpdatesPerSecond;
 ConVar g_DatabaseUpdateTime;
 ConVar g_DisplayHudMessages;
+#if defined DEBUG
 ConVar g_DebugEvents;
 ConVar g_DebugProcessing;
+ConVar g_DebugQuery;
+ConVar g_DebugProgress;
+ConVar g_DebugSaveAttempts;
+ConVar g_DebugSessions;
+#endif
 
 // Forwards
 GlobalForward g_fOnObjectiveCompleted;
@@ -71,12 +77,20 @@ public void OnPluginStart()
 	g_ConfigSearchPath = CreateConVar("zc_schema_search_path", "configs/zcontracts", "The path, relative to the \"sourcemods/\" directory, to find Contract definition files. Changing this Value will cause a reload of the Contract schema.");
 	g_RequiredFileExt = CreateConVar("zc_schema_required_ext", ".txt", "The file extension that Contract definition files must have in order to be considered valid. Changing this Value will cause a reload of the Contract schema.");
 	g_DisabledPath = CreateConVar("zc_schema_disabled_path", "configs/zcontracts/disabled", "If a search path has this string in it, any Contract's loaded in or derived from this path will not be loaded. Changing this Value will cause a reload of the Contract schema.");
+	
 	g_UpdatesPerSecond = CreateConVar("zc_updates_per_second", "8", "How many objective updates to process per second.");
 	g_DatabaseUpdateTime = CreateConVar("zc_database_update_time", "30", "How long to wait before sending Contract updates to the database for all players.");
-	g_PrintQueryInfo = CreateConVar("zc_print_query_info", "0", "If enabled, queries will print to the console when they're about to be sent to the datbase. Mainly used for debugging.");
+	
 	g_DisplayHudMessages = CreateConVar("zc_display_hud_messages", "1", "If enabled, players will see a hint-box in their HUD when they gain progress on their Contract or an Objective.");
+
+#if defined DEBUG
 	g_DebugEvents = CreateConVar("zc_debug_print_events", "0", "Logs every time an event is sent.");
 	g_DebugProcessing = CreateConVar("zc_debug_processing", "0", "Logs every time an event is processed.");
+	g_DebugQuery = CreateConVar("zc_debug_queries", "0", "Logs every time a query is sent to the database.");
+	g_DebugProgress = CreateConVar("zc_debug_progress", "0", "Logs every time player progress is incremented internally.");
+	g_DebugSaveAttempts = CreateConVar("zc_debug_saveattempts", "0", "Logs every time an attempt is made to save progress to the database.");
+	g_DebugSessions = CreateConVar("zc_debug_sessions", "0", "Logs every time a session is restored.");
+#endif
 
 	g_DatabaseUpdateTime.AddChangeHook(OnDatabaseUpdateChange);
 	g_ConfigSearchPath.AddChangeHook(OnSchemaConVarChange);
@@ -205,7 +219,7 @@ public any Native_CallContrackerEvent(Handle plugin, int numParams)
 
 	if (g_DebugEvents.BoolValue)
 	{
-		PrintToServer("[ZContracts] Event triggered by %N: %s, VALUE: %d", client, event, value);
+		LogMessage("[ZContracts] Event triggered by %N: %s, VALUE: %d", client, event, value);
 	}
 
 	// Try to add our objectives to the increment queue.
@@ -285,6 +299,23 @@ public any Native_SetClientContract(Handle plugin, int numParams)
 	GetClientContract(client, hOldContract);
 	if (hOldContract.IsContractInitalized())
 	{
+		switch (hOldContract.m_iContractType)
+		{
+			case Contract_ObjectiveProgress:
+			{
+				for (int i = 0; i < hOldContract.m_hObjectives.Length; i++)
+				{
+					ContractObjective hObj;
+					hOldContract.GetObjective(i, hObj);
+					hObj.m_bNeedsDBSave = true;
+					hOldContract.SaveObjective(i, hObj);
+				}
+			}
+			case Contract_ContractProgress:
+			{
+				hOldContract.m_bNeedsDBSave = true;
+			}
+		}
 		SaveContractToDB(client, hOldContract);
 		m_hOldContract[client] = hOldContract;
 	}
@@ -304,8 +335,10 @@ public any Native_SetClientContract(Handle plugin, int numParams)
 	m_hContracts[client] = hContract;
 	PopulateProgressFromDB(client, true);
 
+	bool dont_save = GetNativeCell(3);
+
 	// Set this Contract as our current session.
-	SaveContractSession(client);
+	if (!dont_save) SaveContractSession(client);
 	
 	// Print a specific type of message depending on what type of Contract we're doing.
 	char sMessage[128] = "{green}[ZC]{default} You have selected the contract: {lightgreen}\"%s\"{default}. To complete it, ";
@@ -324,6 +357,8 @@ public any Native_SetClientContract(Handle plugin, int numParams)
 		}
 	}
 	CPrintToChat(client, sMessage, hContract.m_sContractName);
+	
+	LogMessage("[ZContracts] %N CONTRACT: Set Contract to: %s [ID: %s]", client, hContract.m_sContractName, hContract.m_sUUID);
 
 	// Reset our current directory in the Contracker.
 	g_Menu_CurrentDirectory[client] = "root";
@@ -406,7 +441,7 @@ void ProcessLogicForContractObjective(Contract hContract, int objective_id, int 
 
 	if (g_DebugProcessing.BoolValue)
 	{
-		PrintToServer("[ZContracts] Processing event [%s, %d] for %N", event, value, client);
+		LogMessage("[ZContracts] Processing event [%s, %d] for %N", event, value, client);
 	}
 
 	// Get our objective.
@@ -478,13 +513,16 @@ void ProcessLogicForContractObjective(Contract hContract, int objective_id, int 
 							{
 								hObjective.m_iProgress = Int_Min(hObjective.m_iProgress, hObjective.m_iMaxProgress);
 							}
-
 							if (g_DisplayHudMessages.BoolValue)
 							{
-								PrintHintText(client, "%s (%s [%d/%dCP]) +%dCP",
-								hObjective.m_sDescription, hContract.m_sContractName, 
+								PrintHintText(client, "\"%s\" %dx (%s [%d/%dCP]) +%dCP",
+								hObjective.m_sDescription, value, hContract.m_sContractName, 
 								hObjective.m_iProgress, hObjective.m_iMaxProgress, hObjective.m_iAward * value);
-								hObjective.m_bNeedsDBSave = true;
+							}
+							if (g_DebugProgress.BoolValue)
+							{
+								LogMessage("[ZContracts] %N PROGRESS: Increment event triggered [ID: %s, OBJ: %d, CP: %d]",
+								client, hContract.m_sUUID, hObjective.m_iInternalID, hObjective.m_iProgress);
 							}
 
 						}
@@ -496,15 +534,17 @@ void ProcessLogicForContractObjective(Contract hContract, int objective_id, int 
 							{
 								hObjective.m_iFires++;
 								hObjective.m_iFires = Int_Min(hObjective.m_iFires, hObjective.m_iMaxFires);
-								// There's no need to save objective progress for this style of
-								// Contract progression if the value is infinite.
-								hObjective.m_bNeedsDBSave = true;
 							}		
 							if (g_DisplayHudMessages.BoolValue)
 							{							
-								PrintHintText(client, "%s (%s [%d/%dCP]) +%dCP",
-								hObjective.m_sDescription, hContract.m_sContractName,
+								PrintHintText(client, "\"%s\" %dx (%s [%d/%dCP]) +%dCP",
+								hObjective.m_sDescription, value, hContract.m_sContractName,
 								hContract.m_iProgress, hContract.m_iMaxProgress, hObjective.m_iAward * value);
+							}
+							if (g_DebugProgress.BoolValue)
+							{
+								LogMessage("[ZContracts] %N PROGRESS: Increment event triggered [ID: %s, CP: %d]",
+								client, hContract.m_sUUID, hContract.m_iProgress);
 							}
 						}
 					}
@@ -547,6 +587,7 @@ void ProcessLogicForContractObjective(Contract hContract, int objective_id, int 
 				Call_Finish();
 
 				// Save now.
+				hObjective.m_bNeedsDBSave = true;
 				SaveObjectiveProgressToDB(client, hContract.m_sUUID, hObjective);
 			}
 
@@ -568,6 +609,7 @@ void ProcessLogicForContractObjective(Contract hContract, int objective_id, int 
 				Call_Finish();
 
 				// Save now.
+				hContract.m_bNeedsDBSave = true;
 				SaveContractToDB(client, hContract);
 			}
 			
