@@ -55,8 +55,8 @@ bool PopulateProgressFromDB(int client, bool display_to_client)
 		ThrowError("Invalid client index. (%d)", client);
 	}
 
-    Contract hContract;
-    GetClientContract(client, hContract);
+    Contract ClientContract;
+    GetClientContract(client, ClientContract);
 
     // Get the client's SteamID64.
     char steamid64[64];
@@ -64,29 +64,29 @@ bool PopulateProgressFromDB(int client, bool display_to_client)
 
     if (g_DebugQuery.BoolValue)
     {
-        LogMessage("[ZContracts] %N LOAD: Attempting to load progress from database [ID: %s].", client, hContract.m_sUUID);
+        LogMessage("[ZContracts] %N LOAD: Attempting to load progress from database [ID: %s].", client, ClientContract.m_sUUID);
     }
 
     // If we're tracking Contract progress, get this value from the database first.
-    if (hContract.m_iContractType == Contract_ContractProgress)
+    if (ClientContract.m_iContractType == Contract_ContractProgress)
     {
         char query[256];
         g_DB.Format(query, sizeof(query), 
-        "SELECT * FROM contract_progress WHERE steamid64 = '%s' AND contract_uuid = '%s'", steamid64, hContract.m_sUUID);
+        "SELECT * FROM contract_progress WHERE steamid64 = '%s' AND contract_uuid = '%s'", steamid64, ClientContract.m_sUUID);
         g_DB.Query(CB_ContractProgress, query, client);
     }
 
     char query[256];
     g_DB.Format(query, sizeof(query), 
     "SELECT * FROM objective_progress WHERE steamid64 = '%s' AND contract_uuid = '%s' AND (objective_id BETWEEN 0 AND %d) ORDER BY objective_id ASC;", 
-    steamid64, hContract.m_sUUID, hContract.m_hObjectives.Length);
+    steamid64, ClientContract.m_sUUID, ClientContract.m_hObjectives.Length);
     LogMessage(query);
     g_DB.Query(CB_ObjectiveProgress, query, client);
 
     // Create our display.
     if (display_to_client)
     {
-        CreateObjectiveDisplay(client, hContract, true);
+        CreateObjectiveDisplay(client, ClientContract, true);
         CreateTimer(1.0, Timer_DisplayContractInfo, client);
     }
 
@@ -99,9 +99,9 @@ bool PopulateProgressFromDB(int client, bool display_to_client)
 */
 public Action Timer_DisplayContractInfo(Handle hTimer, int client)
 {
-    Contract hContract;
-    GetClientContract(client, hContract);
-    CreateObjectiveDisplay(client, hContract, false);
+    Contract ClientContract;
+    GetClientContract(client, ClientContract);
+    CreateObjectiveDisplay(client, ClientContract, false);
     return Plugin_Stop;
 }
 
@@ -110,19 +110,19 @@ public Action Timer_DisplayContractInfo(Handle hTimer, int client)
 */
 public void CB_ContractProgress(Database db, DBResultSet results, const char[] error, int client)
 {
-    Contract hContract;
-    GetClientContract(client, hContract);
+    Contract ClientContract;
+    GetClientContract(client, ClientContract);
 
     while (results.FetchRow())
     {
-        hContract.m_iProgress = results.FetchInt(2);
+        ClientContract.m_iProgress = results.FetchInt(2);
         if (g_DebugQuery.BoolValue)
         {
-            LogMessage("[ZContracts] %N LOAD: Successfully grabbed Contract progress from database (%d/%d).", client, hContract.m_iProgress, hContract.m_iMaxProgress);
+            LogMessage("[ZContracts] %N LOAD: Successfully grabbed Contract progress from database (%d/%d).", client, ClientContract.m_iProgress, ClientContract.m_iMaxProgress);
         }
     }
 
-    m_hContracts[client] = hContract;
+    ClientContracts[client] = ClientContract;
 }
 
 /**
@@ -130,17 +130,17 @@ public void CB_ContractProgress(Database db, DBResultSet results, const char[] e
 */
 public void CB_ObjectiveProgress(Database db, DBResultSet results, const char[] error, int client)
 {
-    Contract hContract;
-    GetClientContract(client, hContract);
+    Contract ClientContract;
+    GetClientContract(client, ClientContract);
 
     int id = 0;
     while (results.FetchRow())
     {
         ContractObjective hObj;
-        hContract.GetObjective(id, hObj);
+        ClientContract.GetObjective(id, hObj);
         hObj.m_iProgress = results.FetchInt(3);
         hObj.m_iFires = results.FetchInt(4); 
-        hContract.SaveObjective(id, hObj);
+        ClientContract.SaveObjective(id, hObj);
 
         if (g_DebugQuery.BoolValue)
         {
@@ -151,7 +151,7 @@ public void CB_ObjectiveProgress(Database db, DBResultSet results, const char[] 
         id++;
     }
 
-    m_hContracts[client] = hContract;
+    ClientContracts[client] = ClientContract;
 }
 
 // ====================================================================================
@@ -208,10 +208,10 @@ public void CB_ContractProgressExists(Database db, DBResultSet results, const ch
             if (results.FetchInt(2) == progress)
             {
                 // Reset our save status.
-                Contract hContract;
-                GetClientContract(client, hContract);
-                hContract.m_bNeedsDBSave = false;
-                m_hContracts[client] = hContract;
+                Contract ClientContract;
+                GetClientContract(client, ClientContract);
+                ClientContract.m_bNeedsDBSave = false;
+                ClientContracts[client] = ClientContract;
             }
             else
             {
@@ -251,10 +251,10 @@ public void CB_Con_OnUpdate(Database db, DBResultSet results, const char[] error
     }
 
     // Reset our save status.
-    Contract hContract;
-    GetClientContract(client, hContract);
-    hContract.m_bNeedsDBSave = false;
-    m_hContracts[client] = hContract;
+    Contract ClientContract;
+    GetClientContract(client, ClientContract);
+    ClientContract.m_bNeedsDBSave = false;
+    ClientContracts[client] = ClientContract;
 }
 
 public void CB_Con_OnInsert(Database db, DBResultSet results, const char[] error, int client)
@@ -274,10 +274,10 @@ public void CB_Con_OnInsert(Database db, DBResultSet results, const char[] error
     }
 
     // Reset our save status.
-    Contract hContract;
-    GetClientContract(client, hContract);
-    hContract.m_bNeedsDBSave = false;
-    m_hContracts[client] = hContract;
+    Contract ClientContract;
+    GetClientContract(client, ClientContract);
+    ClientContract.m_bNeedsDBSave = false;
+    ClientContracts[client] = ClientContract;
 }
 
 // ====================================================================================
@@ -345,13 +345,13 @@ public void CB_ObjectiveProgressExists(Database db, DBResultSet results, const c
             if (results.FetchInt(3) == progress)
             {
                 // Reset our save status.
-                Contract hContract;
-                GetClientContract(client, hContract);
+                Contract ClientContract;
+                GetClientContract(client, ClientContract);
                 ContractObjective hObjective;
-                hContract.GetObjective(objective_id, hObjective);
+                ClientContract.GetObjective(objective_id, hObjective);
                 hObjective.m_bNeedsDBSave = false;
-                hContract.SaveObjective(objective_id, hObjective);
-                m_hContracts[client] = hContract;
+                ClientContract.SaveObjective(objective_id, hObjective);
+                ClientContracts[client] = ClientContract;
             }
             else
             {
@@ -394,13 +394,13 @@ public void CB_Obj_OnUpdate(Database db, DBResultSet results, const char[] error
     }
 
     // Reset our save status.
-    Contract hContract;
-    GetClientContract(client, hContract);
+    Contract ClientContract;
+    GetClientContract(client, ClientContract);
     ContractObjective hObjective;
-    hContract.GetObjective(objective_id, hObjective);
+    ClientContract.GetObjective(objective_id, hObjective);
     hObjective.m_bNeedsDBSave = false;
-    hContract.SaveObjective(objective_id, hObjective);
-    m_hContracts[client] = hContract;
+    ClientContract.SaveObjective(objective_id, hObjective);
+    ClientContracts[client] = ClientContract;
 }
 
 public void CB_Obj_OnInsert(Database db, DBResultSet results, const char[] error, DataPack hData)
@@ -423,13 +423,13 @@ public void CB_Obj_OnInsert(Database db, DBResultSet results, const char[] error
     }
 
     // Reset our save status.
-    Contract hContract;
-    GetClientContract(client, hContract);
+    Contract ClientContract;
+    GetClientContract(client, ClientContract);
     ContractObjective hObjective;
-    hContract.GetObjective(objective_id, hObjective);
+    ClientContract.GetObjective(objective_id, hObjective);
     hObjective.m_bNeedsDBSave = false;
-    hContract.SaveObjective(objective_id, hObjective);
-    m_hContracts[client] = hContract;
+    ClientContract.SaveObjective(objective_id, hObjective);
+    ClientContracts[client] = ClientContract;
 }
 
 // ====================================================================================
@@ -439,35 +439,35 @@ public void CB_Obj_OnInsert(Database db, DBResultSet results, const char[] error
  * that calls SaveContractProgressToDB and SaveObjectiveProgressToDB for you.
  *
  * @param client    	        Client index.
- * @param hContract		        The Contract to save to the database.
+ * @param ClientContract		        The Contract to save to the database.
  * @error                       Client index is invalid. 
  */
-void SaveContractToDB(int client, Contract hContract)
+void SaveContractToDB(int client, Contract ClientContract)
 {
     if (!IsClientValid(client) || IsFakeClient(client))
 	{
 		ThrowError("Invalid client index. (%d)", client);
 	}
 
-    if (!hContract.IsContractInitalized()) return;
+    if (!ClientContract.IsContractInitalized()) return;
 
     // Save the overall progress of this Contract.
-    if (hContract.m_iContractType == Contract_ContractProgress)
+    if (ClientContract.m_iContractType == Contract_ContractProgress)
     {
-        if (!hContract.m_bNeedsDBSave) return;
+        if (!ClientContract.m_bNeedsDBSave) return;
         if (g_DebugSaveAttempts.BoolValue)
         {
             LogMessage("[ZContracts] %N SAVE: Attempted to save Contract progress to the database.", client);
         }
-        SaveContractProgressToDB(client, hContract.m_sUUID, 
-        hContract.m_iProgress, hContract.IsContractComplete());
+        SaveContractProgressToDB(client, ClientContract.m_sUUID, 
+        ClientContract.m_iProgress, ClientContract.IsContractComplete());
     }
 
     // Save the contract objectives.
-    for (int i = 0; i < hContract.m_hObjectives.Length; i++)
+    for (int i = 0; i < ClientContract.m_hObjectives.Length; i++)
     {
         ContractObjective hObjective;
-        hContract.GetObjective(i, hObjective);
+        ClientContract.GetObjective(i, hObjective);
 
         // Only update if we've actually gained some progress.
         if (!hObjective.m_bNeedsDBSave) continue;
@@ -477,7 +477,7 @@ void SaveContractToDB(int client, Contract hContract)
         {
             LogMessage("[ZContracts] %N SAVE: Attempted to save ContractObjective %d progress to the database.", client, hObjective.m_iInternalID);
         }
-        SaveObjectiveProgressToDB(client, hContract.m_sUUID, hObjective);
+        SaveObjectiveProgressToDB(client, ClientContract.m_sUUID, hObjective);
     }
 }
 
@@ -491,9 +491,9 @@ public Action Timer_SaveAllToDB(Handle hTimer)
     {
         if (!IsClientValid(i) || IsFakeClient(i)) continue;
         // Save this contract to the database.
-        Contract hContract;
-        GetClientContract(i, hContract);
-        SaveContractToDB(i, hContract);
+        Contract ClientContract;
+        GetClientContract(i, ClientContract);
+        SaveContractToDB(i, ClientContract);
     }
     return Plugin_Continue;
 }
@@ -579,15 +579,15 @@ public void CB_DoesSessionExist(Database db, DBResultSet results, const char[] e
     GetClientAuthId(client, AuthId_SteamID64, steamid64, sizeof(steamid64));
 
     // Get our client's current contract.
-    Contract hContract;
-    GetClientContract(client, hContract);
+    Contract ClientContract;
+    GetClientContract(client, ClientContract);
 
     if (results.RowCount < 1)
     {
         // Insert our new row into the database.
         char query[256];
         db.Format(query, sizeof(query), 
-        "INSERT INTO selected_contract (steamid64, contract_uuid) VALUES ('%s', '%s')", steamid64, hContract.m_sUUID);
+        "INSERT INTO selected_contract (steamid64, contract_uuid) VALUES ('%s', '%s')", steamid64, ClientContract.m_sUUID);
         db.Query(CB_Session_OnInsert, query, client);
     }
     else
@@ -598,12 +598,12 @@ public void CB_DoesSessionExist(Database db, DBResultSet results, const char[] e
             char stored_uuid[MAX_UUID_SIZE];
             results.FetchString(1, stored_uuid, sizeof(stored_uuid));
 
-            if (!StrEqual(stored_uuid, hContract.m_sUUID))
+            if (!StrEqual(stored_uuid, ClientContract.m_sUUID))
             {
                 // Update our row in the database.
                 char query[256];
                 db.Format(query, sizeof(query), 
-                "UPDATE selected_contract SET contract_uuid = '%s' WHERE steamid64 = '%s'", hContract.m_sUUID, steamid64);
+                "UPDATE selected_contract SET contract_uuid = '%s' WHERE steamid64 = '%s'", ClientContract.m_sUUID, steamid64);
                 db.Query(CB_Session_OnUpdate, query, client);
             }
         }

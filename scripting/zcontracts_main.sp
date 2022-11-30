@@ -26,8 +26,8 @@ char g_Menu_CurrentDirectory[MAXPLAYERS+1][MAX_DIRECTORY_SIZE];
 int g_Menu_DirectoryDeepness[MAXPLAYERS+1] = { 1, ... };
 
 // Player Contracts.
-Contract m_hOldContract[MAXPLAYERS+1];
-Contract m_hContracts[MAXPLAYERS+1];
+Contract OldClientContracts[MAXPLAYERS+1];
+Contract ClientContracts[MAXPLAYERS+1];
 
 // ConVars.
 ConVar g_UpdatesPerSecond;
@@ -138,9 +138,9 @@ public void OnPluginStart()
 public void OnClientPostAdminCheck(int client)
 {
 	// Reset variables.
-	Contract hBlankContract;
-	m_hContracts[client] = hBlankContract;
-	m_hOldContract[client] = hBlankContract;
+	Contract BlankContract;
+	ClientContracts[client] = BlankContract;
+	OldClientContracts[client] = BlankContract;
 
 	// Grab the players Contract from the last session.
 	if (IsClientValid(client)
@@ -153,6 +153,22 @@ public void OnClientPostAdminCheck(int client)
 	g_Menu_CurrentDirectory[client] = "root";
 	g_Menu_DirectoryDeepness[client] = 1;
 
+}
+
+public void OnClientDisconnect(int client)
+{
+	if (IsClientValid(client)
+	&& !IsFakeClient(client)
+	&& g_DB != null)
+	{
+		SaveContractToDB(client, ClientContracts[client]);
+	}
+
+	Contract Blank;
+	ClientContracts[client] = Blank;
+	OldClientContracts[client] = Blank;
+	g_Menu_CurrentDirectory[client] = "root";
+	g_Menu_DirectoryDeepness[client] = 1;
 }
 
 public void OnSchemaConVarChange(ConVar convar, char[] oldValue, char[] newValue)
@@ -184,7 +200,7 @@ public any Native_GetClientContract(Handle plugin, int numParams)
 	{
 		return ThrowNativeError(SP_ERROR_NATIVE, "Invalid client index (%d)", client);
 	}
-	SetNativeArray(2, m_hContracts[client], sizeof(Contract));
+	SetNativeArray(2, ClientContracts[client], sizeof(Contract));
 	return true;
 }
 
@@ -211,11 +227,11 @@ public any Native_CallContrackerEvent(Handle plugin, int numParams)
 	}
 	if (IsFakeClient(client)) return false;
 
-	Contract hContract;
-	GetClientContract(client, hContract);
+	Contract ClientContract;
+	GetClientContract(client, ClientContract);
 	
 	// Do we have a contract currently active?
-	if (!hContract.IsContractInitalized() || hContract.IsContractComplete()) return false;
+	if (!ClientContract.IsContractInitalized() || ClientContract.IsContractComplete()) return false;
 
 	if (g_DebugEvents.BoolValue)
 	{
@@ -223,20 +239,20 @@ public any Native_CallContrackerEvent(Handle plugin, int numParams)
 	}
 
 	// Try to add our objectives to the increment queue.
-	for (int i = 0; i < hContract.m_hObjectives.Length; i++)
+	for (int i = 0; i < ClientContract.m_hObjectives.Length; i++)
 	{	
-		ContractObjective hContractObjective;
-		hContract.GetObjective(i, hContractObjective);
+		ContractObjective ClientContractObjective;
+		ClientContract.GetObjective(i, ClientContractObjective);
 
-		if (!hContractObjective.m_bInitalized || hContractObjective.IsObjectiveComplete()) continue;
+		if (!ClientContractObjective.m_bInitalized || ClientContractObjective.IsObjectiveComplete()) continue;
 
 		// Check to see if we have this event in any of our objective event triggers.
 		bool EventCheckPassed = false;
-		for (int j = 0; j < hContractObjective.m_hEvents.Length; j++)
+		for (int j = 0; j < ClientContractObjective.m_hEvents.Length; j++)
 		{
-			ContractObjectiveEvent hEvent;
-			hContractObjective.m_hEvents.GetArray(j, hEvent, sizeof(ContractObjectiveEvent));
-			if (StrEqual(hEvent.m_sEventName, event))
+			ContractObjectiveEvent ObjEvent;
+			ClientContractObjective.m_hEvents.GetArray(j, ObjEvent, sizeof(ContractObjectiveEvent));
+			if (StrEqual(ObjEvent.m_sEventName, event))
 			{
 				EventCheckPassed = true;
 				break;
@@ -248,17 +264,17 @@ public any Native_CallContrackerEvent(Handle plugin, int numParams)
 		if (can_combine && g_ObjectiveUpdateQueue.Length > 0)
 		{
 			bool ObjectiveUpdated = false;
-			ObjectiveUpdate hUpdate;
+			ObjectiveUpdate ObjUpdate;
 			for (int k = 0; k < g_ObjectiveUpdateQueue.Length; k++)
 			{
-				g_ObjectiveUpdateQueue.GetArray(k, hUpdate);
-				if (hUpdate.m_iClient != client) continue;
-				if (hUpdate.m_iObjectiveID != hContractObjective.m_iInternalID) continue;
-				if (!StrEqual(hUpdate.m_sUUID, hContract.m_sUUID)) continue;
-				if (!StrEqual(hUpdate.m_sEvent, event)) continue;
+				g_ObjectiveUpdateQueue.GetArray(k, ObjUpdate);
+				if (ObjUpdate.m_iClient != client) continue;
+				if (ObjUpdate.m_iObjectiveID != ClientContractObjective.m_iInternalID) continue;
+				if (!StrEqual(ObjUpdate.m_sUUID, ClientContract.m_sUUID)) continue;
+				if (!StrEqual(ObjUpdate.m_sEvent, event)) continue;
 
-				hUpdate.m_iValue += value;
-				g_ObjectiveUpdateQueue.SetArray(k, hUpdate);
+				ObjUpdate.m_iValue += value;
+				g_ObjectiveUpdateQueue.SetArray(k, ObjUpdate);
 				ObjectiveUpdated = true;
 				break;
 			}
@@ -267,13 +283,13 @@ public any Native_CallContrackerEvent(Handle plugin, int numParams)
 			if (ObjectiveUpdated) continue;
 		}
 		
-		ObjectiveUpdate hUpdate;
-		hUpdate.m_iClient = client;
-		hUpdate.m_iValue = value;
-		hUpdate.m_iObjectiveID = hContractObjective.m_iInternalID;
-		hUpdate.m_sUUID = hContract.m_sUUID;
-		hUpdate.m_sEvent = event;
-		g_ObjectiveUpdateQueue.PushArray(hUpdate, sizeof(ObjectiveUpdate));
+		ObjectiveUpdate ObjUpdate;
+		ObjUpdate.m_iClient = client;
+		ObjUpdate.m_iValue = value;
+		ObjUpdate.m_iObjectiveID = ClientContractObjective.m_iInternalID;
+		ObjUpdate.m_sUUID = ClientContract.m_sUUID;
+		ObjUpdate.m_sEvent = event;
+		g_ObjectiveUpdateQueue.PushArray(ObjUpdate, sizeof(ObjectiveUpdate));
 	}
 	return true;
 }
@@ -295,44 +311,44 @@ public any Native_SetClientContract(Handle plugin, int numParams)
 	}
 
 	// If we have a Contract already selected, save it's progress to the database.
-	Contract hOldContract;
-	GetClientContract(client, hOldContract);
-	if (hOldContract.IsContractInitalized())
+	Contract OldClientContract;
+	GetClientContract(client, OldClientContract);
+	if (OldClientContract.IsContractInitalized())
 	{
-		switch (hOldContract.m_iContractType)
+		switch (OldClientContract.m_iContractType)
 		{
 			case Contract_ObjectiveProgress:
 			{
-				for (int i = 0; i < hOldContract.m_hObjectives.Length; i++)
+				for (int i = 0; i < OldClientContract.m_hObjectives.Length; i++)
 				{
 					ContractObjective hObj;
-					hOldContract.GetObjective(i, hObj);
+					OldClientContract.GetObjective(i, hObj);
 					hObj.m_bNeedsDBSave = true;
-					hOldContract.SaveObjective(i, hObj);
+					OldClientContract.SaveObjective(i, hObj);
 				}
 			}
 			case Contract_ContractProgress:
 			{
-				hOldContract.m_bNeedsDBSave = true;
+				OldClientContract.m_bNeedsDBSave = true;
 			}
 		}
-		SaveContractToDB(client, hOldContract);
-		m_hOldContract[client] = hOldContract;
+		SaveContractToDB(client, OldClientContract);
+		OldClientContracts[client] = OldClientContract;
 	}
 	
 	char sUUID[MAX_UUID_SIZE];
 	GetNativeString(2, sUUID, sizeof(sUUID));
 
 	// Get our Contract definition.
-	Contract hContract;
-	if (!CreateContractFromUUID(sUUID, hContract))
+	Contract ClientContract;
+	if (!CreateContractFromUUID(sUUID, ClientContract))
 	{
 		return ThrowNativeError(SP_ERROR_NATIVE, "Invalid UUID (%s) for client %d", sUUID, client);
 	}
 
 	// Set our client contract here so we can populate it's progress
 	// values in the threaded callback functions.
-	m_hContracts[client] = hContract;
+	ClientContracts[client] = ClientContract;
 	PopulateProgressFromDB(client, true);
 
 	bool dont_save = GetNativeCell(3);
@@ -341,24 +357,24 @@ public any Native_SetClientContract(Handle plugin, int numParams)
 	if (!dont_save) SaveContractSession(client);
 	
 	// Print a specific type of message depending on what type of Contract we're doing.
-	char sMessage[128] = "{green}[ZC]{default} You have selected the contract: {lightgreen}\"%s\"{default}. To complete it, ";
-	switch (hContract.m_iContractType)
+	char ChatMessage[128] = "{green}[ZC]{default} You have selected the contract: {lightgreen}\"%s\"{default}. To complete it, ";
+	switch (ClientContract.m_iContractType)
 	{
 		case Contract_ObjectiveProgress:
 		{
-			char sAppendText[] = "finish all the objectives.";
-			StrCat(sMessage, sizeof(sMessage), sAppendText);
+			char AppendText[] = "finish all the objectives.";
+			StrCat(ChatMessage, sizeof(ChatMessage), AppendText);
 		}
 		case Contract_ContractProgress:
 		{
-			char sAppendText[] = "get %dCP.";
-			Format(sAppendText, sizeof(sAppendText), sAppendText, m_hContracts[client].m_iMaxProgress);
-			StrCat(sMessage, sizeof(sMessage), sAppendText);
+			char AppendText[] = "get %dCP.";
+			Format(AppendText, sizeof(AppendText), AppendText, ClientContracts[client].m_iMaxProgress);
+			StrCat(ChatMessage, sizeof(ChatMessage), AppendText);
 		}
 	}
-	CPrintToChat(client, sMessage, hContract.m_sContractName);
+	CPrintToChat(client, ChatMessage, ClientContract.m_sContractName);
 	
-	LogMessage("[ZContracts] %N CONTRACT: Set Contract to: %s [ID: %s]", client, hContract.m_sContractName, hContract.m_sUUID);
+	LogMessage("[ZContracts] %N CONTRACT: Set Contract to: %s [ID: %s]", client, ClientContract.m_sContractName, ClientContract.m_sUUID);
 
 	// Reset our current directory in the Contracker.
 	g_Menu_CurrentDirectory[client] = "root";
@@ -383,36 +399,36 @@ public Action Timer_ProcessEvents(Handle hTimer)
 		if (iProcessed >= g_UpdatesPerSecond.IntValue) break;
 
 		// Only process a certain amount of updates per frame.
-		ObjectiveUpdate hUpdate;
-		g_ObjectiveUpdateQueue.GetArray(0, hUpdate); // Get the first element of this array.
+		ObjectiveUpdate ObjUpdate;
+		g_ObjectiveUpdateQueue.GetArray(0, ObjUpdate); // Get the first element of this array.
 		g_ObjectiveUpdateQueue.Erase(0); // Erase the first element.
 
-		int client = hUpdate.m_iClient;
-		int value = hUpdate.m_iValue;
-		int objective_id = hUpdate.m_iObjectiveID;
+		int client = ObjUpdate.m_iClient;
+		int value = ObjUpdate.m_iValue;
+		int objective_id = ObjUpdate.m_iObjectiveID;
 		char event[MAX_EVENT_SIZE];
-		event = hUpdate.m_sEvent;
+		event = ObjUpdate.m_sEvent;
 		char uuid[MAX_UUID_SIZE];
-		uuid = hUpdate.m_sUUID;
+		uuid = ObjUpdate.m_sUUID;
 		
 		// Grab the objective from our client's contract.
-		Contract hContract;
-		GetClientContract(client, hContract);
+		Contract ClientContract;
+		GetClientContract(client, ClientContract);
 
 		// Do our UUID's match?
-		if (!StrEqual(uuid, hContract.m_sUUID) && StrEqual(uuid, m_hOldContract[client].m_sUUID))
+		if (!StrEqual(uuid, ClientContract.m_sUUID) && StrEqual(uuid, OldClientContracts[client].m_sUUID))
 		{
-			ProcessLogicForContractObjective(m_hOldContract[client], objective_id, client, event, value);
+			ProcessLogicForContractObjective(OldClientContracts[client], objective_id, client, event, value);
 
 			// Get the new progress and completion status for the old contract.
-			ContractObjective hOldObjective;
-			m_hOldContract[client].GetObjective(objective_id, hOldObjective);
-			SaveObjectiveProgressToDB(client, m_hOldContract[client].m_sUUID, hOldObjective);
+			ContractObjective OldObjective;
+			OldClientContracts[client].GetObjective(objective_id, OldObjective);
+			SaveObjectiveProgressToDB(client, OldClientContracts[client].m_sUUID, OldObjective);
 		}
 		else
 		{
 			// Update progress.
-			ProcessLogicForContractObjective(hContract, objective_id, client, event, value);
+			ProcessLogicForContractObjective(ClientContract, objective_id, client, event, value);
 		}
 
 		iProcessed++;
@@ -428,16 +444,16 @@ public Action Timer_ProcessEvents(Handle hTimer)
  * handled in the ContractObjective enum struct.
  * (see ContractObjective.TryIncrementProgress)
  *
- * @param hContract 	Contract struct to grab the objective from.
+ * @param ClientContract 	Contract struct to grab the objective from.
  * @param objective_id 	ID of the objective to be processed.
  * @param client    	Client index.
  * @param event    		Event to process.
  * @param value			Value to send alongside this event.
  */
-void ProcessLogicForContractObjective(Contract hContract, int objective_id, int client, const char[] event, int value)
+void ProcessLogicForContractObjective(Contract ClientContract, int objective_id, int client, const char[] event, int value)
 {
-	if (!hContract.IsContractInitalized()) return;
-	if (hContract.IsContractComplete()) return;
+	if (!ClientContract.IsContractInitalized()) return;
+	if (ClientContract.IsContractComplete()) return;
 
 	if (g_DebugProcessing.BoolValue)
 	{
@@ -445,200 +461,200 @@ void ProcessLogicForContractObjective(Contract hContract, int objective_id, int 
 	}
 
 	// Get our objective.
-	ContractObjective hObjective;
-	hContract.GetObjective(objective_id, hObjective);
-	if (hObjective.IsObjectiveComplete()) return;
+	ContractObjective Objective;
+	ClientContract.GetObjective(objective_id, Objective);
+	if (Objective.IsObjectiveComplete()) return;
 
 	// For TF2, perform a class check.
 	if (GetEngineVersion() == Engine_TF2)
 	{
-		TFClassType iClass = TF2_GetPlayerClass(client);
-		if (iClass == TFClass_Unknown) return;
-		if (!hContract.m_bClass[iClass]) return;
+		TFClassType Class = TF2_GetPlayerClass(client);
+		if (Class == TFClass_Unknown) return;
+		if (!ClientContract.m_bClass[Class]) return;
 	}
 
 	// Check to see if we have the required map for this Contract.
-	char sMap[256];
-	GetCurrentMap(sMap, sizeof(sMap));
-	if (!StrEqual(sMap, "") && StrContains(sMap, hContract.m_sMapRestriction) == -1) return;
+	char Map[256];
+	GetCurrentMap(Map, sizeof(Map));
+	if (!StrEqual(Map, "") && StrContains(Map, ClientContract.m_sMapRestriction) == -1) return;
 	
-	if (!PerformWeaponCheck(hContract, client)) return;
+	if (!PerformWeaponCheck(ClientContract, client)) return;
 
 	// Loop over all of our objectives and see if this event matches.
-	for (int i = 0; i < hObjective.m_hEvents.Length; i++)
+	for (int i = 0; i < Objective.m_hEvents.Length; i++)
 	{
-		ContractObjectiveEvent hEvent;
-		hObjective.m_hEvents.GetArray(i, hEvent);
+		ContractObjectiveEvent ObjEvent;
+		Objective.m_hEvents.GetArray(i, ObjEvent);
 		
 		// Does this event match?
-		if (StrEqual(hEvent.m_sEventName, event))
+		if (StrEqual(ObjEvent.m_sEventName, event))
 		{
 			// Do we have a timer going?
-			if (hEvent.m_hTimer != INVALID_HANDLE)
+			if (ObjEvent.m_hTimer != INVALID_HANDLE)
 			{
-				TriggerTimeEvent(hObjective, hEvent, "OnThreshold");
+				TriggerTimeEvent(Objective, ObjEvent, "OnThreshold");
 			}
 			// Start the timer if it doesn't exist yet.
 			else 
 			{
-				if (hEvent.m_hTimer == INVALID_HANDLE && hEvent.m_fTime != 0.0)
+				if (ObjEvent.m_hTimer == INVALID_HANDLE && ObjEvent.m_fTime != 0.0)
 				{
 					// Create a datapack for our timer so we can pass our objective and event through.
-					DataPack m_hTimerdata;
+					DataPack TimerData;
 					
 					// Create our timer. (see contracts_timers.sp)
-					hEvent.m_hTimer = CreateDataTimer(hEvent.m_fTime, EventTimer, m_hTimerdata, TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);
-					m_hTimerdata.WriteCell(client); // Pass through our client so we can get our contract.
-					m_hTimerdata.WriteCell(hObjective.m_iInternalID); // Pass through our internal ID so we know which objective to look for.
-					m_hTimerdata.WriteCell(hEvent.m_iInternalID); // Pass through the current event index so we know which event we're looking for in our objective.
+					ObjEvent.m_hTimer = CreateDataTimer(ObjEvent.m_fTime, EventTimer, TimerData, TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);
+					TimerData.WriteCell(client); // Pass through our client so we can get our contract.
+					TimerData.WriteCell(Objective.m_iInternalID); // Pass through our internal ID so we know which objective to look for.
+					TimerData.WriteCell(ObjEvent.m_iInternalID); // Pass through the current event index so we know which event we're looking for in our objective.
 					// ^^ The reason we do these two things as we can't pass enum structs through into a DataPack.
 				}
 			}
 
 			// Add to our event threshold.
-			hEvent.m_iCurrentThreshold += value;
-			if (hEvent.m_iCurrentThreshold >= hEvent.m_iThreshold)
+			ObjEvent.m_iCurrentThreshold += value;
+			if (ObjEvent.m_iCurrentThreshold >= ObjEvent.m_iThreshold)
 			{
 				// What type of value are we? Are we incrementing or resetting?
-				if (StrEqual(hEvent.m_sEventType, "increment"))
+				if (StrEqual(ObjEvent.m_sEventType, "increment"))
 				{
-					switch (hContract.m_iContractType)
+					switch (ClientContract.m_iContractType)
 					{
 						case Contract_ObjectiveProgress:
 						{
-							if (hEvent.m_bUseForAward) hObjective.m_iProgress += value;
-							else hObjective.m_iProgress += hObjective.m_iAward * value; // TODO: CHECK THIS!
+							if (ObjEvent.m_bUseForAward) Objective.m_iProgress += value;
+							else Objective.m_iProgress += Objective.m_iAward * value; // TODO: CHECK THIS!
 							
-							if (!hObjective.m_bInfinite)
+							if (!Objective.m_bInfinite)
 							{
-								hObjective.m_iProgress = Int_Min(hObjective.m_iProgress, hObjective.m_iMaxProgress);
+								Objective.m_iProgress = Int_Min(Objective.m_iProgress, Objective.m_iMaxProgress);
 							}
 							if (g_DisplayHudMessages.BoolValue)
 							{
 								PrintHintText(client, "\"%s\" %dx (%s [%d/%dCP]) +%dCP",
-								hObjective.m_sDescription, value, hContract.m_sContractName, 
-								hObjective.m_iProgress, hObjective.m_iMaxProgress, hObjective.m_iAward * value);
+								Objective.m_sDescription, value, ClientContract.m_sContractName, 
+								Objective.m_iProgress, Objective.m_iMaxProgress, Objective.m_iAward * value);
 							}
 							if (g_DebugProgress.BoolValue)
 							{
 								LogMessage("[ZContracts] %N PROGRESS: Increment event triggered [ID: %s, OBJ: %d, CP: %d]",
-								client, hContract.m_sUUID, hObjective.m_iInternalID, hObjective.m_iProgress);
+								client, ClientContract.m_sUUID, Objective.m_iInternalID, Objective.m_iProgress);
 							}
 
 						}
 						case Contract_ContractProgress:
 						{
-							hContract.m_iProgress += hObjective.m_iAward * value;
-							hContract.m_iProgress = Int_Min(hContract.m_iProgress, hContract.m_iMaxProgress);
-							if (!hObjective.m_bInfinite)
+							ClientContract.m_iProgress += Objective.m_iAward * value;
+							ClientContract.m_iProgress = Int_Min(ClientContract.m_iProgress, ClientContract.m_iMaxProgress);
+							if (!Objective.m_bInfinite)
 							{
-								hObjective.m_iFires++;
-								hObjective.m_iFires = Int_Min(hObjective.m_iFires, hObjective.m_iMaxFires);
+								Objective.m_iFires++;
+								Objective.m_iFires = Int_Min(Objective.m_iFires, Objective.m_iMaxFires);
 							}		
 							if (g_DisplayHudMessages.BoolValue)
 							{							
 								PrintHintText(client, "\"%s\" %dx (%s [%d/%dCP]) +%dCP",
-								hObjective.m_sDescription, value, hContract.m_sContractName,
-								hContract.m_iProgress, hContract.m_iMaxProgress, hObjective.m_iAward * value);
+								Objective.m_sDescription, value, ClientContract.m_sContractName,
+								ClientContract.m_iProgress, ClientContract.m_iMaxProgress, Objective.m_iAward * value);
 							}
 							if (g_DebugProgress.BoolValue)
 							{
 								LogMessage("[ZContracts] %N PROGRESS: Increment event triggered [ID: %s, CP: %d]",
-								client, hContract.m_sUUID, hContract.m_iProgress);
+								client, ClientContract.m_sUUID, ClientContract.m_iProgress);
 							}
 						}
 					}
 
 					// Reset our threshold.
-					hEvent.m_iCurrentThreshold = 0;
+					ObjEvent.m_iCurrentThreshold = 0;
 				}
-				else if (StrEqual(hEvent.m_sEventType, "reset"))
+				else if (StrEqual(ObjEvent.m_sEventType, "reset"))
 				{
 					// Reset all event thresholds.
-					for (int h = 0; h < hObjective.m_hEvents.Length; h++)
+					for (int h = 0; h < Objective.m_hEvents.Length; h++)
 					{
 						ContractObjectiveEvent m_hEventToReset;
-						hObjective.m_hEvents.GetArray(h, m_hEventToReset);
+						Objective.m_hEvents.GetArray(h, m_hEventToReset);
 						m_hEventToReset.m_iCurrentThreshold = 0;
-						hObjective.m_hEvents.SetArray(h, m_hEventToReset);
+						Objective.m_hEvents.SetArray(h, m_hEventToReset);
 					}
 				}
 				
 				// Cancel our timer now that we've reached our threshold.
-				if (hEvent.m_hTimer != INVALID_HANDLE)
+				if (ObjEvent.m_hTimer != INVALID_HANDLE)
 				{
-					CloseHandle(hEvent.m_hTimer);
-					hEvent.m_hTimer = INVALID_HANDLE;
+					CloseHandle(ObjEvent.m_hTimer);
+					ObjEvent.m_hTimer = INVALID_HANDLE;
 				}
 			}
 		
 			// Print that this objective is complete.
-			if (hObjective.IsObjectiveComplete())
+			if (Objective.IsObjectiveComplete())
 			{
 				// Print to chat.
 				CPrintToChat(client,
 				"{green}[ZC]{default} Congratulations! You have completed the objective: {lightgreen}\"%s\"{default}",
-				hObjective.m_sDescription);
+				Objective.m_sDescription);
 				
 				Call_StartForward(g_fOnObjectiveCompleted);
 				Call_PushCell(client);
-				Call_PushString(hContract.m_sUUID);
-				Call_PushArray(hObjective, sizeof(ContractObjective));
+				Call_PushString(ClientContract.m_sUUID);
+				Call_PushArray(Objective, sizeof(ContractObjective));
 				Call_Finish();
 
 				// Save now.
-				hObjective.m_bNeedsDBSave = true;
-				SaveObjectiveProgressToDB(client, hContract.m_sUUID, hObjective);
+				Objective.m_bNeedsDBSave = true;
+				SaveObjectiveProgressToDB(client, ClientContract.m_sUUID, Objective);
 			}
 
-			hObjective.m_hEvents.SetArray(i, hEvent);
-			hContract.SaveObjective(objective_id, hObjective);
+			Objective.m_hEvents.SetArray(i, ObjEvent);
+			ClientContract.SaveObjective(objective_id, Objective);
 
 			// Is our contract now complete?
-			if (hContract.IsContractComplete())
+			if (ClientContract.IsContractComplete())
 			{
 				// Print to chat.
 				CPrintToChat(client,
 				"{green}[ZC]{default} Congratulations! You have completed the contract: {lightgreen}\"%s\"{default}",
-				hContract.m_sContractName);
+				ClientContract.m_sContractName);
 
 				Call_StartForward(g_fOnContractCompleted);
 				Call_PushCell(client);
-				Call_PushString(hContract.m_sUUID);
-				Call_PushArray(hContract, sizeof(Contract));
+				Call_PushString(ClientContract.m_sUUID);
+				Call_PushArray(ClientContract, sizeof(Contract));
 				Call_Finish();
 
 				// Save now.
-				hContract.m_bNeedsDBSave = true;
-				SaveContractToDB(client, hContract);
+				ClientContract.m_bNeedsDBSave = true;
+				SaveContractToDB(client, ClientContract);
 			}
 			
-			m_hContracts[client] = hContract;
+			ClientContracts[client] = ClientContract;
 		}
 	}
 }
 
-bool PerformWeaponCheck(Contract hContract, int client)
+bool PerformWeaponCheck(Contract ClientContract, int client)
 {
 	// TODO: Weapon check
-	if (!StrEqual("", hContract.m_sWeaponItemDefRestriction)
-	|| !StrEqual("", hContract.m_sWeaponClassnameRestriction))
+	if (!StrEqual("", ClientContract.m_sWeaponItemDefRestriction)
+	|| !StrEqual("", ClientContract.m_sWeaponClassnameRestriction))
 	{
-		int hClientWeapon = GetEntPropEnt(client, Prop_Send, "m_hActiveWeapon");
-		if (IsValidEntity(hClientWeapon))
+		int ClientWeapon = GetEntPropEnt(client, Prop_Send, "m_hActiveWeapon");
+		if (IsValidEntity(ClientWeapon))
 		{
 			// Classname check:
-			if (!StrEqual("", hContract.m_sWeaponClassnameRestriction))
+			if (!StrEqual("", ClientContract.m_sWeaponClassnameRestriction))
 			{
-				char sClassname[64];
-				GetEntityClassname(hClientWeapon, sClassname, sizeof(sClassname));
-				if (!StrContains(sClassname, hContract.m_sWeaponClassnameRestriction)) return false;
+				char Classname[64];
+				GetEntityClassname(ClientWeapon, Classname, sizeof(Classname));
+				if (!StrContains(Classname, ClientContract.m_sWeaponClassnameRestriction)) return false;
 			}
 			// Item definition index check:
-			if (!StrEqual("", hContract.m_sWeaponItemDefRestriction))
+			if (!StrEqual("", ClientContract.m_sWeaponItemDefRestriction))
 			{
-				int iDefIndex = GetEntProp(hClientWeapon, Prop_Send, "m_iItemDefinitionIndex");
-				if (iDefIndex != StringToInt(hContract.m_sWeaponItemDefRestriction)) return false;
+				int DefIndex = GetEntProp(ClientWeapon, Prop_Send, "m_iItemDefinitionIndex");
+				if (DefIndex != StringToInt(ClientContract.m_sWeaponItemDefRestriction)) return false;
 			}
 		}
 	}
@@ -706,30 +722,29 @@ int ContractMenuHandler(Menu menu, MenuAction action, int param1, int param2)
 		{
 			int style;
 			
-			// Grab the item name.
-			char sKey[64];
-			char sDisplay[64];
-			menu.GetItem(param2, sKey, sizeof(sKey), style, sDisplay, sizeof(sDisplay));
+			char MenuKey[64]; // UUID
+			char MenuDisplay[64]; // Display name
+			menu.GetItem(param2, MenuKey, sizeof(MenuKey), style, MenuDisplay, sizeof(MenuDisplay));
 
 			// Special directory key:
-			if (StrEqual(sKey, "#directory"))
+			if (StrEqual(MenuKey, "#directory"))
 			{	
 				return ITEMDRAW_DISABLED;
 			}
 
 			// Are we a contract?
-			else if (sKey[0] == '{')
+			else if (MenuKey[0] == '{')
 			{
-				char sDirectory[MAX_DIRECTORY_SIZE];
-				GetContractDirectory(sKey, sDirectory);
+				char ContractDirectory[MAX_DIRECTORY_SIZE];
+				GetContractDirectory(MenuKey, ContractDirectory);
 				// Are we in the right directory?
-				if (!StrEqual(sDirectory, g_Menu_CurrentDirectory[param1])) 
+				if (!StrEqual(ContractDirectory, g_Menu_CurrentDirectory[param1])) 
 				{
 					return ITEMDRAW_IGNORE;
 				}
 
 				// Are we currently using this contract?
-				if (StrEqual(sKey, m_hContracts[param1].m_sUUID)) 
+				if (StrEqual(MenuKey, ClientContracts[param1].m_sUUID)) 
 				{
 					return ITEMDRAW_DISABLED;
 				}
@@ -738,8 +753,8 @@ int ContractMenuHandler(Menu menu, MenuAction action, int param1, int param2)
 			else
 			{
 				// Should we be listed inside this directory?
-				if (StrContains(sKey, g_Menu_CurrentDirectory[param1]) == -1 ||
-				StrEqual(sKey, g_Menu_CurrentDirectory[param1]))
+				if (StrContains(MenuKey, g_Menu_CurrentDirectory[param1]) == -1 ||
+				StrEqual(MenuKey, g_Menu_CurrentDirectory[param1]))
 				{
 					return ITEMDRAW_IGNORE;
 				}
@@ -748,9 +763,9 @@ int ContractMenuHandler(Menu menu, MenuAction action, int param1, int param2)
 				// up in this directory choice. If there's more than there should be, don't
 				// show this menu option.
 				int slashes = 0;
-				for (int i = 0; i < strlen(sDisplay); i++)
+				for (int i = 0; i < strlen(MenuDisplay); i++)
 				{
-					char check = sDisplay[i];
+					char check = MenuDisplay[i];
 					if (check == '/') slashes++;
 				}
 				if (g_Menu_DirectoryDeepness[param1] < slashes) return ITEMDRAW_IGNORE;
@@ -763,40 +778,40 @@ int ContractMenuHandler(Menu menu, MenuAction action, int param1, int param2)
 		// If the item is a directory, add ">>"
 		case MenuAction_DisplayItem:
 		{
-			char sDisplay[MAX_CONTRACT_NAME_SIZE + 16];
-			char sKey[64];
-			menu.GetItem(param2, sKey, sizeof(sKey), _, sDisplay, sizeof(sDisplay));
+			char MenuDisplay[MAX_CONTRACT_NAME_SIZE + 16];
+			char MenuKey[64];
+			menu.GetItem(param2, MenuKey, sizeof(MenuKey), _, MenuDisplay, sizeof(MenuDisplay));
 
 			// Special directory key:
-			if (StrEqual(sKey, "#directory"))
+			if (StrEqual(MenuKey, "#directory"))
 			{
-				Format(sDisplay, sizeof(sDisplay), "Current Directory: \"%s\"", g_Menu_CurrentDirectory[param1]);
-				return RedrawMenuItem(sDisplay);
+				Format(MenuDisplay, sizeof(MenuDisplay), "Current Directory: \"%s\"", g_Menu_CurrentDirectory[param1]);
+				return RedrawMenuItem(MenuDisplay);
 			}
 			// Is this a Contract?
-			else if (sKey[0] == '{')
+			else if (MenuKey[0] == '{')
 			{
 				// Are we doing this Contract?
-				Contract hContract;
-				GetClientContract(param1, hContract);
-				if (StrEqual(hContract.m_sUUID, sKey))
+				Contract ClientContract;
+				GetClientContract(param1, ClientContract);
+				if (StrEqual(ClientContract.m_sUUID, MenuKey))
 				{
-					Format(sDisplay, sizeof(sDisplay), "%s [SELECTED]", sDisplay);
-					return RedrawMenuItem(sDisplay);
+					Format(MenuDisplay, sizeof(MenuDisplay), "%s [SELECTED]", MenuDisplay);
+					return RedrawMenuItem(MenuDisplay);
 				}
 			}
 			// Is this a directory?
 			else
 			{
 				// Remove the current directory from this name.
-				int iPosition = StrContains(sDisplay, g_Menu_CurrentDirectory[param1]);
+				int iPosition = StrContains(MenuDisplay, g_Menu_CurrentDirectory[param1]);
 				if (iPosition != -1)
 				{
-					ReplaceString(sDisplay, sizeof(sDisplay), g_Menu_CurrentDirectory[param1], "");
+					ReplaceString(MenuDisplay, sizeof(MenuDisplay), g_Menu_CurrentDirectory[param1], "");
 				}
 
-				Format(sDisplay, sizeof(sDisplay), ">> %s", sDisplay);
-				return RedrawMenuItem(sDisplay);
+				Format(MenuDisplay, sizeof(MenuDisplay), ">> %s", MenuDisplay);
+				return RedrawMenuItem(MenuDisplay);
 			}
 			return 0;
 		}
@@ -804,23 +819,23 @@ int ContractMenuHandler(Menu menu, MenuAction action, int param1, int param2)
 		// Select a Contract if we're not doing it.
 		case MenuAction_Select:
 		{
-			char sKey[64];
-			menu.GetItem(param2, sKey, sizeof(sKey));
+			char MenuKey[64]; // UUID
+			menu.GetItem(param2, MenuKey, sizeof(MenuKey));
 
 			// Is this a Contract? Select it.
-			if (sKey[0] == '{')
+			if (MenuKey[0] == '{')
 			{
 				// Are we NOT currently using this contract?
-				if (!StrEqual(sKey, m_hContracts[param1].m_sUUID))
+				if (!StrEqual(MenuKey, ClientContracts[param1].m_sUUID))
 				{
-					SetClientContract(param1, sKey);	
+					SetClientContract(param1, MenuKey);	
 				}
 			}
 			// This is a directory instead.
 			// Clear our current menu and populate it with new items.
 			else
 			{
-				g_Menu_CurrentDirectory[param1] = sKey;
+				g_Menu_CurrentDirectory[param1] = MenuKey;
 				g_Menu_DirectoryDeepness[param1]++;
 				gContractMenu.Display(param1, MENU_TIME_FOREVER);
 			}
@@ -844,14 +859,14 @@ int ContractMenuHandler(Menu menu, MenuAction action, int param1, int param2)
 **/
 public Action OpenContrackerForClient(int client, int args)
 {	
-	Contract hContract;
-	GetClientContract(client, hContract);
+	Contract ClientContract;
+	GetClientContract(client, ClientContract);
 
 	// Are we doing a Contract?
-	if (hContract.IsContractInitalized())
+	if (ClientContract.IsContractInitalized())
 	{
 		// Display our objective display instead.
-		CreateObjectiveDisplay(client, hContract, false);
+		CreateObjectiveDisplay(client, ClientContract, false);
 	}
 	else
 	{
@@ -866,63 +881,63 @@ public Action OpenContrackerForClient(int client, int args)
  * as providing an option to open the global Contracker.
  * 
  * @param client 		Client index.
- * @param hContract    	Contract struct to grab Objective information from.
+ * @param ClientContract    	Contract struct to grab Objective information from.
  * @param unknown		If true, progress values will be replaced with "?"
 **/
-void CreateObjectiveDisplay(int client, Contract hContract, bool unknown)
+void CreateObjectiveDisplay(int client, Contract ClientContract, bool unknown)
 {
 	// Construct our panel for the client.
 	delete gContractObjeciveDisplay[client];
 	gContractObjeciveDisplay[client] = new Panel();
-	gContractObjeciveDisplay[client].SetTitle(hContract.m_sContractName);
+	gContractObjeciveDisplay[client].SetTitle(ClientContract.m_sContractName);
 
-	if (hContract.m_iContractType == Contract_ContractProgress)
+	if (ClientContract.m_iContractType == Contract_ContractProgress)
 	{
 		char line[256];
-		Format(line, sizeof(line), "Progress: [%d/%d]", hContract.m_iProgress, hContract.m_iMaxProgress);
+		Format(line, sizeof(line), "Progress: [%d/%d]", ClientContract.m_iProgress, ClientContract.m_iMaxProgress);
 		if (unknown)
 		{
-			Format(line, sizeof(line), "Progress: [?/%d]", hContract.m_iMaxProgress);
+			Format(line, sizeof(line), "Progress: [?/%d]", ClientContract.m_iMaxProgress);
 		}
 		gContractObjeciveDisplay[client].DrawText(line);
 	}
 
 	// TODO: Should we split this up into two pages?
-	for (int i = 0; i < hContract.m_hObjectives.Length; i++)
+	for (int i = 0; i < ClientContract.m_hObjectives.Length; i++)
 	{
-		ContractObjective hObjective;
-		hContract.GetObjective(i, hObjective);
+		ContractObjective Objective;
+		ClientContract.GetObjective(i, Objective);
 
 		char line[256];
-		if (hObjective.m_bInfinite)
+		if (Objective.m_bInfinite)
 		{
 			Format(line, sizeof(line), "Objective #%d: \"%s\" +%dCP", i+1,
-			hObjective.m_sDescription, hObjective.m_iAward);
+			Objective.m_sDescription, Objective.m_iAward);
 		}
 		else
 		{
-			switch (hContract.m_iContractType)
+			switch (ClientContract.m_iContractType)
 			{
 				case Contract_ObjectiveProgress:
 				{
 					Format(line, sizeof(line), "Objective #%d: \"%s\" [%d/%d] +%dCP", i+1,
-					hObjective.m_sDescription, hObjective.m_iProgress, hObjective.m_iMaxProgress, hObjective.m_iAward);
+					Objective.m_sDescription, Objective.m_iProgress, Objective.m_iMaxProgress, Objective.m_iAward);
 					
 					if (unknown)
 					{
 						Format(line, sizeof(line), "Objective #%d: \"%s\" [?/%d] +%dCP", i+1,
-						hObjective.m_sDescription, hObjective.m_iMaxProgress, hObjective.m_iAward);
+						Objective.m_sDescription, Objective.m_iMaxProgress, Objective.m_iAward);
 					}
 
 				}
 				case Contract_ContractProgress:
 				{
 					Format(line, sizeof(line), "Objective #%d: \"%s\" [%d/%d] +%dCP", i+1,
-					hObjective.m_sDescription, hObjective.m_iFires, hObjective.m_iMaxFires, hObjective.m_iAward);
+					Objective.m_sDescription, Objective.m_iFires, Objective.m_iMaxFires, Objective.m_iAward);
 					if (unknown)
 					{
 						Format(line, sizeof(line), "Objective #%d: \"%s\" [?/%d] +%dCP", i+1,
-						hObjective.m_sDescription, hObjective.m_iMaxFires, hObjective.m_iAward);				
+						Objective.m_sDescription, Objective.m_iMaxFires, Objective.m_iAward);				
 					}
 				}
 			}
@@ -977,8 +992,8 @@ public Action DebugSetContract(int client, int args)
 **/
 public Action DebugContractInfo(int client, int args)
 {	
-	Contract hContract;
-	GetClientContract(client, hContract);
+	Contract ClientContract;
+	GetClientContract(client, ClientContract);
 
 	if (args == 0)
 	{
@@ -994,8 +1009,8 @@ public Action DebugContractInfo(int client, int args)
 		... "Is Contract Complete: %d\n"
 		... "[INFO] To debug an objective, type sm_debugcontract [objective_index]"
 		... "---------------------------------------------",
-		hContract.IsContractInitalized(), hContract.m_sContractName, hContract.m_sUUID, hContract.m_sDirectoryPath, hContract.m_iContractType,
-		hContract.m_iProgress, hContract.m_iMaxProgress, hContract.m_hObjectives.Length, hContract.IsContractComplete());
+		ClientContract.IsContractInitalized(), ClientContract.m_sContractName, ClientContract.m_sUUID, ClientContract.m_sDirectoryPath, ClientContract.m_iContractType,
+		ClientContract.m_iProgress, ClientContract.m_iMaxProgress, ClientContract.m_hObjectives.Length, ClientContract.IsContractComplete());
 	}
 	if (args == 1)
 	{
@@ -1004,8 +1019,8 @@ public Action DebugContractInfo(int client, int args)
 		int iID = StringToInt(sArg);
 		PrintToServer("%d", iID);
 
-		ContractObjective hContractObjective;
-		hContract.GetObjective(iID, hContractObjective);
+		ContractObjective ClientContractObjective;
+		ClientContract.GetObjective(iID, ClientContractObjective);
 
 		PrintToConsole(client,
 			"---------------------------------------------\n"
@@ -1022,10 +1037,10 @@ public Action DebugContractInfo(int client, int args)
 		... "Is Objective Complete %d\n"
 		... "[INFO] To debug an objective, type sm_debugcontract [objective_index]"
 		... "---------------------------------------------",
-		hContract.m_sContractName, hContract.m_sUUID, hContract.m_iContractType, hContractObjective.m_bInitalized,
-		hContractObjective.m_iInternalID, hContractObjective.m_bInfinite, hContractObjective.m_iAward,
-		hContractObjective.m_iProgress, hContractObjective.m_iMaxProgress, hContractObjective.m_iFires, hContractObjective.m_iMaxFires,
-		hContractObjective.m_hEvents.Length, hContractObjective.IsObjectiveComplete());
+		ClientContract.m_sContractName, ClientContract.m_sUUID, ClientContract.m_iContractType, ClientContractObjective.m_bInitalized,
+		ClientContractObjective.m_iInternalID, ClientContractObjective.m_bInfinite, ClientContractObjective.m_iAward,
+		ClientContractObjective.m_iProgress, ClientContractObjective.m_iMaxProgress, ClientContractObjective.m_iFires, ClientContractObjective.m_iMaxFires,
+		ClientContractObjective.m_hEvents.Length, ClientContractObjective.IsObjectiveComplete());
 	}
 	
 	return Plugin_Handled;
