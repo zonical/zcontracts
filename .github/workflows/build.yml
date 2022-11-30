@@ -1,0 +1,34 @@
+name: ZContracts Test Build
+#based on sappho's soap compiler
+
+on:
+  push:
+      branches:
+      - master
+    #tags:
+    #- 'v*'
+
+jobs:
+  run:
+    name: Compile ZContracts
+    runs-on: ubuntu-22.04
+
+    # skip build on '[ci skip]'
+    if: "!contains(github.event.head_commit.message, '[ci skip]')"
+
+    steps:
+    - uses: actions/checkout@v1
+      with:
+        submodules: true
+
+    - name: Setup SourcePawn Compiler
+      uses: rumblefrog/setup-sp@master
+      with:
+        version: "1.11.x"
+
+    - name: Compile Plugins
+      run: |
+        cd ./addons/sourcemod/scripting
+        spcomp -i ./include/ zcontracts_main.sp -O2 -v2
+        spcomp -i ./include/ zcontracts_events.sp -O2 -v2
+        spcomp -i ./include/ zcontracts_tf2events.sp -O2 -v2
