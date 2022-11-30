@@ -80,7 +80,6 @@ bool PopulateProgressFromDB(int client, bool display_to_client)
     g_DB.Format(query, sizeof(query), 
     "SELECT * FROM objective_progress WHERE steamid64 = '%s' AND contract_uuid = '%s' AND (objective_id BETWEEN 0 AND %d) ORDER BY objective_id ASC;", 
     steamid64, ClientContract.m_sUUID, ClientContract.m_hObjectives.Length);
-    LogMessage(query);
     g_DB.Query(CB_ObjectiveProgress, query, client);
 
     // Create our display.
