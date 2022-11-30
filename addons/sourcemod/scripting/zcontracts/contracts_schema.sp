@@ -81,7 +81,7 @@ public void CreateContractObjectiveEvent(KeyValues hEventConf, ContractObjective
 {
 	hEvent.Initalize();
 
-	hEvent.m_bUseForAward = view_as<bool>(hEventConf.GetNum("use_for_reward"));
+	//hEvent.m_bUseForAward = view_as<bool>(hEventConf.GetNum("use_for_reward"));
 	
 	hEventConf.GetSectionName(hEvent.m_sEventName, sizeof(hEvent.m_sEventName)); 	// Our event trigger is the section name.
 	hEventConf.GetString("type", hEvent.m_sEventType, sizeof(hEvent.m_sEventType), "increment");
