@@ -40,6 +40,7 @@ public Action OnPlayerDeath(Event event, const char[] name, bool dontBroadcast)
 
 	char weapon[128];
 	event.GetString("weapon", weapon, sizeof(weapon));
+	PrintToChat(attacker, weapon);
 	
 	// Make sure we're not the same.
 	if (IsClientValid(attacker) && IsClientValid(victim) && attacker != victim)
@@ -59,7 +60,7 @@ public Action OnPlayerDeath(Event event, const char[] name, bool dontBroadcast)
 			case TF_CUSTOM_BACKSTAB: CallContrackerEvent(attacker, "CONTRACTS_TF2_PLAYER_KILL_BACKSTAB", 1, true);
 		}
 
-		if (StrContains(weapon, "obj_") != -1)
+		if (StrContains(weapon, "obj_minisentry") != -1 || StrContains(weapon, "obj_sentrygun") != -1)
 		{
 			CallContrackerEvent(attacker, "CONTRACTS_TF2_PLAYER_KILL_SENTRY", 1, true);
 		}
@@ -120,7 +121,7 @@ public Action OnWinPanel(Event event, const char[] name, bool dontBroadcast)
 public Action OnObjectBuilt(Event event, const char[] name, bool dontBroadcast)
 {
 	int client = GetClientOfUserId(event.GetInt("userid"));
-	if (IsClientValid(client)) return Plugin_Continue;
+	if (!IsClientValid(client)) return Plugin_Continue;
 
 	TFObjectType building = view_as<TFObjectType>(event.GetInt("object"));
 	switch (building)
@@ -137,7 +138,7 @@ public Action OnObjectBuilt(Event event, const char[] name, bool dontBroadcast)
 public Action OnObjectUpgraded(Event event, const char[] name, bool dontBroadcast)
 {
 	int client = GetClientOfUserId(event.GetInt("userid"));
-	if (IsClientValid(client)) return Plugin_Continue;
+	if (!IsClientValid(client)) return Plugin_Continue;
 
 	TFObjectType building = view_as<TFObjectType>(event.GetInt("object"));
 	switch (building)
@@ -153,7 +154,7 @@ public Action OnObjectUpgraded(Event event, const char[] name, bool dontBroadcas
 public Action OnObjectDestroyed(Event event, const char[] name, bool dontBroadcast)
 {
 	int attacker = GetClientOfUserId(event.GetInt("attacker"));
-	if (IsClientValid(attacker)) return Plugin_Continue;
+	if (!IsClientValid(attacker)) return Plugin_Continue;
 
 	TFObjectType building = view_as<TFObjectType>(event.GetInt("objecttype"));
 	bool was_building = event.GetBool("was_building");

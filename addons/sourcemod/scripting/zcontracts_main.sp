@@ -252,13 +252,14 @@ public any Native_CallContrackerEvent(Handle plugin, int numParams)
 		{
 			ContractObjectiveEvent ObjEvent;
 			ClientContractObjective.m_hEvents.GetArray(j, ObjEvent, sizeof(ContractObjectiveEvent));
+
 			if (StrEqual(ObjEvent.m_sEventName, event))
 			{
 				EventCheckPassed = true;
 				break;
 			}
 		}
-		if (!EventCheckPassed) return false;
+		if (!EventCheckPassed) continue;
 
 		// Add to the queue for this client.
 		if (can_combine && g_ObjectiveUpdateQueue.Length > 0)

@@ -7,7 +7,7 @@
 #define MAX_UUID_SIZE 64
 #define MAX_CONTRACT_NAME_SIZE 64
 #define MAX_OBJECTIVE_DESC_SIZE 128
-#define MAX_EVENT_SIZE 128
+#define MAX_EVENT_SIZE 256
 #define MAX_DIRECTORY_SIZE 128
 
 stock int Int_Min(int a, int b) { return a < b ? a : b; }
