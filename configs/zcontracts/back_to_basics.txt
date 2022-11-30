@@ -2,7 +2,7 @@
 {
 	"{800040bb-fbbb-4f2d-bc0b-f1d03ce1a1cd}"
 	{
-		"name"		"Test: Kills"
+		"name"		"Back to Basics"
 		"directory"	"root"
 		"type"		"2"
 		"maximum_cp"	"50"

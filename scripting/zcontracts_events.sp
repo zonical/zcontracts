@@ -23,10 +23,6 @@ public void OnPluginStart()
 	HookEvent("player_spawn", OnPlayerSpawn);
 
 	HookEvent("teamplay_round_win", OnRoundWin);
-
-	// Scoop damage related events and merge them into one event that gets fired
-	// once a second.
-	CreateTimer(3.0, Timer_ScoopDamage, _, TIMER_REPEAT);
 	
 	for (int i = 0; i < MAXPLAYERS + 1; i++)
 	{
@@ -50,7 +46,7 @@ public Action OnPlayerDeath(Event event, const char[] name, bool dontBroadcast)
 		CallContrackerEvent(victim, "CONTRACTS_PLAYER_DEATH", 1);
 		if (IsClientValid(assister) && assister != attacker)
 		{
-			CallContrackerEvent(assister, "CONTRACTS_PLAYER_ASSIST_KILL", 1);
+			CallContrackerEvent(assister, "CONTRACTS_PLAYER_ASSIST_KILL", 1, true);
 		}
 	}
 	return Plugin_Continue;
@@ -69,33 +65,11 @@ public Action OnPlayerHurt(Event event, const char[] name, bool dontBroadcast)
 		// Make sure we're not the same.
 		if (attacker != victim)
 		{
-			g_PlayerDamageDealt[attacker] += damage;
-			g_PlayerDamageTaken[victim] += damage;
+			CallContrackerEvent(attacker, "CONTRACTS_PLAYER_DEAL_DAMAGE", damage, true);
+			CallContrackerEvent(victim, "CONTRACTS_PLAYER_TAKE_DAMAGE", damage, true);
 		}
 	}
 
-	return Plugin_Continue;
-}
-
-public Action Timer_ScoopDamage(Handle hTimer)
-{
-	for (int i = 0; i < MAXPLAYERS + 1; i++)
-	{
-		if (!IsClientValid(i) || IsFakeClient(i)) continue;
-		
-		// Award damage dealt event.
-		if (g_PlayerDamageDealt[i] != 0)
-		{
-			CallContrackerEvent(i, "CONTRACTS_PLAYER_DEAL_DAMAGE", g_PlayerDamageDealt[i]);
-			g_PlayerDamageDealt[i] = 0;
-		}
-		// Award damage taken event.
-		if (g_PlayerDamageTaken[i] != 0)
-		{
-			CallContrackerEvent(i, "CONTRACTS_PLAYER_TAKE_DAMAGE", g_PlayerDamageTaken[i]);
-			g_PlayerDamageTaken[i] = 0;
-		}
-	}
 	return Plugin_Continue;
 }
 

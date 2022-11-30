@@ -2,8 +2,8 @@
 {
 	"{314e413e-4390-44a5-b84d-e6f4070ea421}"
 	{
-		"name"		"Test: TF2 Damage"
-		"directory"	"root/tf2"
+		"name"		"A Whole Bucket o' Damage"
+		"directory"	"root"
 		"type"		"1"
 
 		// What classes can do this contract?
@@ -37,36 +37,10 @@
 						
 						// How many times does this event need to trigger to add points?
 						"threshold"	"1"	
-
-						// If this is set to one, the value passed alongside this event
-						// will be used as the "award" instead of the default value.
-						"use_for_reward"	"1"
 					}
 				}
 			}
 			"2"
-			{
-				"description"		"Deal 500 mini-crit damage."
-				"maximum_cp"		"500"
-			
-				// The events that this objective looks out for.
-				"events"		
-				{
-					"CONTRACTS_TF2_PLAYER_DEAL_MINICRIT"
-					{
-						// What this event should do.
-						"type"		"increment"
-						
-						// How many times does this event need to trigger to add points?
-						"threshold"	"1"
-
-						// If this is set to one, the value passed alongside this event
-						// will be used as the "award" instead of the default value.
-						"use_for_reward"	"1"
-					}
-				}
-			}
-			"3"
 			{
 				"description"		"Deal 500 crit damage."
 				"maximum_cp"		"500"
@@ -81,10 +55,6 @@
 						
 						// How many times does this event need to trigger to add points?
 						"threshold"	"1"
-
-						// If this is set to one, the value passed alongside this event
-						// will be used as the "award" instead of the default value.
-						"use_for_reward"	"1"
 					}
 				}
 			}

@@ -1,6 +1,7 @@
 #include <sourcemod>
 #include <sdkhooks>
 #include <zcontracts/zcontracts>
+#include <tf2>
 #include <tf2_stocks>
 
 public Plugin myinfo =
@@ -18,9 +19,15 @@ public void OnPluginStart()
 	// Hook player events.
 	HookEvent("player_death", OnPlayerDeath);
 	HookEvent("player_hurt", OnPlayerHurt);
+	HookEvent("player_healed", OnPlayerHealed);
+
+	HookEvent("player_builtobject", OnObjectBuilt);
+	HookEvent("player_upgradedobject", OnObjectUpgraded);
+	HookEvent("object_destroyed", OnObjectDestroyed);
 
 	HookEvent("payload_pushed", OnPayloadPushed);
 	HookEvent("teamplay_point_captured", OnPointCaptured);
+	HookEvent("teamplay_win_panel", OnWinPanel);
 }
 
 // Events relating to the attacker killing a victim.
@@ -31,14 +38,14 @@ public Action OnPlayerDeath(Event event, const char[] name, bool dontBroadcast)
 	int victim = GetClientOfUserId(event.GetInt("userid"));
 	int death_flags = event.GetInt("death_flags");
 
-	CallContrackerEvent(attacker, "CONTRACTS_TF2_PLAYER_KILL", 1, true);
-	CallContrackerEvent(victim, "CONTRACTS_TF2_PLAYER_DEATH", 1);
+	char weapon[128];
+	event.GetString("weapon", weapon, sizeof(weapon));
 	
 	// Make sure we're not the same.
 	if (IsClientValid(attacker) && IsClientValid(victim) && attacker != victim)
 	{
-		if (death_flags & TF_DEATHFLAG_KILLERDOMINATION) CallContrackerEvent(attacker, "CONTRACTS_TF2_PLAYER_KILL_DOMINATION", 1, true);
-		if (death_flags & TF_DEATHFLAG_KILLERREVENGE) CallContrackerEvent(attacker, "CONTRACTS_TF2_PLAYER_KILL_REVENGE", 1, true);
+		if (death_flags & TF_DEATHFLAG_KILLERDOMINATION) CallContrackerEvent(attacker, "CONTRACTS_TF2_PLAYER_DOMINATION", 1, true);
+		if (death_flags & TF_DEATHFLAG_KILLERREVENGE) CallContrackerEvent(attacker, "CONTRACTS_TF2_PLAYER_REVENGE", 1, true);
 
 		switch (event.GetInt("crit_type"))
 		{
@@ -48,50 +55,15 @@ public Action OnPlayerDeath(Event event, const char[] name, bool dontBroadcast)
 
 		switch (event.GetInt("customkill"))
 		{
-			case TF_CUSTOM_HEADSHOT: CallContrackerEvent(attacker, "CONTRACTS_TF2_PLAYER_KILL_HEADSHOT", 1);
-			case TF_CUSTOM_BACKSTAB: CallContrackerEvent(attacker, "CONTRACTS_TF2_PLAYER_KILL_BACKSTAB", 1);
-
-			case TF_CUSTOM_TAUNT_HADOUKEN: CallContrackerEvent(attacker, "CONTRACTS_TF2_PLAYER_KILL_HADOUKEN", 1);
-			case TF_CUSTOM_TAUNT_HIGH_NOON: CallContrackerEvent(attacker, "CONTRACTS_TF2_PLAYER_KILL_HIGHNOON", 1);
-			case TF_CUSTOM_TAUNT_GRAND_SLAM: CallContrackerEvent(attacker, "CONTRACTS_TF2_PLAYER_KILL_GRANDSLAM", 1);
-			case TF_CUSTOM_TAUNT_FENCING: CallContrackerEvent(attacker, "CONTRACTS_TF2_PLAYER_KILL_FENCING", 1);
-			case TF_CUSTOM_TAUNT_ARROW_STAB: CallContrackerEvent(attacker, "CONTRACTS_TF2_PLAYER_KILL_ARROWSTAB", 1);
-			case TF_CUSTOM_TAUNT_GRENADE: CallContrackerEvent(attacker, "CONTRACTS_TF2_PLAYER_KILL_GRENADE", 1);
-			case TF_CUSTOM_TAUNT_BARBARIAN_SWING: CallContrackerEvent(attacker, "CONTRACTS_TF2_PLAYER_KILL_BARBSWING", 1);
-			case TF_CUSTOM_TAUNT_UBERSLICE: CallContrackerEvent(attacker, "CONTRACTS_TF2_PLAYER_KILL_UBERSLICE", 1);
-			case TF_CUSTOM_TAUNT_ENGINEER_SMASH: CallContrackerEvent(attacker, "CONTRACTS_TF2_PLAYER_KILL_ENGIESMASH", 1);
-			case TF_CUSTOM_TAUNT_ENGINEER_ARM: CallContrackerEvent(attacker, "CONTRACTS_TF2_PLAYER_KILL_ENGIEARM", 1);
-			case TF_CUSTOM_TAUNT_ARMAGEDDON: CallContrackerEvent(attacker, "CONTRACTS_TF2_PLAYER_KILL_ARMAGEDDON", 1);
-			case TF_CUSTOM_TAUNT_ALLCLASS_GUITAR_RIFF: CallContrackerEvent(attacker, "CONTRACTS_TF2_PLAYER_KILL_GUITAR", 1);
-
-			case TF_CUSTOM_TELEFRAG: CallContrackerEvent(attacker, "CONTRACTS_TF2_PLAYER_KILL_TELEFRAG", 1);
-			case TF_CUSTOM_PUMPKIN_BOMB: CallContrackerEvent(attacker, "CONTRACTS_TF2_PLAYER_KILL_PUMPKINBOMB", 1);
-			case TF_CUSTOM_DECAPITATION: CallContrackerEvent(attacker, "CONTRACTS_TF2_PLAYER_KILL_DECAPITATION", 1);
-			case TF_CUSTOM_CHARGE_IMPACT: CallContrackerEvent(attacker, "CONTRACTS_TF2_PLAYER_KILL_CHARGEIMPACT", 1);
-			case TF_CUSTOM_SHOTGUN_REVENGE_CRIT: CallContrackerEvent(attacker, "CONTRACTS_TF2_PLAYER_KILL_REVENGECRIT", 1);
-			case TF_CUSTOM_FISH_KILL: CallContrackerEvent(attacker, "CONTRACTS_TF2_PLAYER_KILL_FISHKILL", 1);
-			case TF_CUSTOM_BOOTS_STOMP: CallContrackerEvent(attacker, "CONTRACTS_TF2_PLAYER_KILL_BOOTS", 1);
-			case TF_CUSTOM_PLASMA: CallContrackerEvent(attacker, "CONTRACTS_TF2_PLAYER_KILL_PLASMA", 1);
-			case TF_CUSTOM_PLASMA_CHARGED: CallContrackerEvent(attacker, "CONTRACTS_TF2_PLAYER_KILL_PLASMA", 1);
-			case TF_CUSTOM_PLASMA_GIB: CallContrackerEvent(attacker, "CONTRACTS_TF2_PLAYER_KILL_PLASMA", 1);
-			
-			case TF_CUSTOM_SPELL_TELEPORT: CallContrackerEvent(attacker, "CONTRACTS_TF2_PLAYER_SPELL_TELEPORT", 1);
-			case TF_CUSTOM_SPELL_SKELETON: CallContrackerEvent(attacker, "CONTRACTS_TF2_PLAYER_SPELL_SKELETON", 1);
-			case TF_CUSTOM_SPELL_MIRV: CallContrackerEvent(attacker, "CONTRACTS_TF2_PLAYER_SPELL_MIRV", 1);
-			case TF_CUSTOM_SPELL_METEOR: CallContrackerEvent(attacker, "CONTRACTS_TF2_PLAYER_SPELL_METEOR", 1);
-			case TF_CUSTOM_SPELL_LIGHTNING: CallContrackerEvent(attacker, "CONTRACTS_TF2_PLAYER_SPELL_LIGHTNING", 1);
-			case TF_CUSTOM_SPELL_FIREBALL: CallContrackerEvent(attacker, "CONTRACTS_TF2_PLAYER_SPELL_FIREBALL", 1);
-			case TF_CUSTOM_SPELL_MONOCULUS: CallContrackerEvent(attacker, "CONTRACTS_TF2_PLAYER_SPELL_MONOCULUS", 1);
-			case TF_CUSTOM_SPELL_BATS: CallContrackerEvent(attacker, "CONTRACTS_TF2_PLAYER_SPELL_BATS", 1);
-			case TF_CUSTOM_SPELL_TINY: CallContrackerEvent(attacker, "CONTRACTS_TF2_PLAYER_SPELL_TINY", 1);
-			case TF_CUSTOM_KART: CallContrackerEvent(attacker, "CONTRACTS_TF2_PLAYER_KILL_KART", 1);
-			case TF_CUSTOM_GIANT_HAMMER: CallContrackerEvent(attacker, "CONTRACTS_TF2_PLAYER_KILL_HAMMER", 1);
-			case TF_CUSTOM_RUNE_REFLECT: CallContrackerEvent(attacker, "CONTRACTS_TF2_PLAYER_KILL_RUNE", 1);
-			case TF_CUSTOM_SLAP_KILL: CallContrackerEvent(attacker, "CONTRACTS_TF2_PLAYER_KILL_SLAP", 1);
-
-			case TF_CUSTOM_TAUNTATK_GASBLAST: CallContrackerEvent(attacker, "CONTRACTS_TF2_PLAYER_KILL_GASBLAST", 1);
+			case TF_CUSTOM_HEADSHOT: CallContrackerEvent(attacker, "CONTRACTS_TF2_PLAYER_KILL_HEADSHOT", 1, true);
+			case TF_CUSTOM_BACKSTAB: CallContrackerEvent(attacker, "CONTRACTS_TF2_PLAYER_KILL_BACKSTAB", 1, true);
 		}
-		
+
+		if (StrContains(weapon, "obj_") != -1)
+		{
+			CallContrackerEvent(attacker, "CONTRACTS_TF2_PLAYER_KILL_SENTRY", 1, true);
+		}
+
 	}
 	return Plugin_Continue;
 }
@@ -111,13 +83,91 @@ public Action OnPlayerHurt(Event event, const char[] name, bool dontBroadcast)
 
 		if (event.GetBool("crit")) CallContrackerEvent(attacker, "CONTRACTS_TF2_PLAYER_DEAL_FULLCRIT", damage, true);
 		if (event.GetBool("minicrit")) CallContrackerEvent(attacker, "CONTRACTS_TF2_PLAYER_DEAL_MINICRIT", damage, true);
-
-
 	}
 
 	return Plugin_Continue;
 }
 
+public Action OnPlayerHealed(Event event, const char[] name, bool dontBroadcast)
+{
+	int patient = GetClientOfUserId(event.GetInt("patient"));
+	int healer = GetClientOfUserId(event.GetInt("healer"));
+	int amount = event.GetInt("amount");
+
+	if (!IsClientValid(patient) || !IsClientValid(healer)) return Plugin_Continue;
+	if (patient == healer) return Plugin_Continue;
+
+	CallContrackerEvent(healer, "CONTRACTS_TF2_PLAYER_HEAL", amount, true);
+
+	return Plugin_Continue;
+}
+
+// Award MVP's.
+public Action OnWinPanel(Event event, const char[] name, bool dontBroadcast)
+{
+	int mvp1 = GetClientOfUserId(event.GetInt("player_1"));
+	int mvp2 = GetClientOfUserId(event.GetInt("player_2"));
+	int mvp3 = GetClientOfUserId(event.GetInt("player_3"));
+	
+	if (IsClientValid(mvp1)) CallContrackerEvent(mvp1, "CONTRACTS_TF2_PLAYER_MVP", 1);
+	if (IsClientValid(mvp2)) CallContrackerEvent(mvp2, "CONTRACTS_TF2_PLAYER_MVP", 1);
+	if (IsClientValid(mvp3)) CallContrackerEvent(mvp3, "CONTRACTS_TF2_PLAYER_MVP", 1);
+
+	return Plugin_Continue;
+}
+
+
+public Action OnObjectBuilt(Event event, const char[] name, bool dontBroadcast)
+{
+	int client = GetClientOfUserId(event.GetInt("userid"));
+	if (IsClientValid(client)) return Plugin_Continue;
+
+	TFObjectType building = view_as<TFObjectType>(event.GetInt("object"));
+	switch (building)
+	{
+		case TFObject_Sentry: CallContrackerEvent(client, "CONTRACTS_TF2_BUILD_SENTRY", 1);
+		case TFObject_Dispenser: CallContrackerEvent(client, "CONTRACTS_TF2_BUILD_DISPENSER", 1);
+		case TFObject_Teleporter: CallContrackerEvent(client, "CONTRACTS_TF2_BUILD_TELEPORTER", 1);
+	}
+
+	return Plugin_Continue;
+}
+
+
+public Action OnObjectUpgraded(Event event, const char[] name, bool dontBroadcast)
+{
+	int client = GetClientOfUserId(event.GetInt("userid"));
+	if (IsClientValid(client)) return Plugin_Continue;
+
+	TFObjectType building = view_as<TFObjectType>(event.GetInt("object"));
+	switch (building)
+	{
+		case TFObject_Sentry: CallContrackerEvent(client, "CONTRACTS_TF2_UPGRADE_SENTRY", 1);
+		case TFObject_Dispenser: CallContrackerEvent(client, "CONTRACTS_TF2_UPGRADE_DISPENSER", 1);
+		case TFObject_Teleporter: CallContrackerEvent(client, "CONTRACTS_TF2_UPGRADE_TELEPORTER", 1);
+	}
+
+	return Plugin_Continue;
+}
+
+public Action OnObjectDestroyed(Event event, const char[] name, bool dontBroadcast)
+{
+	int attacker = GetClientOfUserId(event.GetInt("attacker"));
+	if (IsClientValid(attacker)) return Plugin_Continue;
+
+	TFObjectType building = view_as<TFObjectType>(event.GetInt("objecttype"));
+	bool was_building = event.GetBool("was_building");
+
+	if (was_building) CallContrackerEvent(attacker, "CONTRACTS_TF2_DESTROY_WHILE_BUILDING", 1);
+	switch (building)
+	{
+		case TFObject_Sentry: CallContrackerEvent(attacker, "CONTRACTS_TF2_DESTROY_SENTRY", 1);
+		case TFObject_Dispenser: CallContrackerEvent(attacker, "CONTRACTS_TF2_DESTROY_DISPENSER", 1);
+		case TFObject_Teleporter: CallContrackerEvent(attacker, "CONTRACTS_TF2_DESTROY_TELEPORTER", 1);
+	}
+
+	return Plugin_Continue;
+}
 
 public Action OnPayloadPushed(Event event, const char[] name, bool dontBroadcast)
 {

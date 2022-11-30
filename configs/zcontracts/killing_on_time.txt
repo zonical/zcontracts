@@ -2,7 +2,7 @@
 {
 	"{1d62e3c1-be40-4725-89d0-34cfbd286282}"
 	{
-		"name"		"Test Contract - Thresholds (Timers)"
+		"name"		"Killing on Time"
 		"type"		"1"
 		
 		// What classes can do this contract?
@@ -23,7 +23,7 @@
 			"1"
 			{
 				"description"		"Kill three players within ten seconds."
-				"maximum_uses"	"1"
+				"maximum_cp"	"3"
 				"award"		"1"
 				
 				// The events that this objective looks out for.

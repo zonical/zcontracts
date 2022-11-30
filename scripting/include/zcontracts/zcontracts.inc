@@ -44,10 +44,6 @@ enum struct ContractObjectiveEvent
 	int m_iThreshold;
 	int m_iCurrentThreshold;
 
-	// If this is set to true, the value passed alongside this event
-	// will be used as the "award" instead of the default value of the objective.
-	bool m_bUseForAward;
-
 	char m_sEventType[16];
 	
 	// Timer logic.

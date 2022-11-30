@@ -522,8 +522,7 @@ void ProcessLogicForContractObjective(Contract ClientContract, int objective_id,
 					{
 						case Contract_ObjectiveProgress:
 						{
-							if (ObjEvent.m_bUseForAward) Objective.m_iProgress += value;
-							else Objective.m_iProgress += Objective.m_iAward * value; // TODO: CHECK THIS!
+							Objective.m_iProgress += Objective.m_iAward * value;
 							
 							if (!Objective.m_bInfinite)
 							{
