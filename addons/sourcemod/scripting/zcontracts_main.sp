@@ -88,7 +88,6 @@ public void OnPluginStart()
 	g_DebugProcessing = CreateConVar("zc_debug_processing", "0", "Logs every time an event is processed.");
 	g_DebugQuery = CreateConVar("zc_debug_queries", "0", "Logs every time a query is sent to the database.");
 	g_DebugProgress = CreateConVar("zc_debug_progress", "0", "Logs every time player progress is incremented internally.");
-	g_DebugSaveAttempts = CreateConVar("zc_debug_saveattempts", "0", "Logs every time an attempt is made to save progress to the database.");
 	g_DebugSessions = CreateConVar("zc_debug_sessions", "0", "Logs every time a session is restored.");
 #endif
 
@@ -316,23 +315,6 @@ public any Native_SetClientContract(Handle plugin, int numParams)
 	GetClientContract(client, OldClientContract);
 	if (OldClientContract.IsContractInitalized())
 	{
-		switch (OldClientContract.m_iContractType)
-		{
-			case Contract_ObjectiveProgress:
-			{
-				for (int i = 0; i < OldClientContract.m_hObjectives.Length; i++)
-				{
-					ContractObjective hObj;
-					OldClientContract.GetObjective(i, hObj);
-					hObj.m_bNeedsDBSave = true;
-					OldClientContract.SaveObjective(i, hObj);
-				}
-			}
-			case Contract_ContractProgress:
-			{
-				OldClientContract.m_bNeedsDBSave = true;
-			}
-		}
 		SaveContractToDB(client, OldClientContract);
 		OldClientContracts[client] = OldClientContract;
 	}
@@ -353,27 +335,8 @@ public any Native_SetClientContract(Handle plugin, int numParams)
 	PopulateProgressFromDB(client, true);
 
 	bool dont_save = GetNativeCell(3);
-
 	// Set this Contract as our current session.
 	if (!dont_save) SaveContractSession(client);
-	
-	// Print a specific type of message depending on what type of Contract we're doing.
-	char ChatMessage[128] = "{green}[ZC]{default} You have selected the contract: {lightgreen}\"%s\"{default}. To complete it, ";
-	switch (ClientContract.m_iContractType)
-	{
-		case Contract_ObjectiveProgress:
-		{
-			char AppendText[] = "finish all the objectives.";
-			StrCat(ChatMessage, sizeof(ChatMessage), AppendText);
-		}
-		case Contract_ContractProgress:
-		{
-			char AppendText[] = "get %dCP.";
-			Format(AppendText, sizeof(AppendText), AppendText, ClientContracts[client].m_iMaxProgress);
-			StrCat(ChatMessage, sizeof(ChatMessage), AppendText);
-		}
-	}
-	CPrintToChat(client, ChatMessage, ClientContract.m_sContractName);
 	
 	LogMessage("[ZContracts] %N CONTRACT: Set Contract to: %s [ID: %s]", client, ClientContract.m_sContractName, ClientContract.m_sUUID);
 
@@ -550,8 +513,6 @@ void ProcessLogicForContractObjective(Contract ClientContract, int objective_id,
 			Objective.m_hEvents.SetArray(i, ObjEvent);
 			ClientContract.SaveObjective(objective_id, Objective);
 
-			
-			
 			ClientContracts[client] = ClientContract;
 		}
 	}
@@ -568,10 +529,6 @@ void ProcessLogicForContractObjective(Contract ClientContract, int objective_id,
 		Call_PushString(ClientContract.m_sUUID);
 		Call_PushArray(Objective, sizeof(ContractObjective));
 		Call_Finish();
-
-		// Save now.
-		Objective.m_bNeedsDBSave = true;
-		SaveObjectiveProgressToDB(client, ClientContract.m_sUUID, Objective);
 	}
 
 	// Is our contract now complete?
@@ -616,24 +573,26 @@ void IncrementContractProgress(int client, int value, Contract ClientContract, C
 		if (ClientContractObjective.m_bNoMultiplication)
 		{
 			MessageText = "\"%s\" (%s [%d/%dCP]) +%dCP";
-			Format(MessageText, sizeof(MessageText), ClientContractObjective.m_sDescription,
+			PrintHintText(client, MessageText, ClientContractObjective.m_sDescription,
 			ClientContract.m_sContractName, ClientContract.m_iProgress,
 			ClientContract.m_iMaxProgress, ClientContractObjective.m_iAward);
 		}
 		else
 		{
 			MessageText = "\"%s\" %dx (%s [%d/%dCP]) +%dCP";
-			Format(MessageText, sizeof(MessageText), ClientContractObjective.m_sDescription,
+			PrintHintText(client, MessageText, ClientContractObjective.m_sDescription,
 			value, ClientContract.m_sContractName, ClientContract.m_iProgress,
 			ClientContract.m_iMaxProgress, ClientContractObjective.m_iAward * value);
 		}
-		PrintHintText(client, MessageText);
 	}
 	if (g_DebugProgress.BoolValue)
 	{
 		LogMessage("[ZContracts] %N PROGRESS: Increment event triggered [ID: %s, CP: %d]",
 		client, ClientContract.m_sUUID, ClientContract.m_iProgress);
 	}
+
+	// Save progress to DB.
+	ClientContract.m_bNeedsDBSave = true;
 }
 
 void IncrementObjectiveProgress(int client, int value, Contract ClientContract, ContractObjective ClientContractObjective)
@@ -653,26 +612,27 @@ void IncrementObjectiveProgress(int client, int value, Contract ClientContract, 
 		char MessageText[256];
 		if (ClientContractObjective.m_bNoMultiplication)
 		{
-			MessageText = "\"%s\" (%s [%d/%dCP]) +%dCP";
-			Format(MessageText, sizeof(MessageText), ClientContractObjective.m_sDescription,
+			MessageText = "\"%s\" (%s [%d/%d]) +%d";
+			PrintHintText(client, MessageText, ClientContractObjective.m_sDescription,
 			ClientContract.m_sContractName, ClientContractObjective.m_iProgress,
 			ClientContractObjective.m_iMaxProgress, ClientContractObjective.m_iAward);
 		}
 		else
 		{
-			MessageText = "\"%s\" %dx (%s [%d/%dCP]) +%dCP";
-			Format(MessageText, sizeof(MessageText), ClientContractObjective.m_sDescription,
+			MessageText = "\"%s\" %dx (%s [%d/%d]) +%d";
+			PrintHintText(client, MessageText, ClientContractObjective.m_sDescription,
 			value, ClientContract.m_sContractName, ClientContractObjective.m_iProgress,
 			ClientContractObjective.m_iMaxProgress, ClientContractObjective.m_iAward * value);
 		}
-		PrintHintText(client, MessageText);
-
 	}
 	if (g_DebugProgress.BoolValue)
 	{
 		LogMessage("[ZContracts] %N PROGRESS: Increment event triggered [ID: %s, OBJ: %d, CP: %d]",
 		client, ClientContract.m_sUUID, ClientContractObjective.m_iInternalID, ClientContractObjective.m_iProgress);
 	}
+
+	// Save progress to DB.
+	ClientContract.m_bNeedsDBSave = true;
 }
 
 bool PerformWeaponCheck(Contract ClientContract, int client)
@@ -930,17 +890,43 @@ void CreateObjectiveDisplay(int client, Contract ClientContract, bool unknown)
 	// Construct our panel for the client.
 	delete gContractObjeciveDisplay[client];
 	gContractObjeciveDisplay[client] = new Panel();
-	gContractObjeciveDisplay[client].SetTitle(ClientContract.m_sContractName);
+	char PanelTitle[128] = "\"%s\"";
+	Format(PanelTitle, sizeof(PanelTitle), PanelTitle, ClientContract.m_sContractName);
+	gContractObjeciveDisplay[client].SetTitle(PanelTitle);
 
-	if (ClientContract.m_iContractType == Contract_ContractProgress)
+	switch (ClientContract.m_iContractType)
 	{
-		char line[256];
-		Format(line, sizeof(line), "Progress: [%d/%d]", ClientContract.m_iProgress, ClientContract.m_iMaxProgress);
-		if (unknown)
+		case Contract_ContractProgress:
 		{
-			Format(line, sizeof(line), "Progress: [?/%d]", ClientContract.m_iMaxProgress);
+			char ContractGoal[128] = "To complete this Contract, get %d CP.";
+			Format(ContractGoal, sizeof(ContractGoal), ContractGoal, ClientContract.m_iMaxProgress);
+			gContractObjeciveDisplay[client].DrawText(ContractGoal);
+
+			char ContractProgress[256];
+			Format(ContractProgress, sizeof(ContractProgress), "Progress: [%d/%d]", ClientContract.m_iProgress, ClientContract.m_iMaxProgress);
+			if (unknown)
+			{
+				Format(ContractProgress, sizeof(ContractProgress), "Progress: [?/%d]", ClientContract.m_iMaxProgress);
+			}
+			gContractObjeciveDisplay[client].DrawText(ContractProgress);
+			gContractObjeciveDisplay[client].DrawText(" ");
 		}
-		gContractObjeciveDisplay[client].DrawText(line);
+		case Contract_ObjectiveProgress:
+		{
+			char ContractGoal[128];
+			if (ClientContract.m_hObjectives.Length == 1)
+			{
+				ContractGoal = "To complete this Contract, complete %d objective.\n";
+			}
+			else
+			{
+				ContractGoal = "To complete this Contract, complete %d objectives.\n";
+			}
+			
+			Format(ContractGoal, sizeof(ContractGoal), ContractGoal, ClientContract.m_hObjectives.Length);
+			gContractObjeciveDisplay[client].DrawText(ContractGoal);
+			gContractObjeciveDisplay[client].DrawText(" ");
+		}
 	}
 
 	// TODO: Should we split this up into two pages?
@@ -961,13 +947,13 @@ void CreateObjectiveDisplay(int client, Contract ClientContract, bool unknown)
 			{
 				case Contract_ObjectiveProgress:
 				{
-					Format(line, sizeof(line), "Objective #%d: \"%s\" [%d/%d] +%dCP", i+1,
-					Objective.m_sDescription, Objective.m_iProgress, Objective.m_iMaxProgress, Objective.m_iAward);
+					Format(line, sizeof(line), "Objective #%d: \"%s\" [%d/%d]", i+1,
+					Objective.m_sDescription, Objective.m_iProgress, Objective.m_iMaxProgress);
 					
 					if (unknown)
 					{
-						Format(line, sizeof(line), "Objective #%d: \"%s\" [?/%d] +%dCP", i+1,
-						Objective.m_sDescription, Objective.m_iMaxProgress, Objective.m_iAward);
+						Format(line, sizeof(line), "Objective #%d: \"%s\" [?/%d]", i+1,
+						Objective.m_sDescription, Objective.m_iMaxProgress);
 					}
 
 				}
@@ -1076,7 +1062,6 @@ public Action DebugContractInfo(int client, int args)
 		... "Objective Fires: %d/%d\n"
 		... "Objective Event Count: %d\n"
 		... "Use No Multiplication %d\n"
-		... "Requires Save to DB: %d\n"
 		... "Is Objective Complete %d\n"
 		... "[INFO] To debug an objective, type sm_debugcontract [objective_index]"
 		... "---------------------------------------------",
@@ -1084,7 +1069,7 @@ public Action DebugContractInfo(int client, int args)
 		ClientContractObjective.m_iInternalID, ClientContractObjective.m_bInfinite, ClientContractObjective.m_iAward,
 		ClientContractObjective.m_iProgress, ClientContractObjective.m_iMaxProgress, ClientContractObjective.m_iFires, ClientContractObjective.m_iMaxFires,
 		ClientContractObjective.m_hEvents.Length, ClientContractObjective.m_bNoMultiplication,
-		ClientContractObjective.m_bNeedsDBSave, ClientContractObjective.IsObjectiveComplete());
+		ClientContractObjective.IsObjectiveComplete());
 	}
 	
 	return Plugin_Handled;

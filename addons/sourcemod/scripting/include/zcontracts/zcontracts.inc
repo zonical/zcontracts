@@ -105,9 +105,6 @@ enum struct ContractObjective
 	// Events for this Contract (see ContractObjectiveEvent).
 	ArrayList m_hEvents;
 
-	// If this objective needs to be updated in the database.
-	bool m_bNeedsDBSave;
-
 	/**
 	 * @return		If this Contract is complete.
 	**/
@@ -129,7 +126,6 @@ enum struct ContractObjective
 	{
 		this.m_hEvents = new ArrayList(sizeof(ContractObjectiveEvent));
 		this.m_bInitalized = true;
-		this.m_bNeedsDBSave = false;
 	}
 	
 	/**
@@ -149,7 +145,6 @@ enum struct ContractObjective
 		
 		delete this.m_hEvents;
 		this.m_bInitalized = false;
-		this.m_bNeedsDBSave = false;
 	}
 }
 
@@ -190,7 +185,8 @@ enum struct Contract
 	// the multiplication (e.g heal a player for 300HP gives 5CP *only*)
 	bool m_bNoMultiplication;
 
-	// If the Contract progress needs to be updated in the database.
+	// If the Contract progress needs to be updated in the database. This is only used
+	// with the repeating timer 
 	bool m_bNeedsDBSave;
 
 	ArrayList m_hObjectives;

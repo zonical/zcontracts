@@ -252,7 +252,6 @@ public void CreateContract(KeyValues hContractConf, Contract hContract)
 				m_hObjective.m_iInternalID = obj;
 				m_hObjective.m_iContractType = hContract.m_iContractType;
 				m_hObjective.m_bInitalized = true;
-				m_hObjective.m_bNeedsDBSave = false;
 				hContract.m_hObjectives.PushArray(m_hObjective);
 				obj++;
 			} while (hContractConf.GotoNextKey());

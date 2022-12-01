@@ -24,7 +24,7 @@
 			{
 				"description"		"Kill three players within ten seconds."
 				"maximum_cp"	"3"
-				"award"		"1"
+				"dont_multiply"	"1"
 				
 				// The events that this objective looks out for.
 				"events"		

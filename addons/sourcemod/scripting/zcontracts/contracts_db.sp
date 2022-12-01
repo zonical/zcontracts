@@ -346,10 +346,7 @@ public void CB_ObjectiveProgressExists(Database db, DBResultSet results, const c
                 // Reset our save status.
                 Contract ClientContract;
                 GetClientContract(client, ClientContract);
-                ContractObjective hObjective;
-                ClientContract.GetObjective(objective_id, hObjective);
-                hObjective.m_bNeedsDBSave = false;
-                ClientContract.SaveObjective(objective_id, hObjective);
+                ClientContract.m_bNeedsDBSave = false;
                 ClientContracts[client] = ClientContract;
             }
             else
@@ -395,10 +392,7 @@ public void CB_Obj_OnUpdate(Database db, DBResultSet results, const char[] error
     // Reset our save status.
     Contract ClientContract;
     GetClientContract(client, ClientContract);
-    ContractObjective hObjective;
-    ClientContract.GetObjective(objective_id, hObjective);
-    hObjective.m_bNeedsDBSave = false;
-    ClientContract.SaveObjective(objective_id, hObjective);
+    ClientContract.m_bNeedsDBSave = false;
     ClientContracts[client] = ClientContract;
 }
 
@@ -424,10 +418,7 @@ public void CB_Obj_OnInsert(Database db, DBResultSet results, const char[] error
     // Reset our save status.
     Contract ClientContract;
     GetClientContract(client, ClientContract);
-    ContractObjective hObjective;
-    ClientContract.GetObjective(objective_id, hObjective);
-    hObjective.m_bNeedsDBSave = false;
-    ClientContract.SaveObjective(objective_id, hObjective);
+    ClientContract.m_bNeedsDBSave = false;
     ClientContracts[client] = ClientContract;
 }
 
@@ -454,10 +445,6 @@ void SaveContractToDB(int client, Contract ClientContract)
     if (ClientContract.m_iContractType == Contract_ContractProgress)
     {
         if (!ClientContract.m_bNeedsDBSave) return;
-        if (g_DebugSaveAttempts.BoolValue)
-        {
-            LogMessage("[ZContracts] %N SAVE: Attempted to save Contract progress to the database.", client);
-        }
         SaveContractProgressToDB(client, ClientContract.m_sUUID, 
         ClientContract.m_iProgress, ClientContract.IsContractComplete());
     }
@@ -467,15 +454,8 @@ void SaveContractToDB(int client, Contract ClientContract)
     {
         ContractObjective hObjective;
         ClientContract.GetObjective(i, hObjective);
-
-        // Only update if we've actually gained some progress.
-        if (!hObjective.m_bNeedsDBSave) continue;
         if (hObjective.IsObjectiveComplete()) continue;
 
-        if (g_DebugSaveAttempts.BoolValue)
-        {
-            LogMessage("[ZContracts] %N SAVE: Attempted to save ContractObjective %d progress to the database.", client, hObjective.m_iInternalID);
-        }
         SaveObjectiveProgressToDB(client, ClientContract.m_sUUID, hObjective);
     }
 }
@@ -486,12 +466,16 @@ void SaveContractToDB(int client, Contract ClientContract)
  */
 public Action Timer_SaveAllToDB(Handle hTimer)
 {
+    PrintToServer("Timer_SaveAllToDB");
     for (int i = 0; i < MAXPLAYERS+1; i++)
     {
         if (!IsClientValid(i) || IsFakeClient(i)) continue;
+
         // Save this contract to the database.
         Contract ClientContract;
         GetClientContract(i, ClientContract);
+
+        if (!ClientContract.m_bNeedsDBSave) continue;
         SaveContractToDB(i, ClientContract);
     }
     return Plugin_Continue;
