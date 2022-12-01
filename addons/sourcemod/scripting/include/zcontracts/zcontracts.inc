@@ -85,6 +85,13 @@ enum struct ContractObjective
 	// Award to give when this event is triggered.
 	int m_iAward;
 
+	// Because of the combine-event logic, there is a chance that the value passed
+	// to ProcessLogicForContractObjective() may be over the threshold. By default,
+	// the award is multiplied by the value to make up for this combination.
+	// (e.g 3 kills for 1 CP awards 3CP). Some objectives may wish to not use
+	// the multiplication (e.g heal a player for 300HP gives 5CP *only*)
+	bool m_bNoMultiplication;
+
 	// For an Objective-Progress type of Contract, store the progress
 	// of this objective.
 	int m_iMaxProgress;
@@ -175,6 +182,13 @@ enum struct Contract
 	// progress bar that is updated alongside our objective.
 	int m_iProgress;
 	int m_iMaxProgress;
+
+	// Because of the combine-event logic, there is a chance that the value passed
+	// to ProcessLogicForContractObjective() may be over the threshold. By default,
+	// the award is multiplied by the value to make up for this combination.
+	// (e.g 3 kills for 1 CP awards 3CP). Some objectives may wish to not use
+	// the multiplication (e.g heal a player for 300HP gives 5CP *only*)
+	bool m_bNoMultiplication;
 
 	// If the Contract progress needs to be updated in the database.
 	bool m_bNeedsDBSave;

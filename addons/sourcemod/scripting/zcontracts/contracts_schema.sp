@@ -80,8 +80,6 @@ public KeyValues LoadContractsSchema()
 public void CreateContractObjectiveEvent(KeyValues hEventConf, ContractObjectiveEvent hEvent)
 {
 	hEvent.Initalize();
-
-	//hEvent.m_bUseForAward = view_as<bool>(hEventConf.GetNum("use_for_reward"));
 	
 	hEventConf.GetSectionName(hEvent.m_sEventName, sizeof(hEvent.m_sEventName)); 	// Our event trigger is the section name.
 	hEventConf.GetString("type", hEvent.m_sEventType, sizeof(hEvent.m_sEventType), "increment");
@@ -123,6 +121,8 @@ public void CreateContractObjective(KeyValues hObjectiveConf, ContractObjective 
 	hObjective.m_iMaxFires = hObjectiveConf.GetNum("maximum_uses", 0);
 	hObjective.m_iAward = hObjectiveConf.GetNum("award", 1);
 	hObjective.m_bInfinite = view_as<bool>(hObjectiveConf.GetNum("infinite", 0));
+	hObjective.m_bNoMultiplication = view_as<bool>(hObjectiveConf.GetNum("no_multiply", 0));
+
 	if (hObjective.m_bInfinite)
 	{
 		hObjective.m_iMaxProgress = 0;
@@ -165,6 +165,7 @@ public void CreateContract(KeyValues hContractConf, Contract hContract)
 	hContractConf.GetString("weapon_itemdef_restriction", hContract.m_sWeaponItemDefRestriction, sizeof(hContract.m_sWeaponItemDefRestriction));
 	hContractConf.GetString("weapon_classname_restriction", hContract.m_sWeaponClassnameRestriction, sizeof(hContract.m_sWeaponClassnameRestriction));
 	hContractConf.GetString("map_restriction", hContract.m_sMapRestriction, sizeof(hContract.m_sMapRestriction));
+	hContract.m_bNoMultiplication = view_as<bool>(hContractConf.GetNum("no_multiply", 0));
 	hContract.m_iContractType = view_as<ContractType>(hContractConf.GetNum("type", view_as<int>(Contract_ObjectiveProgress))); // stops a warning
 	hContract.m_iMaxProgress = hContractConf.GetNum("maximum_cp", -1);
 

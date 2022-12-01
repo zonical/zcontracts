@@ -56,6 +56,7 @@
 				"description"	"Heal your teammates for 300 HP."
 				"maximum_uses"	"3"
 				"award"		"8"
+				"no_multiply" "1"
 				
 				// The events that this objective looks out for.
 				"events"		

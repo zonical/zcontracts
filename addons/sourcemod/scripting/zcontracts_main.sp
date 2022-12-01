@@ -495,7 +495,6 @@ void ProcessLogicForContractObjective(Contract ClientContract, int objective_id,
 			{
 				TriggerTimeEvent(Objective, ObjEvent, "OnThreshold");
 			}
-			// Start the timer if it doesn't exist yet.
 			else 
 			{
 				if (ObjEvent.m_hTimer == INVALID_HANDLE && ObjEvent.m_fTime != 0.0)
@@ -521,48 +520,8 @@ void ProcessLogicForContractObjective(Contract ClientContract, int objective_id,
 				{
 					switch (ClientContract.m_iContractType)
 					{
-						case Contract_ObjectiveProgress:
-						{
-							Objective.m_iProgress += Objective.m_iAward * value;
-							
-							if (!Objective.m_bInfinite)
-							{
-								Objective.m_iProgress = Int_Min(Objective.m_iProgress, Objective.m_iMaxProgress);
-							}
-							if (g_DisplayHudMessages.BoolValue)
-							{
-								PrintHintText(client, "\"%s\" %dx (%s [%d/%dCP]) +%dCP",
-								Objective.m_sDescription, value, ClientContract.m_sContractName, 
-								Objective.m_iProgress, Objective.m_iMaxProgress, Objective.m_iAward * value);
-							}
-							if (g_DebugProgress.BoolValue)
-							{
-								LogMessage("[ZContracts] %N PROGRESS: Increment event triggered [ID: %s, OBJ: %d, CP: %d]",
-								client, ClientContract.m_sUUID, Objective.m_iInternalID, Objective.m_iProgress);
-							}
-
-						}
-						case Contract_ContractProgress:
-						{
-							ClientContract.m_iProgress += Objective.m_iAward * value;
-							ClientContract.m_iProgress = Int_Min(ClientContract.m_iProgress, ClientContract.m_iMaxProgress);
-							if (!Objective.m_bInfinite)
-							{
-								Objective.m_iFires++;
-								Objective.m_iFires = Int_Min(Objective.m_iFires, Objective.m_iMaxFires);
-							}		
-							if (g_DisplayHudMessages.BoolValue)
-							{							
-								PrintHintText(client, "\"%s\" %dx (%s [%d/%dCP]) +%dCP",
-								Objective.m_sDescription, value, ClientContract.m_sContractName,
-								ClientContract.m_iProgress, ClientContract.m_iMaxProgress, Objective.m_iAward * value);
-							}
-							if (g_DebugProgress.BoolValue)
-							{
-								LogMessage("[ZContracts] %N PROGRESS: Increment event triggered [ID: %s, CP: %d]",
-								client, ClientContract.m_sUUID, ClientContract.m_iProgress);
-							}
-						}
+						case Contract_ObjectiveProgress: IncrementObjectiveProgress(client, value, ClientContract, Objective);
+						case Contract_ContractProgress: IncrementContractProgress(client, value, ClientContract, Objective);
 					}
 
 					// Reset our threshold.
@@ -588,49 +547,131 @@ void ProcessLogicForContractObjective(Contract ClientContract, int objective_id,
 				}
 			}
 		
-			// Print that this objective is complete.
-			if (Objective.IsObjectiveComplete())
-			{
-				// Print to chat.
-				CPrintToChat(client,
-				"{green}[ZC]{default} Congratulations! You have completed the objective: {lightgreen}\"%s\"{default}",
-				Objective.m_sDescription);
-				
-				Call_StartForward(g_fOnObjectiveCompleted);
-				Call_PushCell(client);
-				Call_PushString(ClientContract.m_sUUID);
-				Call_PushArray(Objective, sizeof(ContractObjective));
-				Call_Finish();
-
-				// Save now.
-				Objective.m_bNeedsDBSave = true;
-				SaveObjectiveProgressToDB(client, ClientContract.m_sUUID, Objective);
-			}
-
 			Objective.m_hEvents.SetArray(i, ObjEvent);
 			ClientContract.SaveObjective(objective_id, Objective);
 
-			// Is our contract now complete?
-			if (ClientContract.IsContractComplete())
-			{
-				// Print to chat.
-				CPrintToChat(client,
-				"{green}[ZC]{default} Congratulations! You have completed the contract: {lightgreen}\"%s\"{default}",
-				ClientContract.m_sContractName);
-
-				Call_StartForward(g_fOnContractCompleted);
-				Call_PushCell(client);
-				Call_PushString(ClientContract.m_sUUID);
-				Call_PushArray(ClientContract, sizeof(Contract));
-				Call_Finish();
-
-				// Save now.
-				ClientContract.m_bNeedsDBSave = true;
-				SaveContractToDB(client, ClientContract);
-			}
+			
 			
 			ClientContracts[client] = ClientContract;
 		}
+	}
+	// Print that this objective is complete.
+	if (Objective.IsObjectiveComplete() && !ClientContract.IsContractComplete())
+	{
+		// Print to chat.
+		CPrintToChat(client,
+		"{green}[ZC]{default} Congratulations! You have completed the objective: {lightgreen}\"%s\"{default}",
+		Objective.m_sDescription);
+		
+		Call_StartForward(g_fOnObjectiveCompleted);
+		Call_PushCell(client);
+		Call_PushString(ClientContract.m_sUUID);
+		Call_PushArray(Objective, sizeof(ContractObjective));
+		Call_Finish();
+
+		// Save now.
+		Objective.m_bNeedsDBSave = true;
+		SaveObjectiveProgressToDB(client, ClientContract.m_sUUID, Objective);
+	}
+
+	// Is our contract now complete?
+	if (ClientContract.IsContractComplete())
+	{
+		// Print to chat.
+		CPrintToChat(client,
+		"{green}[ZC]{default} Congratulations! You have completed the contract: {lightgreen}\"%s\"{default}",
+		ClientContract.m_sContractName);
+
+		Call_StartForward(g_fOnContractCompleted);
+		Call_PushCell(client);
+		Call_PushString(ClientContract.m_sUUID);
+		Call_PushArray(ClientContract, sizeof(Contract));
+		Call_Finish();
+
+		// Save now.
+		ClientContract.m_bNeedsDBSave = true;
+		SaveContractToDB(client, ClientContract);
+	}
+}
+
+void IncrementContractProgress(int client, int value, Contract ClientContract, ContractObjective ClientContractObjective)
+{
+	// Add progress to our Contract.
+	if (ClientContract.m_bNoMultiplication) ClientContract.m_iProgress += ClientContractObjective.m_iAward;
+	else if (ClientContractObjective.m_bNoMultiplication) ClientContract.m_iProgress += ClientContractObjective.m_iAward;
+	else ClientContract.m_iProgress += ClientContractObjective.m_iAward * value;
+
+	// Cap our progress and amount of fires.
+	ClientContract.m_iProgress = Int_Min(ClientContract.m_iProgress, ClientContract.m_iMaxProgress);
+	if (!ClientContractObjective.m_bInfinite)
+	{
+		ClientContractObjective.m_iFires++;
+		ClientContractObjective.m_iFires = Int_Min(ClientContractObjective.m_iFires, ClientContractObjective.m_iMaxFires);
+	}
+
+	// Print HINT text to chat.
+	if (g_DisplayHudMessages.BoolValue)
+	{							
+		char MessageText[256];
+		if (ClientContractObjective.m_bNoMultiplication)
+		{
+			MessageText = "\"%s\" (%s [%d/%dCP]) +%dCP";
+			Format(MessageText, sizeof(MessageText), ClientContractObjective.m_sDescription,
+			ClientContract.m_sContractName, ClientContract.m_iProgress,
+			ClientContract.m_iMaxProgress, ClientContractObjective.m_iAward);
+		}
+		else
+		{
+			MessageText = "\"%s\" %dx (%s [%d/%dCP]) +%dCP";
+			Format(MessageText, sizeof(MessageText), ClientContractObjective.m_sDescription,
+			value, ClientContract.m_sContractName, ClientContract.m_iProgress,
+			ClientContract.m_iMaxProgress, ClientContractObjective.m_iAward * value);
+		}
+		PrintHintText(client, MessageText);
+	}
+	if (g_DebugProgress.BoolValue)
+	{
+		LogMessage("[ZContracts] %N PROGRESS: Increment event triggered [ID: %s, CP: %d]",
+		client, ClientContract.m_sUUID, ClientContract.m_iProgress);
+	}
+}
+
+void IncrementObjectiveProgress(int client, int value, Contract ClientContract, ContractObjective ClientContractObjective)
+{
+	// Add progress to our Objective.
+	if (ClientContractObjective.m_bNoMultiplication) ClientContractObjective.m_iProgress += ClientContractObjective.m_iAward;
+	else ClientContractObjective.m_iProgress += ClientContractObjective.m_iAward * value;
+	
+	if (!ClientContractObjective.m_bInfinite)
+	{
+		ClientContractObjective.m_iProgress = Int_Min(ClientContractObjective.m_iProgress, ClientContractObjective.m_iMaxProgress);
+	}
+
+	// Display HINT message to the client.
+	if (g_DisplayHudMessages.BoolValue)
+	{
+		char MessageText[256];
+		if (ClientContractObjective.m_bNoMultiplication)
+		{
+			MessageText = "\"%s\" (%s [%d/%dCP]) +%dCP";
+			Format(MessageText, sizeof(MessageText), ClientContractObjective.m_sDescription,
+			ClientContract.m_sContractName, ClientContractObjective.m_iProgress,
+			ClientContractObjective.m_iMaxProgress, ClientContractObjective.m_iAward);
+		}
+		else
+		{
+			MessageText = "\"%s\" %dx (%s [%d/%dCP]) +%dCP";
+			Format(MessageText, sizeof(MessageText), ClientContractObjective.m_sDescription,
+			value, ClientContract.m_sContractName, ClientContractObjective.m_iProgress,
+			ClientContractObjective.m_iMaxProgress, ClientContractObjective.m_iAward * value);
+		}
+		PrintHintText(client, MessageText);
+
+	}
+	if (g_DebugProgress.BoolValue)
+	{
+		LogMessage("[ZContracts] %N PROGRESS: Increment event triggered [ID: %s, OBJ: %d, CP: %d]",
+		client, ClientContract.m_sUUID, ClientContractObjective.m_iInternalID, ClientContractObjective.m_iProgress);
 	}
 }
 
@@ -1034,13 +1075,16 @@ public Action DebugContractInfo(int client, int args)
 		... "Objective Progress: %d/%d\n"
 		... "Objective Fires: %d/%d\n"
 		... "Objective Event Count: %d\n"
+		... "Use No Multiplication %d\n"
+		... "Requires Save to DB: %d\n"
 		... "Is Objective Complete %d\n"
 		... "[INFO] To debug an objective, type sm_debugcontract [objective_index]"
 		... "---------------------------------------------",
 		ClientContract.m_sContractName, ClientContract.m_sUUID, ClientContract.m_iContractType, ClientContractObjective.m_bInitalized,
 		ClientContractObjective.m_iInternalID, ClientContractObjective.m_bInfinite, ClientContractObjective.m_iAward,
 		ClientContractObjective.m_iProgress, ClientContractObjective.m_iMaxProgress, ClientContractObjective.m_iFires, ClientContractObjective.m_iMaxFires,
-		ClientContractObjective.m_hEvents.Length, ClientContractObjective.IsObjectiveComplete());
+		ClientContractObjective.m_hEvents.Length, ClientContractObjective.m_bNoMultiplication,
+		ClientContractObjective.m_bNeedsDBSave, ClientContractObjective.IsObjectiveComplete());
 	}
 	
 	return Plugin_Handled;
