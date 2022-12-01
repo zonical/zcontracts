@@ -466,7 +466,6 @@ void SaveContractToDB(int client, Contract ClientContract)
  */
 public Action Timer_SaveAllToDB(Handle hTimer)
 {
-    PrintToServer("Timer_SaveAllToDB");
     for (int i = 0; i < MAXPLAYERS+1; i++)
     {
         if (!IsClientValid(i) || IsFakeClient(i)) continue;
