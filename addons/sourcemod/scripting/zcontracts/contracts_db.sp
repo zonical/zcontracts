@@ -454,8 +454,6 @@ void SaveContractToDB(int client, Contract ClientContract)
     {
         ContractObjective hObjective;
         ClientContract.GetObjective(i, hObjective);
-        if (hObjective.IsObjectiveComplete()) continue;
-
         SaveObjectiveProgressToDB(client, ClientContract.m_sUUID, hObjective);
     }
 }

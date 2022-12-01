@@ -512,13 +512,18 @@ void ProcessLogicForContractObjective(Contract ClientContract, int objective_id,
 		
 			Objective.m_hEvents.SetArray(i, ObjEvent);
 			ClientContract.SaveObjective(objective_id, Objective);
-
 			ClientContracts[client] = ClientContract;
 		}
 	}
 	// Print that this objective is complete.
 	if (Objective.IsObjectiveComplete() && !ClientContract.IsContractComplete())
 	{
+		if (g_DebugProgress.BoolValue)
+		{
+			LogMessage("[ZContracts] %N PROGRESS: Objective completed [ID: %s, OBJ: %d]",
+			client, ClientContract.m_sUUID, Objective.m_iInternalID);
+		}
+
 		// Print to chat.
 		CPrintToChat(client,
 		"{green}[ZC]{default} Congratulations! You have completed the objective: {lightgreen}\"%s\"{default}",
@@ -534,6 +539,12 @@ void ProcessLogicForContractObjective(Contract ClientContract, int objective_id,
 	// Is our contract now complete?
 	if (ClientContract.IsContractComplete())
 	{
+		if (g_DebugProgress.BoolValue)
+		{
+			LogMessage("[ZContracts] %N PROGRESS: Contract completed [ID: %s]",
+			client, ClientContract.m_sUUID);
+		}
+
 		// Print to chat.
 		CPrintToChat(client,
 		"{green}[ZC]{default} Congratulations! You have completed the contract: {lightgreen}\"%s\"{default}",
