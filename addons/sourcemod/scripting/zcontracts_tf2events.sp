@@ -40,7 +40,6 @@ public Action OnPlayerDeath(Event event, const char[] name, bool dontBroadcast)
 
 	char weapon[128];
 	event.GetString("weapon", weapon, sizeof(weapon));
-	PrintToChat(attacker, weapon);
 	
 	// Make sure we're not the same.
 	if (IsClientValid(attacker) && IsClientValid(victim) && attacker != victim)

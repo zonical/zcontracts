@@ -42,9 +42,15 @@ ConVar g_DebugSaveAttempts;
 ConVar g_DebugSessions;
 #endif
 
+ConVar g_TF2_AllowSetupProgress;
+ConVar g_TF2_AllowRoundEndProgress;
+ConVar g_TF2_AllowWaitingProgress;
+
 // Forwards
 GlobalForward g_fOnObjectiveCompleted;
 GlobalForward g_fOnContractCompleted;
+
+float g_LastValidProgressTime = -1.0;
 
 // This arraylist contains a list of objectives that we need to update.
 ArrayList g_ObjectiveUpdateQueue;
@@ -90,11 +96,23 @@ public void OnPluginStart()
 	g_DebugProgress = CreateConVar("zc_debug_progress", "0", "Logs every time player progress is incremented internally.");
 	g_DebugSessions = CreateConVar("zc_debug_sessions", "0", "Logs every time a session is restored.");
 #endif
+	g_DebugProgress = CreateConVar("zc_debug_progress", "0", "Logs every time player progress is incremented internally.");
+
+	g_TF2_AllowSetupProgress = CreateConVar("zctf2_allow_setup_trigger", "1", "If disabled, Objective progress will not be counted during setup time.");
+	g_TF2_AllowRoundEndProgress = CreateConVar("zctf2_allow_roundend_trigger", "0", "If disabled, Objective progress will not be counted after a winner is declared and the next round starts.");
+	g_TF2_AllowWaitingProgress = CreateConVar("zctf2_allow_waitingforplayers_trigger", "0", "If disabled, Objective progress will not be counted during the \"waiting for players\" period before a game starts.");
 
 	g_DatabaseUpdateTime.AddChangeHook(OnDatabaseUpdateChange);
 	g_ConfigSearchPath.AddChangeHook(OnSchemaConVarChange);
 	g_RequiredFileExt.AddChangeHook(OnSchemaConVarChange);
 	g_DisabledPath.AddChangeHook(OnSchemaConVarChange);
+
+	// ================ EVENTS ================
+	HookEvent("teamplay_round_win", OnRoundWin);
+	HookEvent("teamplay_round_start", OnRoundStart);
+	HookEvent("teamplay_waiting_begins", OnWaitingStart);
+	HookEvent("teamplay_waiting_ends", OnWaitingEnd);
+	HookEvent("teamplay_setup_finished", OnSetupEnd);
 
 	// ================ CONTRACKER ================
 	ProcessContractsSchema();
@@ -134,6 +152,8 @@ public void OnPluginStart()
 	RegConsoleCmd("sm_c", OpenContrackerForClient);
 }
 
+// ============ SM FORWARD FUNCTIONS ============
+
 public void OnClientPostAdminCheck(int client)
 {
 	// Reset variables.
@@ -169,6 +189,12 @@ public void OnClientDisconnect(int client)
 	g_Menu_CurrentDirectory[client] = "root";
 	g_Menu_DirectoryDeepness[client] = 1;
 }
+
+public void OnMapStart()
+{
+	g_LastValidProgressTime = -1.0;
+}
+
 
 public void OnSchemaConVarChange(ConVar convar, char[] oldValue, char[] newValue)
 {
@@ -224,7 +250,9 @@ public any Native_CallContrackerEvent(Handle plugin, int numParams)
 	{
 		return ThrowNativeError(SP_ERROR_NATIVE, "Invalid client index (%d)", client);
 	}
+
 	if (IsFakeClient(client)) return false;
+	if (GetGameTime() >= g_LastValidProgressTime && g_LastValidProgressTime != -1.0) return false;
 
 	Contract ClientContract;
 	GetClientContract(client, ClientContract);
@@ -346,6 +374,8 @@ public any Native_SetClientContract(Handle plugin, int numParams)
 
 	return true;
 }
+
+// ============ MAIN LOGIC FUNCTIONS ============
 
 /**
  * Events that are sent through the native CallContrackerEvent will be placed into
@@ -671,6 +701,61 @@ bool PerformWeaponCheck(Contract ClientContract, int client)
 		}
 	}
 	return true;
+}
+
+// ============ EVENT FUNCTIONS ============
+public Action OnRoundWin(Event event, const char[] name, bool dontBroadcast)
+{
+	if (!g_TF2_AllowRoundEndProgress.BoolValue)
+	{
+		// Block any events from being processed after this time.
+		g_LastValidProgressTime = GetGameTime();
+	}
+	else
+	{
+		g_LastValidProgressTime = -1.0;
+	}
+	return Plugin_Continue;
+}
+
+public Action OnRoundStart(Event event, const char[] name, bool dontBroadcast)
+{
+	if (view_as<bool>(GameRules_GetProp("m_bInSetup")) && !g_TF2_AllowSetupProgress.BoolValue)
+	{
+		// Block any events from being processed after this time.
+		g_LastValidProgressTime = GetGameTime();
+	}
+	else
+	{
+		g_LastValidProgressTime = -1.0;
+	}
+	return Plugin_Continue;
+}
+
+public Action OnWaitingStart(Event event, const char[] name, bool dontBroadcast)
+{
+	if (!g_TF2_AllowWaitingProgress.BoolValue)
+	{
+		// Block any events from being processed after this time.
+		g_LastValidProgressTime = GetGameTime();
+	}
+	else
+	{
+		g_LastValidProgressTime = -1.0;
+	}
+	return Plugin_Continue;
+}
+
+public Action OnWaitingEnd(Event event, const char[] name, bool dontBroadcast)
+{
+	g_LastValidProgressTime = -1.0;
+	return Plugin_Continue;
+}
+
+public Action OnSetupEnd(Event event, const char[] name, bool dontBroadcast)
+{
+	g_LastValidProgressTime = -1.0;
+	return Plugin_Continue;
 }
 
 // ============ MENU FUNCTIONS ============
