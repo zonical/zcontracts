@@ -308,6 +308,67 @@ native bool GetClientContract(int client, any buffer[sizeof(Contract)]);
 native bool CallContrackerEvent(int client, char event[MAX_EVENT_SIZE], int value, bool can_combine = false);
 
 /**
+ * Saves a Contract to the database for a client.
+ *
+ * @param client    Client index.
+ * @param ClientContract The enum struct of the contract to save.
+ * @error           Client index is invalid or the Contract is invalid.         
+ */
+native bool SaveClientContractProgress(int client, any ClientContract[sizeof(Contract)]);
+
+/**
+ * Saves an Objective to the database for a client.
+ *
+ * @param client    Client index.
+ * @param ClientObjective The enum struct of the objective to save.
+ * @error           Client index is invalid or the ClientObjective is invalid.         
+ */
+native bool SaveClientObjectiveProgress(int client, any ClientObjective[sizeof(ContractObjective)]);
+
+/**
+ * Loads a contract from the database and saves it to an enum struct.
+ *
+ * @param client    Client index.
+ * @param ClientObjective The enum struct of the Contract to load data into.
+ * @error           Client index is invalid.         
+ */
+native bool LoadClientContractFromDatabase(int client, any ClientObjective[sizeof(ContractObjective)]);
+
+/**
+ * Sets the progress of a Contract in the database.
+ *
+ * @param client    Client index.
+ * @param UUID	The UUID of the contract to modify.
+ * @param value	The value to save to the database.
+ * @error           Client index is invalid.         
+ */
+native bool SetContractProgressDatabase(int client, char UUID[MAX_UUID_SIZE], int value);
+
+/**
+ * Sets the progress of an Objective in the database.
+ *
+ * @param client    Client index.
+ * @param UUID	The UUID of the contract to modify.
+ * @param objective_id	The ID of the objective to modify.
+ * @param value	The value to save to the database.
+ * @error           Client index is invalid.           
+ */
+native bool SetObjectiveProgressDatabase(int client, char UUID[MAX_UUID_SIZE], int objective_id, int value);
+
+/**
+ * Sets the fire value of an Objective in the database.
+ *
+ * @param client    Client index.
+ * @param UUID	The UUID of the contract to modify.
+ * @param objective_id	The ID of the objective to modify.
+ * @param value	The value to save to the database.
+ * @error           Client index is invalid.           
+ */
+native bool SetObjectiveFiresDatabase(int client, char UUID[MAX_UUID_SIZE], int objective_id, int value);
+
+
+
+/**
  * Sent on client completion of a Contract objective.
  *
  * @param client    	Client index.
@@ -323,3 +384,4 @@ forward void OnContractObjectiveCompleted(int client, const char[] uuid, Contrac
  * @param hObjective	Handle to the completed Contract.
  */
 forward void OnContractCompleted(int client, const char[] uuid, Contract hContract);
+
