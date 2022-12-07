@@ -23,6 +23,12 @@ enum ContractType
 	Contract_ContractProgress = 2
 }
 
+enum DatabaseStatus
+{
+	DBS_NoInformation,
+	DBS_GrabbedInformation
+}
+
 // Timer events for ContractObjectiveEvent timers.
 enum struct TimerEvent
 {
@@ -101,6 +107,11 @@ enum struct ContractObjective
 	// this objective can be used to gain Contract progress.
 	int m_iFires;
 	int m_iMaxFires;
+
+	// If the Objective progress needs to be updated in the database. This is only used
+	// with the repeating timer 
+	bool m_bNeedsDBSave;
+
 	
 	// Events for this Contract (see ContractObjectiveEvent).
 	ArrayList m_hEvents;
@@ -126,6 +137,7 @@ enum struct ContractObjective
 	{
 		this.m_hEvents = new ArrayList(sizeof(ContractObjectiveEvent));
 		this.m_bInitalized = true;
+		this.m_bNeedsDBSave = false;
 	}
 	
 	/**
@@ -145,6 +157,7 @@ enum struct ContractObjective
 		
 		delete this.m_hEvents;
 		this.m_bInitalized = false;
+		this.m_bNeedsDBSave = false;
 	}
 }
 
@@ -189,6 +202,10 @@ enum struct Contract
 	// with the repeating timer 
 	bool m_bNeedsDBSave;
 
+	// Has this enum struct had information set from the database?
+	bool m_bLoadedFromDatabase;
+
+	// The objectives for this Contract.
 	ArrayList m_hObjectives;
 	
 	bool IsContractInitalized()
@@ -248,6 +265,7 @@ enum struct Contract
 		this.m_hObjectives = new ArrayList(sizeof(ContractObjective));
 		this.m_iProgress = 0;
 		this.m_bInitalized = true;
+		this.m_bLoadedFromDatabase = false;
 	}
 	/**
 	 * Destroy the ArrayList for objectives.
@@ -264,6 +282,7 @@ enum struct Contract
 		}
 		this.m_hObjectives.Clear();
 		this.m_bInitalized = false;
+		this.m_bLoadedFromDatabase = false;
 	}
 }
 
@@ -320,19 +339,11 @@ native bool SaveClientContractProgress(int client, any ClientContract[sizeof(Con
  * Saves an Objective to the database for a client.
  *
  * @param client    Client index.
+ * @param UUID	UUID of the Contract that contains this objective.
  * @param ClientObjective The enum struct of the objective to save.
  * @error           Client index is invalid or the ClientObjective is invalid.         
  */
-native bool SaveClientObjectiveProgress(int client, any ClientObjective[sizeof(ContractObjective)]);
-
-/**
- * Loads a contract from the database and saves it to an enum struct.
- *
- * @param client    Client index.
- * @param ClientObjective The enum struct of the Contract to load data into.
- * @error           Client index is invalid.         
- */
-native bool LoadClientContractFromDatabase(int client, any ClientObjective[sizeof(ContractObjective)]);
+native bool SaveClientObjectiveProgress(int client, char UUID[MAX_UUID_SIZE], any ClientObjective[sizeof(ContractObjective)]);
 
 /**
  * Sets the progress of a Contract in the database.

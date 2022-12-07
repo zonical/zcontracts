@@ -57,7 +57,7 @@
 				// The events that this objective looks out for.
 				"events"		
 				{
-					"CONTRACTS_TF2_PLAYER_KILL_DOMINATION"
+					"CONTRACTS_TF2_PLAYER_DOMINATION"
 					{
 						// What this event should do.
 						"type"		"increment"

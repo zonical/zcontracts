@@ -14,7 +14,8 @@ CREATE TABLE `contract_progress` (
   `steamid64` char(64) COLLATE utf8mb4_unicode_ci NOT NULL,
   `contract_uuid` char(64) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT '{}',
   `progress` int(11) NOT NULL,
-  `complete` bit(1) NOT NULL DEFAULT b'0'
+  `complete` bit(1) NOT NULL DEFAULT b'0',
+  UNIQUE KEY `contract_key` (`steamid64`,`contract_uuid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE `objective_progress` (
@@ -23,7 +24,8 @@ CREATE TABLE `objective_progress` (
   `objective_id` int(11) DEFAULT NULL,
   `progress` int(11) DEFAULT NULL,
   `fires` int(11) DEFAULT NULL,
-  `complete` bit(1) NOT NULL DEFAULT b'0'
+  `complete` bit(1) NOT NULL DEFAULT b'0',
+  UNIQUE KEY `objective_key` (`steamid64`,`contract_uuid`,`objective_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE `selected_contract` (
