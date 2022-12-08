@@ -301,9 +301,21 @@ enum struct ObjectiveUpdate
  * @param client    Client index.
  * @param UUID    	The UUID of the contract.
  * @param dont_save	Optional argument: doesn't save this as the active Contract in the database.
+ * @param dont_notify Optional argument: don't notify the player that we've set their contract.
  * @error           Client index is invalid or UUID is invalid.         
  */
-native bool SetClientContract(int client, char event[MAX_UUID_SIZE], bool dont_save = false);
+native bool SetClientContract(int client, char UUID[MAX_UUID_SIZE], bool dont_save = false, bool dont_notify = false);
+
+/**
+ * Set a client's contract with an enum struct.
+ *
+ * @param client    Client index.
+ * @param new_contract The new contract enum struct.
+ * @param dont_save	Optional argument: doesn't save this as the active Contract in the database.
+ * @param dont_notify Optional argument: don't notify the player that we've set their contract.
+ * @error           Client index is invalid or UUID is invalid.         
+ */
+native bool SetClientContractStruct(int client, any new_contract[sizeof(Contract)], bool dont_save = false, bool dont_notify = false);
 
 /**
  * Obtains a client's active Contract.
@@ -378,7 +390,6 @@ native bool SetObjectiveProgressDatabase(int client, char UUID[MAX_UUID_SIZE], i
 native bool SetObjectiveFiresDatabase(int client, char UUID[MAX_UUID_SIZE], int objective_id, int value);
 
 
-
 /**
  * Sent on client completion of a Contract objective.
  *
@@ -386,7 +397,7 @@ native bool SetObjectiveFiresDatabase(int client, char UUID[MAX_UUID_SIZE], int 
  * @param uuid    		The UUID of the original Contract.
  * @param hObjective	Handle to the completed objective.
  */
-forward void OnContractObjectiveCompleted(int client, const char[] uuid, ContractObjective hObjective);
+forward void OnContractObjectiveCompleted(int client, char UUID[MAX_UUID_SIZE], ContractObjective hObjective);
 /**
  * Sent on client completion of a Contract.
  *
@@ -394,5 +405,24 @@ forward void OnContractObjectiveCompleted(int client, const char[] uuid, Contrac
  * @param uuid    		The UUID of the original Contract.
  * @param hObjective	Handle to the completed Contract.
  */
-forward void OnContractCompleted(int client, const char[] uuid, Contract hContract);
+forward void OnContractCompleted(int client, char UUID[MAX_UUID_SIZE], Contract hContract);
 
+/**
+ * Called before a contract is saved to the database. This is not called for any
+ * low-level value setting functions (e.g SetObjectiveFiresDatabase).
+ *
+ * @param client    	Client index.
+ * @param uuid    		The UUID of the original Contract.
+ * @param hContract	Handle to the objective.
+ */
+forward Action OnContractPreSave(int client, char UUID[MAX_UUID_SIZE], Contract hContract);
+
+/**
+ * Called before an objective is saved to the database. This is not called for any
+ * low-level value setting functions (e.g SetObjectiveFiresDatabase).
+ *
+ * @param client    	Client index.
+ * @param uuid    		The UUID of the original Contract.
+ * @param hObjective	Handle to the objective.
+ */
+forward Action OnObjectivePreSave(int client, char UUID[MAX_UUID_SIZE], ContractObjective hObjective);

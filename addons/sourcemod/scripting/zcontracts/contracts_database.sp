@@ -66,6 +66,7 @@ public Action Timer_SaveAllToDB(Handle hTimer)
         for (int j = 0; j < ClientContract.m_hObjectives.Length; j++)
         {
             ContractObjective ClientContractObjective;
+            ClientContract.GetObjective(j, ClientContractObjective);
             if (!ClientContractObjective.m_bInitalized) continue;
 
             if (ClientContractObjective.m_bNeedsDBSave)
@@ -214,11 +215,24 @@ public any Native_SaveClientContractProgress(Handle plugin, int numParams)
         ThrowNativeError(SP_ERROR_NATIVE, "Invalid UUID passed. (%s)", ClientContract.m_sUUID);
     }
 
-    if (ClientContract.m_iProgress > 0)
+    // Call pre-save forward.
+    Call_StartForward(g_fOnContractPreSave);
+    Call_PushCell(client);
+    Call_PushString(ClientContract.m_sUUID);
+    Call_PushArray(ClientContract, sizeof(Contract));
+    bool ShouldBlock = false;
+    Call_Finish(ShouldBlock);
+
+    // If noone responded or we got a positive response, save to database.
+    if (GetForwardFunctionCount(g_fOnContractPreSave) == 0 || !ShouldBlock)
     {
-        SetContractProgressDatabase(client, ClientContract.m_sUUID, ClientContract.m_iProgress);
+        if (ClientContract.m_iProgress > 0)
+        {
+            SetContractProgressDatabase(client, ClientContract.m_sUUID, ClientContract.m_iProgress);
+        }
+        return true;
     }
-    return true;
+    return false;
 }
 
 /**
@@ -246,15 +260,28 @@ public any Native_SaveClientObjectiveProgress(Handle plugin, int numParams)
         ThrowNativeError(SP_ERROR_NATIVE, "Invalid UUID passed. (%s)", UUID);
     }
 
-    if (ClientContractObjective.m_iProgress > 0)
+    // Call pre-save forward.
+    Call_StartForward(g_fOnObjectivePreSave);
+    Call_PushCell(client);
+    Call_PushString(UUID);
+    Call_PushArray(ClientContractObjective, sizeof(ContractObjective));
+    bool ShouldBlock = false;
+    Call_Finish(ShouldBlock);
+
+    // If noone responded or we got a positive response, save to database.
+    if (GetForwardFunctionCount(g_fOnObjectivePreSave) == 0 || !ShouldBlock)
     {
-        SetObjectiveProgressDatabase(client, UUID, ClientContractObjective.m_iInternalID, ClientContractObjective.m_iProgress);
+        if (ClientContractObjective.m_iProgress > 0)
+        {
+            SetObjectiveProgressDatabase(client, UUID, ClientContractObjective.m_iInternalID, ClientContractObjective.m_iProgress);
+        }
+        if (ClientContractObjective.m_iFires > 0)
+        {
+            SetObjectiveFiresDatabase(client, UUID, ClientContractObjective.m_iInternalID, ClientContractObjective.m_iFires);
+        }
+        return true;
     }
-    if (ClientContractObjective.m_iFires > 0)
-    {
-        SetObjectiveFiresDatabase(client, UUID, ClientContractObjective.m_iInternalID, ClientContractObjective.m_iFires);
-    }
-    return true;
+    return false;
 }
 
 /**
@@ -342,22 +369,20 @@ public void CB_SetClientContract_Objective(Database db, DBResultSet results, con
     Contract ClientContract;
     GetClientContract(client, ClientContract);
 
-    int id = 0;
     while (results.FetchRow())
     {
         ContractObjective hObj;
-        ClientContract.GetObjective(id, hObj);
+        int db_id = results.FetchInt(2);
+        ClientContract.GetObjective(db_id, hObj);
         hObj.m_iProgress = results.FetchInt(3);
         hObj.m_iFires = results.FetchInt(4); 
-        ClientContract.SaveObjective(id, hObj);
+        ClientContract.SaveObjective(db_id, hObj);
 
         if (g_DebugQuery.BoolValue)
         {
             LogMessage("[ZContracts] %N LOAD: Successfully grabbed ContractObjective %d progress from database CP: (%d/%d), FIRES: (%d/%d).",
-            client, id, hObj.m_iProgress, hObj.m_iMaxProgress, hObj.m_iFires, hObj.m_iMaxFires);
+            client, db_id, hObj.m_iProgress, hObj.m_iMaxProgress, hObj.m_iFires, hObj.m_iMaxFires);
         }
-
-        id++;
     }
 
     ClientContract.m_bLoadedFromDatabase = true;

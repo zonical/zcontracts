@@ -48,6 +48,8 @@ ConVar g_TF2_AllowWaitingProgress;
 // Forwards
 GlobalForward g_fOnObjectiveCompleted;
 GlobalForward g_fOnContractCompleted;
+GlobalForward g_fOnContractPreSave;
+GlobalForward g_fOnObjectivePreSave;
 
 float g_LastValidProgressTime = -1.0;
 
@@ -70,7 +72,15 @@ public Plugin myinfo =
 
 public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max)
 {
+	// ================ FORWARDS ================
+	g_fOnObjectiveCompleted = new GlobalForward("OnContractObjectiveCompleted", ET_Ignore, Param_Cell, Param_String, Param_Array);
+	g_fOnContractCompleted = new GlobalForward("OnContractCompleted", ET_Ignore, Param_Cell, Param_String, Param_Array);
+	g_fOnContractPreSave = new GlobalForward("OnContractPreSave", ET_Event, Param_Cell, Param_String, Param_Array);
+	g_fOnObjectivePreSave = new GlobalForward("OnObjectivePreSave", ET_Event, Param_Cell, Param_String, Param_Array);
+
+	// ================ NATIVES ================
 	CreateNative("SetClientContract", Native_SetClientContract);
+	CreateNative("SetClientContractStruct", Native_SetClientContractStruct);
 	CreateNative("GetClientContract", Native_GetClientContract);
 	CreateNative("CallContrackerEvent", Native_CallContrackerEvent);
 
@@ -135,15 +145,12 @@ public void OnPluginStart()
 	{
 		OnClientPostAdminCheck(i);
 	}
-	
-	// ================ FORWARDS ================
-	g_fOnObjectiveCompleted = new GlobalForward("OnContractObjectiveCompleted", ET_Ignore, Param_Cell, Param_String, Param_Array);
-	g_fOnContractCompleted = new GlobalForward("OnContractCompleted", ET_Ignore, Param_Cell, Param_String, Param_Array);
 
 	// ================ COMMANDS ================
 	RegAdminCmd("sm_setcontract", DebugSetContract, ADMFLAG_KICK);
 	RegAdminCmd("sm_setcontractprogress", DebugSetContractProgress, ADMFLAG_BAN);
 	RegAdminCmd("sm_setobjectiveprogress", DebugSetObjectiveProgress, ADMFLAG_BAN);
+	RegAdminCmd("sm_setobjectivefires", DebugSetObjectiveFires, ADMFLAG_BAN);
 	RegAdminCmd("sm_triggerevent", DebugTriggerEvent, ADMFLAG_BAN);
 	RegAdminCmd("sm_savecontract", DebugSaveContract, ADMFLAG_KICK);
 	//RegAdminCmd("sm_resetcontract", DebugResetContract, ADMFLAG_BAN);
@@ -192,6 +199,7 @@ public void OnClientDisconnect(int client)
 		for (int i = 0; i < ClientContract.m_hObjectives.Length; i++)
 		{
 			ContractObjective ClientContractObjective;
+			ClientContract.GetObjective(i, ClientContractObjective);
 			if (!ClientContractObjective.m_bInitalized) continue;
 
 			SaveClientObjectiveProgress(client, ClientContract.m_sUUID, ClientContractObjective);
@@ -344,13 +352,23 @@ public any Native_CallContrackerEvent(Handle plugin, int numParams)
  * @error           Client index is invalid or UUID is invalid.         
  */
 public any Native_SetClientContract(Handle plugin, int numParams)
-	{
+{
 	int client = GetNativeCell(1);
+	char UUID[MAX_UUID_SIZE];
+	GetNativeString(2, UUID, sizeof(UUID));
+	bool dont_save = GetNativeCell(3);
+	bool dont_notify = GetNativeCell(4);
+
 	// Are we a bot?
 	if (!IsClientValid(client) || IsFakeClient(client))
 	{
 		return ThrowNativeError(SP_ERROR_NATIVE, "Invalid client index (%d)", client);
 	}
+
+	if (UUID[0] != '{')
+    {
+        ThrowNativeError(SP_ERROR_NATIVE, "Invalid UUID passed. (%s)", UUID);
+    }
 
 	// If we have a Contract already selected, save it's progress to the database.
 	Contract OldClientContract;
@@ -361,15 +379,13 @@ public any Native_SetClientContract(Handle plugin, int numParams)
 		for (int i = 0; i < OldClientContract.m_hObjectives.Length; i++)
 		{
 			ContractObjective ClientContractObjective;
+			OldClientContract.GetObjective(i, ClientContractObjective);
 			if (!ClientContractObjective.m_bInitalized) continue;
 
 			SaveClientObjectiveProgress(client, OldClientContract.m_sUUID, ClientContractObjective);
 		}
 		OldClientContracts[client] = OldClientContract;
 	}
-
-	char UUID[MAX_UUID_SIZE];
-	GetNativeString(2, UUID, sizeof(UUID));
 
 	// Get our Contract definition.
 	Contract ClientContract;
@@ -397,11 +413,13 @@ public any Native_SetClientContract(Handle plugin, int numParams)
 	steamid64, ClientContract.m_sUUID, ClientContract.m_hObjectives.Length);
 	g_DB.Query(CB_SetClientContract_Objective, objective_query, client);
 
-	// Display the Contract to the client when we can.
-	CreateObjectiveDisplay(client, ClientContract, true);
-	CreateTimer(1.0, Timer_DisplayContractInfo, client, TIMER_REPEAT);
+	if (!dont_notify)
+	{
+		// Display the Contract to the client when we can.
+		CreateObjectiveDisplay(client, ClientContract, true);
+		CreateTimer(1.0, Timer_DisplayContractInfo, client, TIMER_REPEAT);
+	}
 
-	bool dont_save = GetNativeCell(3);
 	// Set this Contract as our current session.
 	if (!dont_save) SaveContractSession(client, ClientContract.m_sUUID);
 
@@ -413,6 +431,63 @@ public any Native_SetClientContract(Handle plugin, int numParams)
 
 	return true;
 }
+
+public any Native_SetClientContractStruct(Handle plugin, int numParams)
+{
+	int client = GetNativeCell(1);
+	Contract NewContract;
+	GetNativeArray(2, NewContract, sizeof(Contract));
+	bool dont_save = GetNativeCell(3);
+	bool dont_notify = GetNativeCell(4);
+
+	// Are we a bot?
+	if (!IsClientValid(client) || IsFakeClient(client))
+	{
+		return ThrowNativeError(SP_ERROR_NATIVE, "Invalid client index (%d)", client);
+	}
+
+	if (NewContract.m_sUUID[0] != '{')
+    {
+        return ThrowNativeError(SP_ERROR_NATIVE, "Invalid UUID passed. (%s)", NewContract.m_sUUID);
+    }
+
+	// If we have a Contract already selected, save it's progress to the database.
+	Contract OldClientContract;
+	GetClientContract(client, OldClientContract);
+	if (OldClientContract.IsContractInitalized())
+	{
+		SaveClientContractProgress(client, OldClientContract);
+		for (int i = 0; i < OldClientContract.m_hObjectives.Length; i++)
+		{
+			ContractObjective ClientContractObjective;
+			OldClientContract.GetObjective(i, ClientContractObjective);
+			if (!ClientContractObjective.m_bInitalized) continue;
+
+			SaveClientObjectiveProgress(client, OldClientContract.m_sUUID, ClientContractObjective);
+		}
+		OldClientContracts[client] = OldClientContract;
+	}
+
+	ClientContracts[client] = NewContract;
+
+	LogMessage("[ZContracts] %N CONTRACT: Set Contract to: %s [ID: %s]", client, NewContract.m_sContractName, NewContract.m_sUUID);
+
+	if (!dont_notify)
+	{
+		// Display the Contract to the client when we can.
+		CreateObjectiveDisplay(client, NewContract, false);
+	}
+
+	// Set this Contract as our current session.
+	if (!dont_save) SaveContractSession(client, NewContract.m_sUUID);
+
+	// Reset our current directory in the Contracker.
+	g_Menu_CurrentDirectory[client] = "root";
+	g_Menu_DirectoryDeepness[client] = 1;
+
+	return true;
+}
+
 
 // Function for event timers.
 public Action Timer_DisplayContractInfo(Handle hTimer, int client)
@@ -701,7 +776,9 @@ void ProcessLogicForContractObjective(Contract ClientContract, int objective_id,
 			}
 		
 			Objective.m_hEvents.SetArray(i, ObjEvent);
+			Objective.m_bNeedsDBSave = true;
 			ClientContract.SaveObjective(objective_id, Objective);
+			ClientContract.m_bNeedsDBSave = true;
 			ClientContracts[client] = ClientContract;
 		}
 	}
@@ -1315,13 +1392,14 @@ public Action DebugContractInfo(int client, int args)
 		... "Objective Event Count: %d\n"
 		... "Use No Multiplication %d\n"
 		... "Is Objective Complete %d\n"
-		... "[INFO] To debug an objective, type sm_debugcontract [objective_index]"
+		... "Needs Database Save %d\n"
+		... "[INFO] To debug an objective, type sm_debugcontract [objective_index]\n"
 		... "---------------------------------------------",
 		ClientContract.m_sContractName, ClientContract.m_sUUID, ClientContract.m_iContractType, ClientContractObjective.m_bInitalized,
 		ClientContractObjective.m_iInternalID, ClientContractObjective.m_bInfinite, ClientContractObjective.m_iAward,
 		ClientContractObjective.m_iProgress, ClientContractObjective.m_iMaxProgress, ClientContractObjective.m_iFires, ClientContractObjective.m_iMaxFires,
 		ClientContractObjective.m_hEvents.Length, ClientContractObjective.m_bNoMultiplication,
-		ClientContractObjective.IsObjectiveComplete());
+		ClientContractObjective.IsObjectiveComplete(), ClientContractObjective.m_bNeedsDBSave);
 	}
 	
 	return Plugin_Handled;
@@ -1405,6 +1483,45 @@ public Action DebugSetObjectiveProgress(int client, int args)
 	return Plugin_Handled;
 }
 
+public Action DebugSetObjectiveFires(int client, int args)
+{
+	if (args < 4)
+	{
+		ReplyToCommand(client, "[ZC] Usage: sm_setobjectivefires <target> <uuid> <objective> <value>");
+		return Plugin_Handled;
+	}
+
+	char Targets[64];
+	GetCmdArg(1, Targets, sizeof(Targets));
+	char UUID[64];
+	GetCmdArg(2, UUID, sizeof(UUID));
+
+	char target_name[MAX_TARGET_LENGTH];
+	int target_list[MAXPLAYERS], target_count;
+	bool tn_is_ml;
+	
+	if ((target_count = ProcessTargetString(
+			Targets,
+			client,
+			target_list,
+			MAXPLAYERS,
+			COMMAND_FILTER_ALIVE,
+			target_name,
+			sizeof(target_name),
+			tn_is_ml)) <= 0)
+	{
+		ReplyToTargetError(client, target_count);
+		return Plugin_Handled;
+	}
+	
+	for (int i = 0; i < target_count; i++)
+	{
+		SetObjectiveFiresDatabase(target_list[i], UUID, GetCmdArgInt(3), GetCmdArgInt(4));
+	}
+
+	return Plugin_Handled;
+}
+
 public Action DebugTriggerEvent(int client, int args)
 {
 	if (args < 3)
@@ -1483,6 +1600,7 @@ public Action DebugSaveContract(int client, int args)
 		for (int j = 0; j < ClientContract.m_hObjectives.Length; j++)
 		{
 			ContractObjective ClientContractObjective;
+			ClientContract.GetObjective(i, ClientContractObjective);
 			if (!ClientContractObjective.m_bInitalized) continue;
 
 			SaveClientObjectiveProgress(client, ClientContract.m_sUUID, ClientContractObjective);
