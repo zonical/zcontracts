@@ -1,4 +1,10 @@
-// TODO: CSGO testing.
+// LIST:
+// TODO: Port to CSGO
+// TODO: Implement Creators.TF style hud
+// TODO: Sounds for selecting contracts and getting progress
+// TODO: Sound preference for client
+// TODO: HUD preference for client
+// TODO: Preferences saved to database
 
 #pragma semicolon 1
 
@@ -19,12 +25,6 @@
 Database g_DB;
 Handle g_DatabaseUpdateTimer;
 
-// Menu objects.
-static Menu gContractMenu;
-Panel gContractObjeciveDisplay[MAXPLAYERS+1];
-char g_Menu_CurrentDirectory[MAXPLAYERS+1][MAX_DIRECTORY_SIZE];
-int g_Menu_DirectoryDeepness[MAXPLAYERS+1] = { 1, ... };
-
 // Player Contracts.
 Contract OldClientContracts[MAXPLAYERS+1];
 Contract ClientContracts[MAXPLAYERS+1];
@@ -33,6 +33,9 @@ Contract ClientContracts[MAXPLAYERS+1];
 ConVar g_UpdatesPerSecond;
 ConVar g_DatabaseUpdateTime;
 ConVar g_DisplayHudMessages;
+ConVar g_PlaySounds;
+
+
 #if defined DEBUG
 ConVar g_DebugEvents;
 ConVar g_DebugProcessing;
@@ -56,10 +59,14 @@ float g_LastValidProgressTime = -1.0;
 // This arraylist contains a list of objectives that we need to update.
 ArrayList g_ObjectiveUpdateQueue;
 
+// Preferences
+bool PlayerSoundsEnabled[MAXPLAYERS+1] = { true, ... };
+
 // Subplugins.
 #include "zcontracts/contracts_schema.sp"
 #include "zcontracts/contracts_timers.sp"
 #include "zcontracts/contracts_database.sp"
+#include "zcontracts/contracts_menu.sp"
 
 public Plugin myinfo =
 {
@@ -101,8 +108,12 @@ public void OnPluginStart()
 	
 	g_UpdatesPerSecond = CreateConVar("zc_updates_per_second", "8", "How many objective updates to process per second.");
 	g_DatabaseUpdateTime = CreateConVar("zc_database_update_time", "30", "How long to wait before sending Contract updates to the database for all players.");
-	
 	g_DisplayHudMessages = CreateConVar("zc_display_hud_messages", "1", "If enabled, players will see a hint-box in their HUD when they gain progress on their Contract or an Objective.");
+	g_PlaySounds = CreateConVar("zc_play_sounds", "1", "If enabled, sounds will play when interacting with the Contracker and when progress is made when a Contract is active.");
+
+	g_TF2_AllowSetupProgress = CreateConVar("zctf2_allow_setup_trigger", "1", "If disabled, Objective progress will not be counted during setup time.");
+	g_TF2_AllowRoundEndProgress = CreateConVar("zctf2_allow_roundend_trigger", "0", "If disabled, Objective progress will not be counted after a winner is declared and the next round starts.");
+	g_TF2_AllowWaitingProgress = CreateConVar("zctf2_allow_waitingforplayers_trigger", "0", "If disabled, Objective progress will not be counted during the \"waiting for players\" period before a game starts.");
 
 #if defined DEBUG
 	g_DebugEvents = CreateConVar("zc_debug_print_events", "0", "Logs every time an event is sent.");
@@ -111,12 +122,8 @@ public void OnPluginStart()
 	g_DebugProgress = CreateConVar("zc_debug_progress", "0", "Logs every time player progress is incremented internally.");
 	g_DebugSessions = CreateConVar("zc_debug_sessions", "0", "Logs every time a session is restored.");
 #endif
-	g_DebugProgress = CreateConVar("zc_debug_progress", "0", "Logs every time player progress is incremented internally.");
 
-	g_TF2_AllowSetupProgress = CreateConVar("zctf2_allow_setup_trigger", "1", "If disabled, Objective progress will not be counted during setup time.");
-	g_TF2_AllowRoundEndProgress = CreateConVar("zctf2_allow_roundend_trigger", "0", "If disabled, Objective progress will not be counted after a winner is declared and the next round starts.");
-	g_TF2_AllowWaitingProgress = CreateConVar("zctf2_allow_waitingforplayers_trigger", "0", "If disabled, Objective progress will not be counted during the \"waiting for players\" period before a game starts.");
-
+	g_PlaySounds.AddChangeHook(OnPlaySoundsChange);
 	g_DatabaseUpdateTime.AddChangeHook(OnDatabaseUpdateChange);
 	g_ConfigSearchPath.AddChangeHook(OnSchemaConVarChange);
 	g_RequiredFileExt.AddChangeHook(OnSchemaConVarChange);
@@ -128,6 +135,14 @@ public void OnPluginStart()
 	HookEvent("teamplay_waiting_begins", OnWaitingStart);
 	HookEvent("teamplay_waiting_ends", OnWaitingEnd);
 	HookEvent("teamplay_setup_finished", OnSetupEnd);
+
+	// ================ SOUNDS ================
+	PrecacheSound("CYOA.StaticFade");
+	PrecacheSound("CYOA.NodeActivate");
+	PrecacheSound("MatchMaking.RankUp");
+	PrecacheSound("Quest.Alert");
+	PrecacheSound("Quest.Decode");
+	PrecacheSound("Quest.StatusTickNovice");
 
 	// ================ CONTRACKER ================
 	ProcessContractsSchema();
@@ -222,6 +237,18 @@ public void OnSchemaConVarChange(ConVar convar, char[] oldValue, char[] newValue
 {
 	ProcessContractsSchema();
 	CreateContractMenu();
+}
+
+public void OnPlaySoundsChange(ConVar convar, char[] oldValue, char[] newValue)
+{
+	if (StringToInt(newValue) == 0)
+	{
+		for (int i = 0; i < MAXPLAYERS+1; i++) PlayerSoundsEnabled[i] = false;
+	}
+	else
+	{
+		// TODO: Load from database
+	}
 }
 
 public Action ReloadContracts(int client, int args)
@@ -373,6 +400,9 @@ public any Native_SetClientContract(Handle plugin, int numParams)
 	// If we have a Contract already selected, save it's progress to the database.
 	Contract OldClientContract;
 	GetClientContract(client, OldClientContract);
+	OldClientContract.m_bActive = false;
+	OldClientContracts[client] = OldClientContract;
+
 	if (OldClientContract.IsContractInitalized())
 	{
 		SaveClientContractProgress(client, OldClientContract);
@@ -384,7 +414,6 @@ public any Native_SetClientContract(Handle plugin, int numParams)
 
 			SaveClientObjectiveProgress(client, OldClientContract.m_sUUID, ClientContractObjective);
 		}
-		OldClientContracts[client] = OldClientContract;
 	}
 
 	// Get our Contract definition.
@@ -454,6 +483,9 @@ public any Native_SetClientContractStruct(Handle plugin, int numParams)
 	// If we have a Contract already selected, save it's progress to the database.
 	Contract OldClientContract;
 	GetClientContract(client, OldClientContract);
+	OldClientContract.m_bActive = false;
+	OldClientContracts[client] = OldClientContract;
+
 	if (OldClientContract.IsContractInitalized())
 	{
 		SaveClientContractProgress(client, OldClientContract);
@@ -465,7 +497,6 @@ public any Native_SetClientContractStruct(Handle plugin, int numParams)
 
 			SaveClientObjectiveProgress(client, OldClientContract.m_sUUID, ClientContractObjective);
 		}
-		OldClientContracts[client] = OldClientContract;
 	}
 
 	ClientContracts[client] = NewContract;
@@ -609,7 +640,6 @@ public void CB_GetContractFromLastSession(Database db, DBResultSet results, cons
     }
 }
 
-
 // ============ MAIN LOGIC FUNCTIONS ============
 
 /**
@@ -702,11 +732,9 @@ void ProcessLogicForContractObjective(Contract ClientContract, int objective_id,
 		if (!ClientContract.m_bClass[Class]) return;
 	}
 
-	// Check to see if we have the required map for this Contract.
 	char Map[256];
 	GetCurrentMap(Map, sizeof(Map));
 	if (!StrEqual(Map, "") && StrContains(Map, ClientContract.m_sMapRestriction) == -1) return;
-	
 	if (!PerformWeaponCheck(ClientContract, client)) return;
 
 	// Loop over all of our objectives and see if this event matches.
@@ -801,11 +829,15 @@ void ProcessLogicForContractObjective(Contract ClientContract, int objective_id,
 		Call_PushString(ClientContract.m_sUUID);
 		Call_PushArray(Objective, sizeof(ContractObjective));
 		Call_Finish();
+
+		SaveClientObjectiveProgress(client, ClientContract.m_sUUID, Objective);
 	}
 
 	// Is our contract now complete?
 	if (ClientContract.IsContractComplete())
 	{
+		if (PlayerSoundsEnabled[client]) EmitGameSoundToClient(client, "MatchMaking.RankUp");
+
 		if (g_DebugProgress.BoolValue)
 		{
 			LogMessage("[ZContracts] %N PROGRESS: Contract completed [ID: %s]",
@@ -822,11 +854,15 @@ void ProcessLogicForContractObjective(Contract ClientContract, int objective_id,
 		Call_PushString(ClientContract.m_sUUID);
 		Call_PushArray(ClientContract, sizeof(Contract));
 		Call_Finish();
+
+		SaveClientContractProgress(client, ClientContract);
 	}
 }
 
 void IncrementContractProgress(int client, int value, Contract ClientContract, ContractObjective ClientContractObjective)
 {
+	if (PlayerSoundsEnabled[client]) EmitGameSoundToClient(client, "Quest.StatusTickNovice");
+
 	// Add progress to our Contract.
 	if (ClientContract.m_bNoMultiplication) ClientContract.m_iProgress += ClientContractObjective.m_iAward;
 	else if (ClientContractObjective.m_bNoMultiplication) ClientContract.m_iProgress += ClientContractObjective.m_iAward;
@@ -871,6 +907,8 @@ void IncrementContractProgress(int client, int value, Contract ClientContract, C
 
 void IncrementObjectiveProgress(int client, int value, Contract ClientContract, ContractObjective ClientContractObjective)
 {
+	if (PlayerSoundsEnabled[client]) EmitGameSoundToClient(client, "Quest.StatusTickNovice");
+
 	// Add progress to our Objective.
 	if (ClientContractObjective.m_bNoMultiplication) ClientContractObjective.m_iProgress += ClientContractObjective.m_iAward;
 	else ClientContractObjective.m_iProgress += ClientContractObjective.m_iAward * value;
@@ -991,339 +1029,6 @@ public Action OnSetupEnd(Event event, const char[] name, bool dontBroadcast)
 	return Plugin_Continue;
 }
 
-// ============ MENU FUNCTIONS ============
-/**
- * Creates the global Contracker menu. This reads through the directories
- * list and Contract schema to insert all of the needed items.
-**/
-void CreateContractMenu()
-{
-	// Delete our menu if it exists.
-	delete gContractMenu;
-	
-	gContractMenu = new Menu(ContractMenuHandler, MENU_ACTIONS_ALL);
-	gContractMenu.SetTitle("ZContracts - Contract Selector");
-	gContractMenu.ExitButton = true;
-
-	// This is a display for the current directory for the client. We will manipulate this
-	// in menu logic later.
-	gContractMenu.AddItem("#directory", "filler");
-	
-	// Add our directories to the menu. We'll hide options depending on what
-	// we should be able to see.
-	if (g_Directories)
-	{
-		for (int i = 0; i < g_Directories.Length; i++)
-		{
-			char directory[MAX_DIRECTORY_SIZE];
-			g_Directories.GetString(i, directory, sizeof(directory));
-			gContractMenu.AddItem(directory, directory);
-		}
-	}
-
-	// Add all of our contracts to the menu. We'll hide options depending on what
-	// we should be able to see.
-	if (g_ContractSchema.GotoFirstSubKey())
-	{
-		do
-		{
-			char sUUID[MAX_UUID_SIZE];
-			g_ContractSchema.GetSectionName(sUUID, sizeof(sUUID));
-			char sContractName[MAX_CONTRACT_NAME_SIZE];
-			g_ContractSchema.GetString("name", sContractName, sizeof(sContractName), "undefined");
-			gContractMenu.AddItem(sUUID, sContractName);
-		}
-		while(g_ContractSchema.GotoNextKey());
-	}
-	g_ContractSchema.Rewind();
-}
-
-/**
- * By default, all items in the global Contracker will be invisible to the client.
- * The client's current directory will decide which items in the menu should be
- * shown and how to display them.
-**/
-int ContractMenuHandler(Menu menu, MenuAction action, int param1, int param2)
-{
-	switch (action)
-	{
-		// If we're currently doing this Contract, disable the option to select it.
-		case MenuAction_DrawItem:
-		{
-			int style;
-			
-			char MenuKey[64]; // UUID
-			char MenuDisplay[64]; // Display name
-			menu.GetItem(param2, MenuKey, sizeof(MenuKey), style, MenuDisplay, sizeof(MenuDisplay));
-
-			// Special directory key:
-			if (StrEqual(MenuKey, "#directory"))
-			{	
-				return ITEMDRAW_DISABLED;
-			}
-
-			// Are we a contract?
-			else if (MenuKey[0] == '{')
-			{
-				char ContractDirectory[MAX_DIRECTORY_SIZE];
-				GetContractDirectory(MenuKey, ContractDirectory);
-				// Are we in the right directory?
-				if (!StrEqual(ContractDirectory, g_Menu_CurrentDirectory[param1])) 
-				{
-					return ITEMDRAW_IGNORE;
-				}
-
-				// Are we currently using this contract?
-				if (StrEqual(MenuKey, ClientContracts[param1].m_sUUID)) 
-				{
-					return ITEMDRAW_DISABLED;
-				}
-			}
-			// Are we a directory instead?
-			else
-			{
-				// Should we be listed inside this directory?
-				if (StrContains(MenuKey, g_Menu_CurrentDirectory[param1]) == -1 ||
-				StrEqual(MenuKey, g_Menu_CurrentDirectory[param1]))
-				{
-					return ITEMDRAW_IGNORE;
-				}
-
-				// Depending on our deepness, see how many times the slash character shows
-				// up in this directory choice. If there's more than there should be, don't
-				// show this menu option.
-				int slashes = 0;
-				for (int i = 0; i < strlen(MenuDisplay); i++)
-				{
-					char check = MenuDisplay[i];
-					if (check == '/') slashes++;
-				}
-				if (g_Menu_DirectoryDeepness[param1] < slashes) return ITEMDRAW_IGNORE;
-			}
-	
-			return style;
-		}
-
-		// If we're currently doing a Contract, add "(SELECTED)"
-		// If the item is a directory, add ">>"
-		case MenuAction_DisplayItem:
-		{
-			char MenuDisplay[MAX_CONTRACT_NAME_SIZE + 16];
-			char MenuKey[64];
-			menu.GetItem(param2, MenuKey, sizeof(MenuKey), _, MenuDisplay, sizeof(MenuDisplay));
-
-			// Special directory key:
-			if (StrEqual(MenuKey, "#directory"))
-			{
-				Format(MenuDisplay, sizeof(MenuDisplay), "Current Directory: \"%s\"", g_Menu_CurrentDirectory[param1]);
-				return RedrawMenuItem(MenuDisplay);
-			}
-			// Is this a Contract?
-			else if (MenuKey[0] == '{')
-			{
-				// Are we doing this Contract?
-				Contract ClientContract;
-				GetClientContract(param1, ClientContract);
-				if (StrEqual(ClientContract.m_sUUID, MenuKey))
-				{
-					Format(MenuDisplay, sizeof(MenuDisplay), "%s [SELECTED]", MenuDisplay);
-					return RedrawMenuItem(MenuDisplay);
-				}
-			}
-			// Is this a directory?
-			else
-			{
-				// Remove the current directory from this name.
-				int iPosition = StrContains(MenuDisplay, g_Menu_CurrentDirectory[param1]);
-				if (iPosition != -1)
-				{
-					ReplaceString(MenuDisplay, sizeof(MenuDisplay), g_Menu_CurrentDirectory[param1], "");
-				}
-
-				Format(MenuDisplay, sizeof(MenuDisplay), ">> %s", MenuDisplay);
-				return RedrawMenuItem(MenuDisplay);
-			}
-			return 0;
-		}
-		
-		// Select a Contract if we're not doing it.
-		case MenuAction_Select:
-		{
-			char MenuKey[64]; // UUID
-			menu.GetItem(param2, MenuKey, sizeof(MenuKey));
-
-			// Is this a Contract? Select it.
-			if (MenuKey[0] == '{')
-			{
-				// Are we NOT currently using this contract?
-				if (!StrEqual(MenuKey, ClientContracts[param1].m_sUUID))
-				{
-					SetClientContract(param1, MenuKey);	
-				}
-			}
-			// This is a directory instead.
-			// Clear our current menu and populate it with new items.
-			else
-			{
-				g_Menu_CurrentDirectory[param1] = MenuKey;
-				g_Menu_DirectoryDeepness[param1]++;
-				gContractMenu.Display(param1, MENU_TIME_FOREVER);
-			}
-		}
-
-		// Reset our current directory on close.
-		case MenuAction_Cancel:
-		{	
-			g_Menu_CurrentDirectory[param1] = "root";
-			g_Menu_DirectoryDeepness[param1] = 1;
-		}
-	}
-	return 0;
-}
-
-/**
- * Console command that opens up the global Contracker for the client.
- * If a contract is already selected, this will open up the Objective
- * display instead. The Objective display contains an option to
- * open the global Contracker.
-**/
-public Action OpenContrackerForClient(int client, int args)
-{	
-	Contract ClientContract;
-	GetClientContract(client, ClientContract);
-
-	// Are we doing a Contract?
-	if (ClientContract.IsContractInitalized())
-	{
-		// Display our objective display instead.
-		CreateObjectiveDisplay(client, ClientContract, false);
-	}
-	else
-	{
-		gContractMenu.Display(client, MENU_TIME_FOREVER);
-	}
-	return Plugin_Handled;
-}
-
-/**
- * Creates the Objective display for the client. This menu displays
- * all of the objective progress for the selected Contract, as well
- * as providing an option to open the global Contracker.
- * 
- * @param client 		Client index.
- * @param ClientContract    	Contract struct to grab Objective information from.
- * @param unknown		If true, progress values will be replaced with "?"
-**/
-void CreateObjectiveDisplay(int client, Contract ClientContract, bool unknown)
-{
-	// Construct our panel for the client.
-	delete gContractObjeciveDisplay[client];
-	gContractObjeciveDisplay[client] = new Panel();
-	char PanelTitle[128] = "\"%s\"";
-	Format(PanelTitle, sizeof(PanelTitle), PanelTitle, ClientContract.m_sContractName);
-	gContractObjeciveDisplay[client].SetTitle(PanelTitle);
-
-	switch (ClientContract.m_iContractType)
-	{
-		case Contract_ContractProgress:
-		{
-			char ContractGoal[128] = "To complete this Contract, get %d CP.";
-			Format(ContractGoal, sizeof(ContractGoal), ContractGoal, ClientContract.m_iMaxProgress);
-			gContractObjeciveDisplay[client].DrawText(ContractGoal);
-
-			char ContractProgress[256];
-			Format(ContractProgress, sizeof(ContractProgress), "Progress: [%d/%d]", ClientContract.m_iProgress, ClientContract.m_iMaxProgress);
-			if (unknown)
-			{
-				Format(ContractProgress, sizeof(ContractProgress), "Progress: [?/%d]", ClientContract.m_iMaxProgress);
-			}
-			gContractObjeciveDisplay[client].DrawText(ContractProgress);
-			gContractObjeciveDisplay[client].DrawText(" ");
-		}
-		case Contract_ObjectiveProgress:
-		{
-			char ContractGoal[128];
-			if (ClientContract.m_hObjectives.Length == 1)
-			{
-				ContractGoal = "To complete this Contract, complete %d objective.\n";
-			}
-			else
-			{
-				ContractGoal = "To complete this Contract, complete %d objectives.\n";
-			}
-			
-			Format(ContractGoal, sizeof(ContractGoal), ContractGoal, ClientContract.m_hObjectives.Length);
-			gContractObjeciveDisplay[client].DrawText(ContractGoal);
-			gContractObjeciveDisplay[client].DrawText(" ");
-		}
-	}
-
-	// TODO: Should we split this up into two pages?
-	for (int i = 0; i < ClientContract.m_hObjectives.Length; i++)
-	{
-		ContractObjective Objective;
-		ClientContract.GetObjective(i, Objective);
-
-		char line[256];
-		if (Objective.m_bInfinite)
-		{
-			Format(line, sizeof(line), "Objective #%d: \"%s\" +%dCP", i+1,
-			Objective.m_sDescription, Objective.m_iAward);
-		}
-		else
-		{
-			switch (ClientContract.m_iContractType)
-			{
-				case Contract_ObjectiveProgress:
-				{
-					Format(line, sizeof(line), "Objective #%d: \"%s\" [%d/%d]", i+1,
-					Objective.m_sDescription, Objective.m_iProgress, Objective.m_iMaxProgress);
-					
-					if (unknown)
-					{
-						Format(line, sizeof(line), "Objective #%d: \"%s\" [?/%d]", i+1,
-						Objective.m_sDescription, Objective.m_iMaxProgress);
-					}
-
-				}
-				case Contract_ContractProgress:
-				{
-					Format(line, sizeof(line), "Objective #%d: \"%s\" [%d/%d] +%dCP", i+1,
-					Objective.m_sDescription, Objective.m_iFires, Objective.m_iMaxFires, Objective.m_iAward);
-					if (unknown)
-					{
-						Format(line, sizeof(line), "Objective #%d: \"%s\" [?/%d] +%dCP", i+1,
-						Objective.m_sDescription, Objective.m_iMaxFires, Objective.m_iAward);				
-					}
-				}
-			}
-		}
-		gContractObjeciveDisplay[client].DrawText(line);
-	}
-
-	// Send this to our client.
-	gContractObjeciveDisplay[client].DrawItem("Return to Contracker");
-	gContractObjeciveDisplay[client].DrawItem("Close");
-	gContractObjeciveDisplay[client].Send(client, ObjectiveDisplayHandler, 20);
-}
-
-/**
- * This handles the option to open the global Contracker.
-**/
-public int ObjectiveDisplayHandler(Menu menu, MenuAction action, int param1, int param2)
-{
-	// We don't need to do anything here...
-	if (action == MenuAction_Select)
-    {
-		if (param2 == 1)
-		{
-			gContractMenu.Display(param1, MENU_TIME_FOREVER);
-		}
-    }
-	return 0;
-}
-
-
 // ============ DEBUG FUNCTIONS ============
 
 /**
@@ -1373,7 +1078,6 @@ public Action DebugContractInfo(int client, int args)
 		char sArg[4];
 		GetCmdArg(1, sArg, sizeof(sArg));
 		int iID = StringToInt(sArg);
-		PrintToServer("%d", iID);
 
 		ContractObjective ClientContractObjective;
 		ClientContract.GetObjective(iID, ClientContractObjective);

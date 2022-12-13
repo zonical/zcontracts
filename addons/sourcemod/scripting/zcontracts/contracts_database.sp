@@ -152,7 +152,6 @@ public any Native_SetObjectiveProgressDatabase(Handle plugin, int numParams)
     GetNativeString(2, UUID, sizeof(UUID));
     int objective_id = GetNativeCell(3);
     int progress = GetNativeCell(4);
-    PrintToServer(UUID);
 
     if (!IsClientValid(client) || IsFakeClient(client))
 	{
@@ -171,7 +170,6 @@ public any Native_SetObjectiveProgressDatabase(Handle plugin, int numParams)
     g_DB.Format(query, sizeof(query),
         "INSERT INTO objective_progress (steamid64, contract_uuid, objective_id, progress) VALUES ('%s', '%s', %d, %d)"
     ... " ON DUPLICATE KEY UPDATE progress = %d", steamid64, UUID, objective_id, progress, progress);
-
     g_DB.Query(CB_SetObjectiveProgressDatabase, query, client, DBPrio_High);
     return true;
 }
@@ -232,6 +230,11 @@ public any Native_SaveClientContractProgress(Handle plugin, int numParams)
         }
         return true;
     }
+
+    if (g_DebugQuery.BoolValue)
+    {
+        LogMessage("[ZContracts] %N SAVE: Contract progress save attempt interrupted.", client);
+    }
     return false;
 }
 
@@ -280,6 +283,11 @@ public any Native_SaveClientObjectiveProgress(Handle plugin, int numParams)
             SetObjectiveFiresDatabase(client, UUID, ClientContractObjective.m_iInternalID, ClientContractObjective.m_iFires);
         }
         return true;
+    }
+
+    if (g_DebugQuery.BoolValue)
+    {
+        LogMessage("[ZContracts] %N SAVE: Objective progress save attempt interrupted.", client);
     }
     return false;
 }

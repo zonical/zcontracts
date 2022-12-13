@@ -165,6 +165,7 @@ enum struct ContractObjective
 enum struct Contract
 {
 	bool m_bInitalized;
+	bool m_bActive;
 
 	char m_sUUID[MAX_UUID_SIZE];
 	char m_sContractName[MAX_CONTRACT_NAME_SIZE];
@@ -218,6 +219,8 @@ enum struct Contract
 	**/
 	bool IsContractComplete()
 	{
+		if (!this.m_bActive || !this.m_bInitalized) return false;
+		
 		switch (this.m_iContractType)
 		{
 			case Contract_ObjectiveProgress: // All objectives must be complete.
@@ -265,6 +268,7 @@ enum struct Contract
 		this.m_hObjectives = new ArrayList(sizeof(ContractObjective));
 		this.m_iProgress = 0;
 		this.m_bInitalized = true;
+		this.m_bActive = true;
 		this.m_bLoadedFromDatabase = false;
 	}
 	/**
@@ -282,6 +286,7 @@ enum struct Contract
 		}
 		this.m_hObjectives.Clear();
 		this.m_bInitalized = false;
+		this.m_bActive = false;
 		this.m_bLoadedFromDatabase = false;
 	}
 }
@@ -415,7 +420,7 @@ forward void OnContractCompleted(int client, char UUID[MAX_UUID_SIZE], Contract 
  * @param uuid    		The UUID of the original Contract.
  * @param hContract	Handle to the objective.
  */
-forward Action OnContractPreSave(int client, char UUID[MAX_UUID_SIZE], Contract hContract);
+forward bool OnContractPreSave(int client, char UUID[MAX_UUID_SIZE], Contract hContract);
 
 /**
  * Called before an objective is saved to the database. This is not called for any
@@ -425,4 +430,4 @@ forward Action OnContractPreSave(int client, char UUID[MAX_UUID_SIZE], Contract 
  * @param uuid    		The UUID of the original Contract.
  * @param hObjective	Handle to the objective.
  */
-forward Action OnObjectivePreSave(int client, char UUID[MAX_UUID_SIZE], ContractObjective hObjective);
+forward bool OnObjectivePreSave(int client, char UUID[MAX_UUID_SIZE], ContractObjective hObjective);
