@@ -33,6 +33,7 @@ public Action EventTimer(Handle hTimer, DataPack hPack)
 		TriggerTimeEvent(hObjective, hEvent, "OnTimerEnd");
 
 		// Reset our variables.
+		hEvent.m_fStarted = 0.0;
 		hEvent.m_iCurrentLoops = 0;
 		hEvent.m_iCurrentThreshold = 0;
 		hEvent.m_hTimer = INVALID_HANDLE;

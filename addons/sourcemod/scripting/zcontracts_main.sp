@@ -1,7 +1,5 @@
 // LIST:
 // TODO: Port to CSGO
-// TODO: Implement Creators.TF style hud
-// TODO: Sounds for selecting contracts and getting progress
 // TODO: Sound preference for client
 // TODO: HUD preference for client
 // TODO: Preferences saved to database
@@ -33,8 +31,8 @@ Contract ClientContracts[MAXPLAYERS+1];
 ConVar g_UpdatesPerSecond;
 ConVar g_DatabaseUpdateTime;
 ConVar g_DisplayHudMessages;
+ConVar g_DisplayProgressHud;
 ConVar g_PlaySounds;
-
 
 #if defined DEBUG
 ConVar g_DebugEvents;
@@ -59,8 +57,12 @@ float g_LastValidProgressTime = -1.0;
 // This arraylist contains a list of objectives that we need to update.
 ArrayList g_ObjectiveUpdateQueue;
 
+float g_NextHUDUpdate[MAXPLAYERS+1] = { -1.0, ... };
+
 // Preferences
 bool PlayerSoundsEnabled[MAXPLAYERS+1] = { true, ... };
+
+#define HUD_REFRESH_RATE 0.5
 
 // Subplugins.
 #include "zcontracts/contracts_schema.sp"
@@ -110,10 +112,18 @@ public void OnPluginStart()
 	g_DatabaseUpdateTime = CreateConVar("zc_database_update_time", "30", "How long to wait before sending Contract updates to the database for all players.");
 	g_DisplayHudMessages = CreateConVar("zc_display_hud_messages", "1", "If enabled, players will see a hint-box in their HUD when they gain progress on their Contract or an Objective.");
 	g_PlaySounds = CreateConVar("zc_play_sounds", "1", "If enabled, sounds will play when interacting with the Contracker and when progress is made when a Contract is active.");
+	g_DisplayProgressHud = CreateConVar("zc_display_hud_progress", "1", "If enabled, players will see text on the right-side of their screen displaying Contract progress.");
 
-	g_TF2_AllowSetupProgress = CreateConVar("zctf2_allow_setup_trigger", "1", "If disabled, Objective progress will not be counted during setup time.");
-	g_TF2_AllowRoundEndProgress = CreateConVar("zctf2_allow_roundend_trigger", "0", "If disabled, Objective progress will not be counted after a winner is declared and the next round starts.");
-	g_TF2_AllowWaitingProgress = CreateConVar("zctf2_allow_waitingforplayers_trigger", "0", "If disabled, Objective progress will not be counted during the \"waiting for players\" period before a game starts.");
+	switch (GetEngineVersion())
+	{
+		case Engine_TF2:
+		{
+			g_TF2_AllowSetupProgress = CreateConVar("zctf2_allow_setup_trigger", "1", "If disabled, Objective progress will not be counted during setup time.");
+			g_TF2_AllowRoundEndProgress = CreateConVar("zctf2_allow_roundend_trigger", "0", "If disabled, Objective progress will not be counted after a winner is declared and the next round starts.");
+			g_TF2_AllowWaitingProgress = CreateConVar("zctf2_allow_waitingforplayers_trigger", "0", "If disabled, Objective progress will not be counted during the \"waiting for players\" period before a game starts.");
+		}
+	}
+
 
 #if defined DEBUG
 	g_DebugEvents = CreateConVar("zc_debug_print_events", "0", "Logs every time an event is sent.");
@@ -124,6 +134,7 @@ public void OnPluginStart()
 #endif
 
 	g_PlaySounds.AddChangeHook(OnPlaySoundsChange);
+	g_DisplayProgressHud.AddChangeHook(OnProgressHudChange);
 	g_DatabaseUpdateTime.AddChangeHook(OnDatabaseUpdateChange);
 	g_ConfigSearchPath.AddChangeHook(OnSchemaConVarChange);
 	g_RequiredFileExt.AddChangeHook(OnSchemaConVarChange);
@@ -139,7 +150,7 @@ public void OnPluginStart()
 	// ================ SOUNDS ================
 	PrecacheSound("CYOA.StaticFade");
 	PrecacheSound("CYOA.NodeActivate");
-	PrecacheSound("MatchMaking.RankUp");
+	PrecacheSound("Quest.TurnInAccepted");
 	PrecacheSound("Quest.Alert");
 	PrecacheSound("Quest.Decode");
 	PrecacheSound("Quest.StatusTickNovice");
@@ -149,8 +160,9 @@ public void OnPluginStart()
 	CreateContractMenu();
 
 	g_ObjectiveUpdateQueue = new ArrayList(sizeof(ObjectiveUpdate));
-	CreateTimer(1.0, Timer_ProcessEvents, _, TIMER_REPEAT);
 	g_DatabaseUpdateTimer = CreateTimer(g_DatabaseUpdateTime.FloatValue, Timer_SaveAllToDB, _, TIMER_REPEAT);
+	CreateTimer(1.0, Timer_ProcessEvents, _, TIMER_REPEAT);
+	CreateTimer(HUD_REFRESH_RATE, Timer_DrawContrackerHud, _, TIMER_REPEAT);
 
 	// ================ DATABASE ================
 	Database.Connect(GotDatabase, "zcontracts");
@@ -248,6 +260,14 @@ public void OnPlaySoundsChange(ConVar convar, char[] oldValue, char[] newValue)
 	else
 	{
 		// TODO: Load from database
+	}
+}
+
+public void OnProgressHudChange(ConVar convar, char[] oldValue, char[] newValue)
+{
+	if (StringToInt(newValue) == 1)
+	{
+		CreateTimer(HUD_REFRESH_RATE, Timer_DrawContrackerHud, _, TIMER_REPEAT);
 	}
 }
 
@@ -642,6 +662,129 @@ public void CB_GetContractFromLastSession(Database db, DBResultSet results, cons
 
 // ============ MAIN LOGIC FUNCTIONS ============
 
+public Action Timer_DrawContrackerHud(Handle hTimer)
+{
+	if (!g_DisplayProgressHud.BoolValue) return Plugin_Stop;
+
+	for (int i = 0; i < MAXPLAYERS+1; i++)
+	{
+		if (!IsClientValid(i) || IsFakeClient(i)) continue;
+		if (g_NextHUDUpdate[i] > GetGameTime()) continue;
+
+		Contract ClientContract;
+		GetClientContract(i, ClientContract);
+		if (!ClientContract.IsContractInitalized() || !ClientContract.m_bActive) continue;
+
+		// Prepare our text.
+		SetHudTextParams(1.0, -1.0, HUD_REFRESH_RATE + 0.1, 255, 255, 255, 255);
+		char DisplayText[512] = "\"%s\":\n";
+		Format(DisplayText, sizeof(DisplayText), DisplayText, ClientContract.m_sContractName);
+
+		// Display the overall Contract progress.
+		if (ClientContract.m_iContractType == Contract_ContractProgress)
+		{
+			char ProgressText[128] = "Progress: [%d/%d]";
+			Format(ProgressText, sizeof(ProgressText), ProgressText,
+			ClientContract.m_iProgress, ClientContract.m_iMaxProgress);		
+
+			// Adds +xCP value to the end of the text.
+			if (ClientContract.m_bHUD_ContractUpdate)
+			{
+				SetHudTextParams(1.0, -1.0, 2.1, 52, 235, 70, 255, 1, HUD_REFRESH_RATE + 0.1);
+				char AddText[16] = " +%dCP";
+				Format(AddText, sizeof(AddText), AddText, ClientContract.m_iHUD_UpdateValue);
+				StrCat(ProgressText, sizeof(ProgressText), AddText);
+				ClientContract.m_bHUD_ContractUpdate = false;
+				ClientContract.m_iHUD_UpdateValue = 0;
+
+				g_NextHUDUpdate[i] = GetGameTime() + 2.0;
+			}
+
+			StrCat(ProgressText, sizeof(ProgressText), "\n");
+			StrCat(DisplayText, sizeof(DisplayText), ProgressText);
+		}
+
+		bool DisplaySavingText = ClientContract.m_bNeedsDBSave;
+
+		// Add our objectives to HUD display.
+		int DisplayID = 1;
+		for (int j = 0; j < ClientContract.m_hObjectives.Length; j++)
+		{
+			ContractObjective ClientContractObjective;
+			ClientContract.GetObjective(j, ClientContractObjective);
+			if (!ClientContractObjective.m_bInitalized) continue;
+			if (ClientContractObjective.m_bInfinite) continue;
+
+			if (ClientContractObjective.m_bNeedsDBSave) DisplaySavingText = true;
+
+			char ObjectiveText[64] = "#%d: [%d/%d]";
+			switch (ClientContract.m_iContractType)
+			{
+				case Contract_ObjectiveProgress:
+				{
+					Format(ObjectiveText, sizeof(ObjectiveText), ObjectiveText,
+					DisplayID, ClientContractObjective.m_iProgress, ClientContractObjective.m_iMaxProgress);
+				}
+				case Contract_ContractProgress:
+				{
+					Format(ObjectiveText, sizeof(ObjectiveText), ObjectiveText,
+					DisplayID, ClientContractObjective.m_iFires, ClientContractObjective.m_iMaxFires);
+				}
+			}
+
+			// Adds +x value to the end of the text.
+			if (ClientContract.m_iHUD_ObjectiveUpdate == ClientContractObjective.m_iInternalID)
+			{
+				SetHudTextParams(1.0, -1.0, 2.1, 52, 235, 70, 255, 1, HUD_REFRESH_RATE + 0.1);
+				char AddText[16] = " +%d";
+				Format(AddText, sizeof(AddText), AddText, ClientContract.m_iHUD_UpdateValue);
+				StrCat(ObjectiveText, sizeof(ObjectiveText), AddText);
+				ClientContract.m_bHUD_ContractUpdate = false;
+				ClientContract.m_iHUD_ObjectiveUpdate = -1;
+
+				g_NextHUDUpdate[i] = GetGameTime() + 2.0;
+			}
+
+			StrCat(DisplayText, sizeof(DisplayText), ObjectiveText);
+			
+			char TimerText[16] = " [TIME: %ds]";
+			// Display a timer if we have one active.
+			// NOTE: This will only display the first timer found!
+			for (int k = 0; k < ClientContractObjective.m_hEvents.Length; k++)
+			{
+				ContractObjectiveEvent ObjEvent;
+				ClientContractObjective.m_hEvents.GetArray(k, ObjEvent);
+
+				// Do we have a timer going?
+				if (ObjEvent.m_hTimer != INVALID_HANDLE)
+				{
+					int TimeDiff = RoundFloat((GetGameTime() - ObjEvent.m_fStarted));
+					Format(TimerText, sizeof(TimerText), TimerText, TimeDiff);
+					StrCat(DisplayText, sizeof(DisplayText), TimerText);
+				}
+			}
+
+			StrCat(DisplayText, sizeof(DisplayText), "\n");
+			DisplayID++;
+		}
+
+		// Add some text saying that we're saving the Contract to the database.
+		if (DisplaySavingText)
+		{
+			char SavingText[] = "Saving...";
+			StrCat(DisplayText, sizeof(DisplayText), SavingText);
+		}
+		
+		// Display text to client.
+		ShowHudText(i, -1, DisplayText);
+
+		// Just in case we modified the Contract earlier, resave it.
+		ClientContracts[i] = ClientContract;
+	}
+
+	return Plugin_Continue;
+}
+
 /**
  * Events that are sent through the native CallContrackerEvent will be placed into
  * a queue (g_ObjectiveUpdateQueue). Only a certain amount of events are processed
@@ -764,6 +907,8 @@ void ProcessLogicForContractObjective(Contract ClientContract, int objective_id,
 					TimerData.WriteCell(Objective.m_iInternalID); // Pass through our internal ID so we know which objective to look for.
 					TimerData.WriteCell(ObjEvent.m_iInternalID); // Pass through the current event index so we know which event we're looking for in our objective.
 					// ^^ The reason we do these two things as we can't pass enum structs through into a DataPack.
+
+					ObjEvent.m_fStarted = GetGameTime();
 				}
 			}
 
@@ -804,9 +949,7 @@ void ProcessLogicForContractObjective(Contract ClientContract, int objective_id,
 			}
 		
 			Objective.m_hEvents.SetArray(i, ObjEvent);
-			Objective.m_bNeedsDBSave = true;
 			ClientContract.SaveObjective(objective_id, Objective);
-			ClientContract.m_bNeedsDBSave = true;
 			ClientContracts[client] = ClientContract;
 		}
 	}
@@ -836,7 +979,7 @@ void ProcessLogicForContractObjective(Contract ClientContract, int objective_id,
 	// Is our contract now complete?
 	if (ClientContract.IsContractComplete())
 	{
-		if (PlayerSoundsEnabled[client]) EmitGameSoundToClient(client, "MatchMaking.RankUp");
+		if (PlayerSoundsEnabled[client]) EmitGameSoundToClient(client, "Quest.TurnInAccepted");
 
 		if (g_DebugProgress.BoolValue)
 		{
@@ -863,10 +1006,16 @@ void IncrementContractProgress(int client, int value, Contract ClientContract, C
 {
 	if (PlayerSoundsEnabled[client]) EmitGameSoundToClient(client, "Quest.StatusTickNovice");
 
+	int AddValue = 0;
+
 	// Add progress to our Contract.
-	if (ClientContract.m_bNoMultiplication) ClientContract.m_iProgress += ClientContractObjective.m_iAward;
-	else if (ClientContractObjective.m_bNoMultiplication) ClientContract.m_iProgress += ClientContractObjective.m_iAward;
-	else ClientContract.m_iProgress += ClientContractObjective.m_iAward * value;
+	if (ClientContract.m_bNoMultiplication) AddValue = ClientContractObjective.m_iAward;
+	else if (ClientContractObjective.m_bNoMultiplication) AddValue = ClientContractObjective.m_iAward;
+	else AddValue = ClientContractObjective.m_iAward * value;
+
+	ClientContract.m_iProgress += AddValue;
+	ClientContract.m_iHUD_UpdateValue = AddValue;
+	ClientContract.m_bHUD_ContractUpdate = true;
 
 	// Cap our progress and amount of fires.
 	ClientContract.m_iProgress = Int_Min(ClientContract.m_iProgress, ClientContract.m_iMaxProgress);
@@ -909,10 +1058,16 @@ void IncrementObjectiveProgress(int client, int value, Contract ClientContract, 
 {
 	if (PlayerSoundsEnabled[client]) EmitGameSoundToClient(client, "Quest.StatusTickNovice");
 
+	int AddValue = 0;
+
 	// Add progress to our Objective.
-	if (ClientContractObjective.m_bNoMultiplication) ClientContractObjective.m_iProgress += ClientContractObjective.m_iAward;
-	else ClientContractObjective.m_iProgress += ClientContractObjective.m_iAward * value;
+	if (ClientContractObjective.m_bNoMultiplication) AddValue = ClientContractObjective.m_iAward;
+	else AddValue = ClientContractObjective.m_iAward * value;
 	
+	ClientContractObjective.m_iProgress += AddValue;
+	ClientContract.m_iHUD_UpdateValue = AddValue;
+	ClientContract.m_iHUD_ObjectiveUpdate = ClientContractObjective.m_iInternalID;
+
 	if (!ClientContractObjective.m_bInfinite)
 	{
 		ClientContractObjective.m_iProgress = Int_Min(ClientContractObjective.m_iProgress, ClientContractObjective.m_iMaxProgress);
@@ -977,55 +1132,86 @@ bool PerformWeaponCheck(Contract ClientContract, int client)
 // ============ EVENT FUNCTIONS ============
 public Action OnRoundWin(Event event, const char[] name, bool dontBroadcast)
 {
-	if (!g_TF2_AllowRoundEndProgress.BoolValue)
+	switch (GetEngineVersion())
 	{
-		// Block any events from being processed after this time.
-		g_LastValidProgressTime = GetGameTime();
+		case Engine_TF2:
+		{
+			if (!g_TF2_AllowRoundEndProgress.BoolValue)
+			{
+				// Block any events from being processed after this time.
+				g_LastValidProgressTime = GetGameTime();
+			}
+			else
+			{
+				g_LastValidProgressTime = -1.0;
+			}
+		}
 	}
-	else
-	{
-		g_LastValidProgressTime = -1.0;
-	}
+
 	return Plugin_Continue;
 }
 
 public Action OnRoundStart(Event event, const char[] name, bool dontBroadcast)
 {
-	if (view_as<bool>(GameRules_GetProp("m_bInSetup")) && !g_TF2_AllowSetupProgress.BoolValue)
+	switch (GetEngineVersion())
 	{
-		// Block any events from being processed after this time.
-		g_LastValidProgressTime = GetGameTime();
-	}
-	else
-	{
-		g_LastValidProgressTime = -1.0;
+		case Engine_TF2:
+		{
+			if (view_as<bool>(GameRules_GetProp("m_bInSetup")) && !g_TF2_AllowSetupProgress.BoolValue)
+			{
+				// Block any events from being processed after this time.
+				g_LastValidProgressTime = GetGameTime();
+			}
+			else
+			{
+				g_LastValidProgressTime = -1.0;
+			}
+		}
 	}
 	return Plugin_Continue;
 }
 
 public Action OnWaitingStart(Event event, const char[] name, bool dontBroadcast)
 {
-	if (!g_TF2_AllowWaitingProgress.BoolValue)
+	switch (GetEngineVersion())
 	{
-		// Block any events from being processed after this time.
-		g_LastValidProgressTime = GetGameTime();
-	}
-	else
-	{
-		g_LastValidProgressTime = -1.0;
+		case Engine_TF2:
+		{
+			if (!g_TF2_AllowWaitingProgress.BoolValue)
+			{
+				// Block any events from being processed after this time.
+				g_LastValidProgressTime = GetGameTime();
+			}
+			else
+			{
+				g_LastValidProgressTime = -1.0;
+			}
+		}
 	}
 	return Plugin_Continue;
 }
 
 public Action OnWaitingEnd(Event event, const char[] name, bool dontBroadcast)
 {
-	g_LastValidProgressTime = -1.0;
+	switch (GetEngineVersion())
+	{
+		case Engine_TF2:
+		{
+			g_LastValidProgressTime = -1.0;
+		}
+	}
 	return Plugin_Continue;
 }
 
 public Action OnSetupEnd(Event event, const char[] name, bool dontBroadcast)
 {
-	g_LastValidProgressTime = -1.0;
+	switch (GetEngineVersion())
+	{
+		case Engine_TF2:
+		{
+			g_LastValidProgressTime = -1.0;
+		}
+	}
 	return Plugin_Continue;
 }
 

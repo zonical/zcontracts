@@ -54,8 +54,13 @@ enum struct ContractObjectiveEvent
 	
 	// Timer logic.
 	Handle m_hTimer;
-	float m_fTime; // The starting time for the timer.
-	int m_iMaxLoops; // The maximum amount of timer loops.
+
+	// The starting time for the timer.
+	float m_fTime; 
+	// The maximum amount of timer loops.
+	int m_iMaxLoops; 
+	// When this timer was started.
+	float m_fStarted;
 	int m_iCurrentLoops;
 	// The events that get triggered on certain timer events.
 	ArrayList m_hTimerEvents; // See TimerEvent
@@ -208,6 +213,11 @@ enum struct Contract
 
 	// The objectives for this Contract.
 	ArrayList m_hObjectives;
+
+	// These three variables trigger visuals on the HUD.
+	bool m_bHUD_ContractUpdate;
+	int m_iHUD_ObjectiveUpdate;
+	int m_iHUD_UpdateValue;
 	
 	bool IsContractInitalized()
 	{
@@ -270,6 +280,9 @@ enum struct Contract
 		this.m_bInitalized = true;
 		this.m_bActive = true;
 		this.m_bLoadedFromDatabase = false;
+		this.m_bHUD_ContractUpdate = false;
+		this.m_iHUD_ObjectiveUpdate = -1;
+		this.m_iHUD_UpdateValue = 0;
 	}
 	/**
 	 * Destroy the ArrayList for objectives.
