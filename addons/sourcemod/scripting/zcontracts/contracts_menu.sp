@@ -310,11 +310,11 @@ void CreateObjectiveDisplay(int client, Contract ClientContract, bool unknown)
 				case Contract_ContractProgress:
 				{
 					Format(line, sizeof(line), "Objective #%d: \"%s\" [%d/%d] +%dCP", i+1,
-					Objective.m_sDescription, Objective.m_iFires, Objective.m_iMaxFires, Objective.m_iAward);
+					Objective.m_sDescription, Objective.m_iProgress, Objective.m_iMaxProgress, Objective.m_iAward);
 					if (unknown)
 					{
 						Format(line, sizeof(line), "Objective #%d: \"%s\" [?/%d] +%dCP", i+1,
-						Objective.m_sDescription, Objective.m_iMaxFires, Objective.m_iAward);				
+						Objective.m_sDescription, Objective.m_iMaxProgress, Objective.m_iAward);				
 					}
 				}
 			}

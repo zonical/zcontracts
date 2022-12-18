@@ -112,8 +112,8 @@ public any Native_SetContractProgressDatabase(Handle plugin, int numParams)
 
     char query[1024];
     g_DB.Format(query, sizeof(query),
-        "INSERT INTO contract_progress (steamid64, contract_uuid, progress) VALUES ('%s', '%s', %d)"
-    ... " ON DUPLICATE KEY UPDATE progress = %d", steamid64, UUID, progress, progress);
+        "INSERT INTO contract_progress (steamid64, contract_uuid, progress, version) VALUES ('%s', '%s', %d, %d)"
+    ... " ON DUPLICATE KEY UPDATE progress = %d, version = %d", steamid64, UUID, progress, CONTRACKER_VERSION, progress, CONTRACKER_VERSION);
 
     g_DB.Query(CB_SetContractProgressDatabase, query, client, DBPrio_High);
     return true;
@@ -168,8 +168,8 @@ public any Native_SetObjectiveProgressDatabase(Handle plugin, int numParams)
 
     char query[1024];
     g_DB.Format(query, sizeof(query),
-        "INSERT INTO objective_progress (steamid64, contract_uuid, objective_id, progress) VALUES ('%s', '%s', %d, %d)"
-    ... " ON DUPLICATE KEY UPDATE progress = %d", steamid64, UUID, objective_id, progress, progress);
+        "INSERT INTO objective_progress (steamid64, contract_uuid, objective_id, progress, version) VALUES ('%s', '%s', %d, %d, %d)"
+    ... " ON DUPLICATE KEY UPDATE progress = %d, version = %d", steamid64, UUID, objective_id, progress, CONTRACKER_VERSION, progress, CONTRACKER_VERSION);
     g_DB.Query(CB_SetObjectiveProgressDatabase, query, client, DBPrio_High);
     return true;
 }
@@ -278,10 +278,6 @@ public any Native_SaveClientObjectiveProgress(Handle plugin, int numParams)
         {
             SetObjectiveProgressDatabase(client, UUID, ClientContractObjective.m_iInternalID, ClientContractObjective.m_iProgress);
         }
-        if (ClientContractObjective.m_iFires > 0)
-        {
-            SetObjectiveFiresDatabase(client, UUID, ClientContractObjective.m_iInternalID, ClientContractObjective.m_iFires);
-        }
         return true;
     }
 
@@ -290,62 +286,6 @@ public any Native_SaveClientObjectiveProgress(Handle plugin, int numParams)
         LogMessage("[ZContracts] %N SAVE: Objective progress save attempt interrupted.", client);
     }
     return false;
-}
-
-/**
- * Sets the fire value of an Objective in the database.
- *
- * @param client    Client index.
- * @param UUID	The UUID of the contract to modify.
- * @param objective_id	The ID of the objective to modify.
- * @param value	The value to save to the database.
- * @error           Client index is invalid.           
- */
-public any Native_SetObjectiveFiresDatabase(Handle plugin, int numParams)
-{
-    int client = GetNativeCell(1);
-    char UUID[MAX_UUID_SIZE];
-    GetNativeString(2, UUID, sizeof(UUID));
-    int objective_id = GetNativeCell(3);
-    int fires = GetNativeCell(4);
-
-    if (!IsClientValid(client) || IsFakeClient(client))
-	{
-		ThrowNativeError(SP_ERROR_NATIVE, "Invalid client index. (%d)", client);
-	}
-    if (UUID[0] != '{')
-    {
-        ThrowNativeError(SP_ERROR_NATIVE, "Invalid UUID passed. (%s)", UUID);
-    }
-
-    // Get the client's SteamID64.
-    char steamid64[64];
-    GetClientAuthId(client, AuthId_SteamID64, steamid64, sizeof(steamid64));
-
-    char query[1024];
-    g_DB.Format(query, sizeof(query),
-        "INSERT INTO objective_progress (steamid64, contract_uuid, objective_id, fires) VALUES ('%s', '%s', %d, %d)"
-    ... " ON DUPLICATE KEY UPDATE fires = %d", steamid64, UUID, objective_id, fires, fires);
-
-    g_DB.Query(CB_SetObjectiveFiresDatabase, query, client, DBPrio_High);
-    return true;
-}
-
-// Callback for SetObjectiveFiresDatabase.
-public void CB_SetObjectiveFiresDatabase(Database db, DBResultSet results, const char[] error, int client)
-{
-    if (results.AffectedRows < 1)
-    {
-        if (g_DebugQuery.BoolValue && !StrEqual(error, ""))
-        {
-            LogMessage("[ZContracts] %N SAVE: Failed to save fires for objective [SQL ERR: %s]", client, error);
-        }
-        return;
-    }
-    if (g_DebugQuery.BoolValue)
-    {
-        LogMessage("[ZContracts] %N SAVE: Sucessfully saved fires for objective.", client);
-    }
 }
 
 /**
@@ -383,13 +323,12 @@ public void CB_SetClientContract_Objective(Database db, DBResultSet results, con
         int db_id = results.FetchInt(2);
         ClientContract.GetObjective(db_id, hObj);
         hObj.m_iProgress = results.FetchInt(3);
-        hObj.m_iFires = results.FetchInt(4); 
         ClientContract.SaveObjective(db_id, hObj);
 
         if (g_DebugQuery.BoolValue)
         {
-            LogMessage("[ZContracts] %N LOAD: Successfully grabbed ContractObjective %d progress from database CP: (%d/%d), FIRES: (%d/%d).",
-            client, db_id, hObj.m_iProgress, hObj.m_iMaxProgress, hObj.m_iFires, hObj.m_iMaxFires);
+            LogMessage("[ZContracts] %N LOAD: Successfully grabbed ContractObjective %d progress from database CP: (%d/%d)",
+            client, db_id, hObj.m_iProgress, hObj.m_iMaxProgress);
         }
     }
 

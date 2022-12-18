@@ -117,16 +117,13 @@ public void CreateContractObjective(KeyValues hObjectiveConf, ContractObjective 
 	hObjective.Initalize();
 
 	hObjectiveConf.GetString("description", hObjective.m_sDescription, sizeof(hObjective.m_sDescription));
-	hObjective.m_iMaxProgress = hObjectiveConf.GetNum("maximum_cp", 0);
-	hObjective.m_iMaxFires = hObjectiveConf.GetNum("maximum_uses", 0);
+
+	if (hObjectiveConf.GetNum("maximum_cp", -1) != -1) hObjective.m_iMaxProgress = hObjectiveConf.GetNum("maximum_cp");
+	if (hObjectiveConf.GetNum("maximum_uses", -1) != -1) hObjective.m_iMaxProgress = hObjectiveConf.GetNum("maximum_uses");
+
 	hObjective.m_iAward = hObjectiveConf.GetNum("award", 1);
 	hObjective.m_bInfinite = view_as<bool>(hObjectiveConf.GetNum("infinite", 0));
 	hObjective.m_bNoMultiplication = view_as<bool>(hObjectiveConf.GetNum("no_multiply", 0));
-
-	if (hObjective.m_bInfinite)
-	{
-		hObjective.m_iMaxProgress = 0;
-	}
 
 	// Create our events.
 	if (hObjectiveConf.JumpToKey("events", false))
@@ -289,7 +286,7 @@ public void ProcessContractsSchema()
 	}
 	g_ContractSchema.Rewind();
 	
-	PrintToServer("[ZContracts] Initalized %d contracts.", iContractCount);
+	PrintToServer("[ZContracts] Loaded %d contracts.", iContractCount);
 }
 
 bool CreateContractFromUUID(const char[] sUUID, Contract hBuffer)

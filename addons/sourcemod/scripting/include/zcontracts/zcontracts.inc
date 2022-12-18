@@ -103,20 +103,13 @@ enum struct ContractObjective
 	// the multiplication (e.g heal a player for 300HP gives 5CP *only*)
 	bool m_bNoMultiplication;
 
-	// For an Objective-Progress type of Contract, store the progress
-	// of this objective.
+	// Progress of this objective. This includes how many times it should be used.
 	int m_iMaxProgress;
 	int m_iProgress;
 
-	// For an Contract-Progress type of Contract, we can limit how many times
-	// this objective can be used to gain Contract progress.
-	int m_iFires;
-	int m_iMaxFires;
-
 	// If the Objective progress needs to be updated in the database. This is only used
-	// with the repeating timer 
+	// with the repeating timer.
 	bool m_bNeedsDBSave;
-
 	
 	// Events for this Contract (see ContractObjectiveEvent).
 	ArrayList m_hEvents;
@@ -127,13 +120,7 @@ enum struct ContractObjective
 	bool IsObjectiveComplete()
 	{
 		if (this.m_bInfinite) return false;
-		switch (this.m_iContractType)
-		{
-			case Contract_ObjectiveProgress: return this.m_iProgress >= this.m_iMaxProgress;
-			case Contract_ContractProgress: return this.m_iFires >= this.m_iMaxFires;
-		}
-		return false;
-		
+		return this.m_iProgress >= this.m_iMaxProgress;
 	}
 	/**
 	 * Creates the ArrayList for Objective Events.
@@ -395,18 +382,6 @@ native bool SetContractProgressDatabase(int client, char UUID[MAX_UUID_SIZE], in
  * @error           Client index is invalid.           
  */
 native bool SetObjectiveProgressDatabase(int client, char UUID[MAX_UUID_SIZE], int objective_id, int value);
-
-/**
- * Sets the fire value of an Objective in the database.
- *
- * @param client    Client index.
- * @param UUID	The UUID of the contract to modify.
- * @param objective_id	The ID of the objective to modify.
- * @param value	The value to save to the database.
- * @error           Client index is invalid.           
- */
-native bool SetObjectiveFiresDatabase(int client, char UUID[MAX_UUID_SIZE], int objective_id, int value);
-
 
 /**
  * Sent on client completion of a Contract objective.

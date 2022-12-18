@@ -1,5 +1,6 @@
 // LIST:
 // TODO: Port to CSGO
+// TODO: Add settings button for Contracker containing preferences
 // TODO: Sound preference for client
 // TODO: HUD preference for client
 // TODO: Preferences saved to database
@@ -20,7 +21,7 @@
 
 #include <zcontracts/zcontracts>
 
-Database g_DB;
+Database g_DB = null;
 Handle g_DatabaseUpdateTimer;
 
 // Player Contracts.
@@ -61,7 +62,14 @@ float g_NextHUDUpdate[MAXPLAYERS+1] = { -1.0, ... };
 
 // Preferences
 bool PlayerSoundsEnabled[MAXPLAYERS+1] = { true, ... };
+bool PlayerHUDEnabled[MAXPLAYERS+1] = { true, ... };
 
+// Major version number, feature number, patch number
+#define PLUGIN_VERSION "0.1.0"
+// This value should be incremented with every breaking version made to the
+// database so saves can be easily converted.
+#define CONTRACKER_VERSION 1
+// How often the HUD will refresh itself.
 #define HUD_REFRESH_RATE 0.5
 
 // Subplugins.
@@ -75,7 +83,7 @@ public Plugin myinfo =
 	name = "ZContracts - Custom Contract Logic",
 	author = "ZoNiCaL",
 	description = "Allows server operators to design their own contracts.",
-	version = "alpha-1",
+	version = PLUGIN_VERSION,
 	url = ""
 };
 
@@ -97,12 +105,13 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 	CreateNative("SaveClientObjectiveProgress", Native_SaveClientObjectiveProgress);
 	CreateNative("SetContractProgressDatabase", Native_SetContractProgressDatabase);
 	CreateNative("SetObjectiveProgressDatabase", Native_SetObjectiveProgressDatabase);
-	CreateNative("SetObjectiveFiresDatabase", Native_SetObjectiveFiresDatabase);
 	return APLRes_Success;
 }
 
 public void OnPluginStart()
 {
+	PrintToServer("[ZContracts] Initalizing ZContracts %s - Contracker Version: %d", PLUGIN_VERSION, CONTRACKER_VERSION);
+
 	// ================ CONVARS ================
 	g_ConfigSearchPath = CreateConVar("zc_schema_search_path", "configs/zcontracts", "The path, relative to the \"sourcemods/\" directory, to find Contract definition files. Changing this Value will cause a reload of the Contract schema.");
 	g_RequiredFileExt = CreateConVar("zc_schema_required_ext", ".txt", "The file extension that Contract definition files must have in order to be considered valid. Changing this Value will cause a reload of the Contract schema.");
@@ -177,14 +186,12 @@ public void OnPluginStart()
 	RegAdminCmd("sm_setcontract", DebugSetContract, ADMFLAG_KICK);
 	RegAdminCmd("sm_setcontractprogress", DebugSetContractProgress, ADMFLAG_BAN);
 	RegAdminCmd("sm_setobjectiveprogress", DebugSetObjectiveProgress, ADMFLAG_BAN);
-	RegAdminCmd("sm_setobjectivefires", DebugSetObjectiveFires, ADMFLAG_BAN);
 	RegAdminCmd("sm_triggerevent", DebugTriggerEvent, ADMFLAG_BAN);
 	RegAdminCmd("sm_savecontract", DebugSaveContract, ADMFLAG_KICK);
 	//RegAdminCmd("sm_resetcontract", DebugResetContract, ADMFLAG_BAN);
 	RegAdminCmd("sm_debugcontract", DebugContractInfo, ADMFLAG_ROOT);
 	RegAdminCmd("zc_reload_contracts", ReloadContracts, ADMFLAG_ROOT);
 	RegAdminCmd("zc_reload_database", ReloadDatabase, ADMFLAG_ROOT);
-
 
 	RegConsoleCmd("sm_contract", OpenContrackerForClient);
 	RegConsoleCmd("sm_contracts", OpenContrackerForClient);
@@ -260,6 +267,7 @@ public void OnPlaySoundsChange(ConVar convar, char[] oldValue, char[] newValue)
 	else
 	{
 		// TODO: Load from database
+		for (int i = 0; i < MAXPLAYERS+1; i++) LoadClientSoundPreference(i); 
 	}
 }
 
@@ -268,6 +276,7 @@ public void OnProgressHudChange(ConVar convar, char[] oldValue, char[] newValue)
 	if (StringToInt(newValue) == 1)
 	{
 		CreateTimer(HUD_REFRESH_RATE, Timer_DrawContrackerHud, _, TIMER_REPEAT);
+		// TODO: Load from database
 	}
 }
 
@@ -449,6 +458,7 @@ public any Native_SetClientContract(Handle plugin, int numParams)
 	GetClientAuthId(client, AuthId_SteamID64, steamid64, sizeof(steamid64));
 
 	// TODO: Can we make this into one query?
+	// TODO: Implement version checking when required! "version" key in SQL
 	char contract_query[1024];
 	if (ClientContract.m_iContractType == Contract_ContractProgress)
 	{
@@ -538,7 +548,6 @@ public any Native_SetClientContractStruct(Handle plugin, int numParams)
 
 	return true;
 }
-
 
 // Function for event timers.
 public Action Timer_DisplayContractInfo(Handle hTimer, int client)
@@ -670,6 +679,7 @@ public Action Timer_DrawContrackerHud(Handle hTimer)
 	{
 		if (!IsClientValid(i) || IsFakeClient(i)) continue;
 		if (g_NextHUDUpdate[i] > GetGameTime()) continue;
+		if (!PlayerHUDEnabled[i]) continue;
 
 		Contract ClientContract;
 		GetClientContract(i, ClientContract);
@@ -680,99 +690,98 @@ public Action Timer_DrawContrackerHud(Handle hTimer)
 		char DisplayText[512] = "\"%s\":\n";
 		Format(DisplayText, sizeof(DisplayText), DisplayText, ClientContract.m_sContractName);
 
-		// Display the overall Contract progress.
-		if (ClientContract.m_iContractType == Contract_ContractProgress)
+		// Add text if we've completed the Contract.
+		if (ClientContract.IsContractComplete())
 		{
-			char ProgressText[128] = "Progress: [%d/%d]";
-			Format(ProgressText, sizeof(ProgressText), ProgressText,
-			ClientContract.m_iProgress, ClientContract.m_iMaxProgress);		
-
-			// Adds +xCP value to the end of the text.
-			if (ClientContract.m_bHUD_ContractUpdate)
-			{
-				SetHudTextParams(1.0, -1.0, 2.1, 52, 235, 70, 255, 1, HUD_REFRESH_RATE + 0.1);
-				char AddText[16] = " +%dCP";
-				Format(AddText, sizeof(AddText), AddText, ClientContract.m_iHUD_UpdateValue);
-				StrCat(ProgressText, sizeof(ProgressText), AddText);
-				ClientContract.m_bHUD_ContractUpdate = false;
-				ClientContract.m_iHUD_UpdateValue = 0;
-
-				g_NextHUDUpdate[i] = GetGameTime() + 2.0;
-			}
-
-			StrCat(ProgressText, sizeof(ProgressText), "\n");
-			StrCat(DisplayText, sizeof(DisplayText), ProgressText);
+			char CompleteText[] = "COMPLETE - Type /c to\nselect a new Contract.";
+			StrCat(DisplayText, sizeof(DisplayText), CompleteText);
 		}
-
-		bool DisplaySavingText = ClientContract.m_bNeedsDBSave;
-
-		// Add our objectives to HUD display.
-		int DisplayID = 1;
-		for (int j = 0; j < ClientContract.m_hObjectives.Length; j++)
+		else
 		{
-			ContractObjective ClientContractObjective;
-			ClientContract.GetObjective(j, ClientContractObjective);
-			if (!ClientContractObjective.m_bInitalized) continue;
-			if (ClientContractObjective.m_bInfinite) continue;
-
-			if (ClientContractObjective.m_bNeedsDBSave) DisplaySavingText = true;
-
-			char ObjectiveText[64] = "#%d: [%d/%d]";
-			switch (ClientContract.m_iContractType)
+			// Display the overall Contract progress.
+			if (ClientContract.m_iContractType == Contract_ContractProgress)
 			{
-				case Contract_ObjectiveProgress:
+				char ProgressText[128] = "Progress: [%d/%d]";
+				Format(ProgressText, sizeof(ProgressText), ProgressText,
+				ClientContract.m_iProgress, ClientContract.m_iMaxProgress);		
+
+				// Adds +xCP value to the end of the text.
+				if (ClientContract.m_bHUD_ContractUpdate)
 				{
-					Format(ObjectiveText, sizeof(ObjectiveText), ObjectiveText,
-					DisplayID, ClientContractObjective.m_iProgress, ClientContractObjective.m_iMaxProgress);
-				}
-				case Contract_ContractProgress:
-				{
-					Format(ObjectiveText, sizeof(ObjectiveText), ObjectiveText,
-					DisplayID, ClientContractObjective.m_iFires, ClientContractObjective.m_iMaxFires);
-				}
+					SetHudTextParams(1.0, -1.0, 1.0, 52, 235, 70, 255, 1, HUD_REFRESH_RATE + 0.1);
+					char AddText[16] = " +%dCP";
+					Format(AddText, sizeof(AddText), AddText, ClientContract.m_iHUD_UpdateValue);
+					StrCat(ProgressText, sizeof(ProgressText), AddText);
+					ClientContract.m_bHUD_ContractUpdate = false;
+					ClientContract.m_iHUD_UpdateValue = 0;
+
+					g_NextHUDUpdate[i] = GetGameTime() + 1.0;
+				}				
+
+				StrCat(ProgressText, sizeof(ProgressText), "\n");
+				StrCat(DisplayText, sizeof(DisplayText), ProgressText);
 			}
 
-			// Adds +x value to the end of the text.
-			if (ClientContract.m_iHUD_ObjectiveUpdate == ClientContractObjective.m_iInternalID)
+			bool DisplaySavingText = ClientContract.m_bNeedsDBSave;
+
+			// Add our objectives to HUD display.
+			int DisplayID = 1;
+			for (int j = 0; j < ClientContract.m_hObjectives.Length; j++)
 			{
-				SetHudTextParams(1.0, -1.0, 2.1, 52, 235, 70, 255, 1, HUD_REFRESH_RATE + 0.1);
-				char AddText[16] = " +%d";
-				Format(AddText, sizeof(AddText), AddText, ClientContract.m_iHUD_UpdateValue);
-				StrCat(ObjectiveText, sizeof(ObjectiveText), AddText);
-				ClientContract.m_bHUD_ContractUpdate = false;
-				ClientContract.m_iHUD_ObjectiveUpdate = -1;
+				ContractObjective ClientContractObjective;
+				ClientContract.GetObjective(j, ClientContractObjective);
+				if (!ClientContractObjective.m_bInitalized) continue;
+				if (ClientContractObjective.m_bInfinite) continue;
+				if (ClientContractObjective.IsObjectiveComplete()) continue;
 
-				g_NextHUDUpdate[i] = GetGameTime() + 2.0;
-			}
+				if (ClientContractObjective.m_bNeedsDBSave) DisplaySavingText = true;
 
-			StrCat(DisplayText, sizeof(DisplayText), ObjectiveText);
-			
-			char TimerText[16] = " [TIME: %ds]";
-			// Display a timer if we have one active.
-			// NOTE: This will only display the first timer found!
-			for (int k = 0; k < ClientContractObjective.m_hEvents.Length; k++)
-			{
-				ContractObjectiveEvent ObjEvent;
-				ClientContractObjective.m_hEvents.GetArray(k, ObjEvent);
+				char ObjectiveText[64] = "#%d: [%d/%d]";
+				Format(ObjectiveText, sizeof(ObjectiveText), ObjectiveText,
+				DisplayID, ClientContractObjective.m_iProgress, ClientContractObjective.m_iMaxProgress);
 
-				// Do we have a timer going?
-				if (ObjEvent.m_hTimer != INVALID_HANDLE)
+				// Adds +x value to the end of the text.
+				if (ClientContract.m_iHUD_ObjectiveUpdate == ClientContractObjective.m_iInternalID)
 				{
-					int TimeDiff = RoundFloat((GetGameTime() - ObjEvent.m_fStarted));
-					Format(TimerText, sizeof(TimerText), TimerText, TimeDiff);
-					StrCat(DisplayText, sizeof(DisplayText), TimerText);
+					SetHudTextParams(1.0, -1.0, 1.0, 52, 235, 70, 255, 1, HUD_REFRESH_RATE + 0.1);
+					char AddText[16] = " +%d";
+					Format(AddText, sizeof(AddText), AddText, ClientContract.m_iHUD_UpdateValue);
+					StrCat(ObjectiveText, sizeof(ObjectiveText), AddText);
+					ClientContract.m_bHUD_ContractUpdate = false;
+					ClientContract.m_iHUD_ObjectiveUpdate = -1;
+
+					g_NextHUDUpdate[i] = GetGameTime() + 1.0;
 				}
+
+				StrCat(DisplayText, sizeof(DisplayText), ObjectiveText);
+				
+				char TimerText[16] = " [TIME: %ds]";
+				// Display a timer if we have one active.
+				// NOTE: This will only display the first timer found!
+				for (int k = 0; k < ClientContractObjective.m_hEvents.Length; k++)
+				{
+					ContractObjectiveEvent ObjEvent;
+					ClientContractObjective.m_hEvents.GetArray(k, ObjEvent);
+
+					// Do we have a timer going?
+					if (ObjEvent.m_hTimer != INVALID_HANDLE)
+					{
+						int TimeDiff = RoundFloat((GetGameTime() - ObjEvent.m_fStarted));
+						Format(TimerText, sizeof(TimerText), TimerText, TimeDiff);
+						StrCat(DisplayText, sizeof(DisplayText), TimerText);
+					}
+				}
+
+				StrCat(DisplayText, sizeof(DisplayText), "\n");
+				DisplayID++;
 			}
 
-			StrCat(DisplayText, sizeof(DisplayText), "\n");
-			DisplayID++;
-		}
-
-		// Add some text saying that we're saving the Contract to the database.
-		if (DisplaySavingText)
-		{
-			char SavingText[] = "Saving...";
-			StrCat(DisplayText, sizeof(DisplayText), SavingText);
+			// Add some text saying that we're saving the Contract to the database.
+			if (DisplaySavingText)
+			{
+				char SavingText[] = "Saving...";
+				StrCat(DisplayText, sizeof(DisplayText), SavingText);
+			}
 		}
 		
 		// Display text to client.
@@ -963,9 +972,9 @@ void ProcessLogicForContractObjective(Contract ClientContract, int objective_id,
 		}
 
 		// Print to chat.
-		CPrintToChat(client,
-		"{green}[ZC]{default} Congratulations! You have completed the objective: {lightgreen}\"%s\"{default}",
-		Objective.m_sDescription);
+		//CPrintToChat(client,
+		//"{green}[ZC]{default} Congratulations! You have completed the objective: {lightgreen}\"%s\"{default}",
+		//Objective.m_sDescription);
 		
 		Call_StartForward(g_fOnObjectiveCompleted);
 		Call_PushCell(client);
@@ -988,9 +997,9 @@ void ProcessLogicForContractObjective(Contract ClientContract, int objective_id,
 		}
 
 		// Print to chat.
-		CPrintToChat(client,
-		"{green}[ZC]{default} Congratulations! You have completed the contract: {lightgreen}\"%s\"{default}",
-		ClientContract.m_sContractName);
+		//CPrintToChat(client,
+		//"{green}[ZC]{default} Congratulations! You have completed the contract: {lightgreen}\"%s\"{default}",
+		//ClientContract.m_sContractName);
 
 		Call_StartForward(g_fOnContractCompleted);
 		Call_PushCell(client);
@@ -1013,16 +1022,18 @@ void IncrementContractProgress(int client, int value, Contract ClientContract, C
 	else if (ClientContractObjective.m_bNoMultiplication) AddValue = ClientContractObjective.m_iAward;
 	else AddValue = ClientContractObjective.m_iAward * value;
 
+	// Update HUD.
 	ClientContract.m_iProgress += AddValue;
 	ClientContract.m_iHUD_UpdateValue = AddValue;
 	ClientContract.m_bHUD_ContractUpdate = true;
 
-	// Cap our progress and amount of fires.
+	// Cap progress.
 	ClientContract.m_iProgress = Int_Min(ClientContract.m_iProgress, ClientContract.m_iMaxProgress);
+
 	if (!ClientContractObjective.m_bInfinite)
 	{
-		ClientContractObjective.m_iFires++;
-		ClientContractObjective.m_iFires = Int_Min(ClientContractObjective.m_iFires, ClientContractObjective.m_iMaxFires);
+		ClientContractObjective.m_iProgress++;
+		ClientContractObjective.m_iProgress = Int_Min(ClientContractObjective.m_iProgress, ClientContractObjective.m_iMaxProgress);
 	}
 
 	// Print HINT text to chat.
@@ -1278,7 +1289,6 @@ public Action DebugContractInfo(int client, int args)
 		... "Objective Is Infinite: %d\n"
 		... "Objective Award: %d\n"
 		... "Objective Progress: %d/%d\n"
-		... "Objective Fires: %d/%d\n"
 		... "Objective Event Count: %d\n"
 		... "Use No Multiplication %d\n"
 		... "Is Objective Complete %d\n"
@@ -1287,7 +1297,7 @@ public Action DebugContractInfo(int client, int args)
 		... "---------------------------------------------",
 		ClientContract.m_sContractName, ClientContract.m_sUUID, ClientContract.m_iContractType, ClientContractObjective.m_bInitalized,
 		ClientContractObjective.m_iInternalID, ClientContractObjective.m_bInfinite, ClientContractObjective.m_iAward,
-		ClientContractObjective.m_iProgress, ClientContractObjective.m_iMaxProgress, ClientContractObjective.m_iFires, ClientContractObjective.m_iMaxFires,
+		ClientContractObjective.m_iProgress, ClientContractObjective.m_iMaxProgress,
 		ClientContractObjective.m_hEvents.Length, ClientContractObjective.m_bNoMultiplication,
 		ClientContractObjective.IsObjectiveComplete(), ClientContractObjective.m_bNeedsDBSave);
 	}
@@ -1368,45 +1378,6 @@ public Action DebugSetObjectiveProgress(int client, int args)
 	for (int i = 0; i < target_count; i++)
 	{
 		SetObjectiveProgressDatabase(target_list[i], UUID, GetCmdArgInt(3), GetCmdArgInt(4));
-	}
-
-	return Plugin_Handled;
-}
-
-public Action DebugSetObjectiveFires(int client, int args)
-{
-	if (args < 4)
-	{
-		ReplyToCommand(client, "[ZC] Usage: sm_setobjectivefires <target> <uuid> <objective> <value>");
-		return Plugin_Handled;
-	}
-
-	char Targets[64];
-	GetCmdArg(1, Targets, sizeof(Targets));
-	char UUID[64];
-	GetCmdArg(2, UUID, sizeof(UUID));
-
-	char target_name[MAX_TARGET_LENGTH];
-	int target_list[MAXPLAYERS], target_count;
-	bool tn_is_ml;
-	
-	if ((target_count = ProcessTargetString(
-			Targets,
-			client,
-			target_list,
-			MAXPLAYERS,
-			COMMAND_FILTER_ALIVE,
-			target_name,
-			sizeof(target_name),
-			tn_is_ml)) <= 0)
-	{
-		ReplyToTargetError(client, target_count);
-		return Plugin_Handled;
-	}
-	
-	for (int i = 0; i < target_count; i++)
-	{
-		SetObjectiveFiresDatabase(target_list[i], UUID, GetCmdArgInt(3), GetCmdArgInt(4));
 	}
 
 	return Plugin_Handled;
