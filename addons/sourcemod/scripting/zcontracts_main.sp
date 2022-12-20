@@ -60,10 +60,6 @@ ArrayList g_ObjectiveUpdateQueue;
 
 float g_NextHUDUpdate[MAXPLAYERS+1] = { -1.0, ... };
 
-// Preferences
-bool PlayerSoundsEnabled[MAXPLAYERS+1] = { true, ... };
-bool PlayerHUDEnabled[MAXPLAYERS+1] = { true, ... };
-
 // Major version number, feature number, patch number
 #define PLUGIN_VERSION "0.1.0"
 // This value should be incremented with every breaking version made to the
@@ -76,6 +72,7 @@ bool PlayerHUDEnabled[MAXPLAYERS+1] = { true, ... };
 #include "zcontracts/contracts_schema.sp"
 #include "zcontracts/contracts_timers.sp"
 #include "zcontracts/contracts_database.sp"
+#include "zcontracts/contracts_preferences.sp"
 #include "zcontracts/contracts_menu.sp"
 
 public Plugin myinfo =
@@ -142,8 +139,6 @@ public void OnPluginStart()
 	g_DebugSessions = CreateConVar("zc_debug_sessions", "0", "Logs every time a session is restored.");
 #endif
 
-	g_PlaySounds.AddChangeHook(OnPlaySoundsChange);
-	g_DisplayProgressHud.AddChangeHook(OnProgressHudChange);
 	g_DatabaseUpdateTime.AddChangeHook(OnDatabaseUpdateChange);
 	g_ConfigSearchPath.AddChangeHook(OnSchemaConVarChange);
 	g_RequiredFileExt.AddChangeHook(OnSchemaConVarChange);
@@ -213,6 +208,7 @@ public void OnClientPostAdminCheck(int client)
 	&& g_DB != null)
 	{
 		GrabContractFromLastSession(client);
+		LoadAllClientPreferences(client);
 	}
 	
 	g_Menu_CurrentDirectory[client] = "root";
@@ -226,6 +222,8 @@ public void OnClientDisconnect(int client)
 	&& !IsFakeClient(client)
 	&& g_DB != null)
 	{
+		SaveClientPreferences(client);
+
 		Contract ClientContract;
 		GetClientContract(client, ClientContract);
 
@@ -256,28 +254,6 @@ public void OnSchemaConVarChange(ConVar convar, char[] oldValue, char[] newValue
 {
 	ProcessContractsSchema();
 	CreateContractMenu();
-}
-
-public void OnPlaySoundsChange(ConVar convar, char[] oldValue, char[] newValue)
-{
-	if (StringToInt(newValue) == 0)
-	{
-		for (int i = 0; i < MAXPLAYERS+1; i++) PlayerSoundsEnabled[i] = false;
-	}
-	else
-	{
-		// TODO: Load from database
-		for (int i = 0; i < MAXPLAYERS+1; i++) LoadClientSoundPreference(i); 
-	}
-}
-
-public void OnProgressHudChange(ConVar convar, char[] oldValue, char[] newValue)
-{
-	if (StringToInt(newValue) == 1)
-	{
-		CreateTimer(HUD_REFRESH_RATE, Timer_DrawContrackerHud, _, TIMER_REPEAT);
-		// TODO: Load from database
-	}
 }
 
 public Action ReloadContracts(int client, int args)

@@ -16,15 +16,14 @@ void CreateContractMenu()
 	delete gContractMenu;
 	
 	gContractMenu = new Menu(ContractMenuHandler, MENU_ACTIONS_ALL);
-	gContractMenu.Pagination = true;
 	gContractMenu.SetTitle("ZContracts - Contract Selector");
 	gContractMenu.ExitButton = true;
-	gContractMenu.ExitBackButton = true;
 	gContractMenu.OptionFlags = MENUFLAG_NO_SOUND;
 
 	// This is a display for the current directory for the client. We will manipulate this
 	// in menu logic later.
 	gContractMenu.AddItem("#directory", "filler");
+	gContractMenu.AddItem("$pref", "Open Client Preferences");
 	
 	// Add our directories to the menu. We'll hide options depending on what
 	// we should be able to see.
@@ -96,6 +95,8 @@ int ContractMenuHandler(Menu menu, MenuAction action, int param1, int param2)
 					return ITEMDRAW_DISABLED;
 				}
 			}
+			// Any special options.
+			else if (MenuKey[0] == '$') return ITEMDRAW_DEFAULT;
 			// Are we a directory instead?
 			else
 			{
@@ -147,6 +148,8 @@ int ContractMenuHandler(Menu menu, MenuAction action, int param1, int param2)
 					return RedrawMenuItem(MenuDisplay);
 				}
 			}
+			// Any special options.
+			else if (MenuKey[0] == '$') return RedrawMenuItem(MenuDisplay);
 			// Is this a directory?
 			else
 			{
@@ -177,6 +180,11 @@ int ContractMenuHandler(Menu menu, MenuAction action, int param1, int param2)
 				{
 					SetClientContract(param1, MenuKey);	
 				}
+			}
+			// Open our preference list.
+			else if (StrEqual("$pref", MenuKey))
+			{
+				ConstructPreferencePanel(param1);
 			}
 			// This is a directory instead.
 			// Clear our current menu and populate it with new items.
@@ -333,7 +341,6 @@ void CreateObjectiveDisplay(int client, Contract ClientContract, bool unknown)
 **/
 public int ObjectiveDisplayHandler(Menu menu, MenuAction action, int param1, int param2)
 {
-	// We don't need to do anything here...
 	if (action == MenuAction_Select)
     {
 		if (param2 == 1)
