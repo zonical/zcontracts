@@ -19,6 +19,8 @@ public void GotDatabase(Database db, const char[] error, any data)
             if (IsClientValid(i) && !IsFakeClient(i))
             {
                 GrabContractFromLastSession(i);
+                LoadAllClientPreferences(i);
+                LoadCompletedContracts(i);
             }
         }
     }
@@ -130,7 +132,7 @@ public void CB_SetContractProgressDatabase(Database db, DBResultSet results, con
         }
         return;
     }
-    if (g_DebugQuery.BoolValue)
+    if (g_DebugQuery.BoolValue && IsClientValid(client))
     {
         LogMessage("[ZContracts] %N SAVE: Sucessfully saved progress for contract.", client);
     }
@@ -334,4 +336,75 @@ public void CB_SetClientContract_Objective(Database db, DBResultSet results, con
 
     ClientContract.m_bLoadedFromDatabase = true;
     ClientContracts[client] = ClientContract;
+}
+
+void SaveCompletedContract(int client, char UUID[MAX_UUID_SIZE])
+{
+    if (!IsClientValid(client) || IsFakeClient(client))
+    {
+        ThrowError("Invalid client index. (%d)", client);
+    }
+    if (UUID[0] != '{')
+    {
+        ThrowError("Invalid UUID passed. (%s)", UUID);
+    }
+
+    // Get the client's SteamID64.
+    char steamid64[64];
+    GetClientAuthId(client, AuthId_SteamID64, steamid64, sizeof(steamid64));
+
+    char query[1024];
+    g_DB.Format(query, sizeof(query), "INSERT INTO completed_contracts (steamid64, contract_uuid) VALUES ('%s', '%s')", steamid64, UUID);
+    g_DB.Query(CB_SaveCompletedContract, query, client, DBPrio_High);
+    return; 
+}
+
+public void CB_SaveCompletedContract(Database db, DBResultSet results, const char[] error, int client)
+{
+    if (g_DebugQuery.BoolValue && results.AffectedRows == 1)
+    {
+        LogMessage("[ZContracts] %N COMPLETE: Successfully saved Contract completion status.", client);
+    }
+}
+
+void LoadCompletedContracts(int client)
+{
+    if (!IsClientValid(client) || IsFakeClient(client))
+    {
+        ThrowError("Invalid client index. (%d)", client);
+    }
+
+    if (g_DebugQuery.BoolValue)
+    {
+        LogMessage("[ZContracts] %N COMPLETE: Attempting to load completion status of all attempted Contracts.", client);
+    }
+
+    // Delete the old list of completed contracts if it exists.
+    delete CompletedContracts[client];
+    CompletedContracts[client] = new ArrayList(MAX_UUID_SIZE);
+
+    // Get the client's SteamID64.
+    char steamid64[64];
+    GetClientAuthId(client, AuthId_SteamID64, steamid64, sizeof(steamid64));
+
+    char query[1024];
+    g_DB.Format(query, sizeof(query), "SELECT contract_uuid FROM completed_contracts WHERE steamid64 = '%s'", steamid64);
+    g_DB.Query(CB_LoadCompletedContracts, query, client, DBPrio_High);
+    return;
+}
+
+public void CB_LoadCompletedContracts(Database db, DBResultSet results, const char[] error, int client)
+{
+    while (results.FetchRow())
+    {
+        char UUID[MAX_UUID_SIZE];
+        results.FetchString(0, UUID, sizeof(UUID));
+        PrintToChat(client, "LOADED %s", UUID);
+        CompletedContracts[client].PushString(UUID);
+    }
+
+    if (g_DebugQuery.BoolValue)
+    {
+        LogMessage("[ZContracts] %N COMPLETE: Loaded %d attempted Contracts.", client, results.RowCount);
+    }
 }

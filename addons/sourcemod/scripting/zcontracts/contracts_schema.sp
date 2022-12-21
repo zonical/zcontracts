@@ -256,6 +256,29 @@ public void CreateContract(KeyValues hContractConf, Contract hContract)
 		hContractConf.GoBack();
 	}
 
+	// Get a list of contracts that are required to be completed before
+	// this one can be activated.
+	if (hContractConf.JumpToKey("required_contracts", false))
+	{
+		int Value = 0;
+		for (;;)
+		{
+			char ContractUUID[MAX_UUID_SIZE];
+			char ValueStr[4];
+			IntToString(Value, ValueStr, sizeof(ValueStr));
+
+			hContractConf.GetString(ValueStr, ContractUUID, sizeof(ContractUUID), "{}");
+			
+			// If we reach a blank UUID, we're at the end of the list.
+			if (StrEqual("{}", ContractUUID)) break;
+
+			hContract.m_hRequiredContracts.PushString(ContractUUID);
+			Value++;
+		}
+	
+		hContractConf.GoBack();
+	}
+
 	//LogMessage("[ZContracts] Created Contract %s in directory: %s", hContract.m_sUUID, hContract.m_sDirectoryPath);
 	hContractConf.GoBack();
 }

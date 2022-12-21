@@ -1,9 +1,6 @@
 // LIST:
 // TODO: Port to CSGO
-// TODO: Add settings button for Contracker containing preferences
-// TODO: Sound preference for client
-// TODO: HUD preference for client
-// TODO: Preferences saved to database
+// TODO: Required contracts.
 
 #pragma semicolon 1
 
@@ -16,7 +13,6 @@
 #include <tf2>
 #include <tf2_stocks>
 #include <cstrike>
-#include <morecolors>
 #include <float>
 
 #include <zcontracts/zcontracts>
@@ -27,6 +23,7 @@ Handle g_DatabaseUpdateTimer;
 // Player Contracts.
 Contract OldClientContracts[MAXPLAYERS+1];
 Contract ClientContracts[MAXPLAYERS+1];
+ArrayList CompletedContracts[MAXPLAYERS+1];
 
 // ConVars.
 ConVar g_UpdatesPerSecond;
@@ -131,7 +128,6 @@ public void OnPluginStart()
 		}
 	}
 
-
 #if defined DEBUG
 	g_DebugEvents = CreateConVar("zc_debug_print_events", "0", "Logs every time an event is sent.");
 	g_DebugProcessing = CreateConVar("zc_debug_processing", "0", "Logs every time an event is processed.");
@@ -195,29 +191,38 @@ public void OnPluginStart()
 	RegConsoleCmd("sm_zc", OpenContrackerForClientCmd);
 	RegConsoleCmd("sm_cpref", OpenPrefPanelCmd);
 	RegConsoleCmd("sm_zcpref", OpenPrefPanelCmd);
+	RegConsoleCmd("sm_zchelp", OpenHelpPanelCmd);
+	RegConsoleCmd("sm_chelp", OpenHelpPanelCmd);
 }
 
 // ============ SM FORWARD FUNCTIONS ============
 
 public void OnClientPostAdminCheck(int client)
 {
+	// For some reason, having all the database loading functions in this forward
+	// caused some to not be called at all. To make sure everything is prepared,
+	// we'll call this a frame later.
+	if (IsClientValid(client)
+	&& !IsFakeClient(client)
+	&& g_DB != null)
+	{
+		g_Menu_CurrentDirectory[client] = "root";
+		g_Menu_DirectoryDeepness[client] = 1;
+		RequestFrame(DelayedLoad, client);
+	}
+	
+}
+
+public void DelayedLoad(int client)
+{
 	// Reset variables.
 	Contract BlankContract;
 	ClientContracts[client] = BlankContract;
 	OldClientContracts[client] = BlankContract;
 
-	// Grab the players Contract from the last session.
-	if (IsClientValid(client)
-	&& !IsFakeClient(client)
-	&& g_DB != null)
-	{
-		GrabContractFromLastSession(client);
-		LoadAllClientPreferences(client);
-	}
-	
-	g_Menu_CurrentDirectory[client] = "root";
-	g_Menu_DirectoryDeepness[client] = 1;
-
+	GrabContractFromLastSession(client);
+	LoadAllClientPreferences(client);
+	LoadCompletedContracts(client);
 }
 
 public void OnClientDisconnect(int client)
@@ -988,6 +993,8 @@ void ProcessLogicForContractObjective(Contract ClientContract, int objective_id,
 		Call_Finish();
 
 		SaveClientContractProgress(client, ClientContract);
+		SaveCompletedContract(client, ClientContract.m_sUUID);
+		CompletedContracts[client].PushString(ClientContract.m_sUUID);
 	}
 }
 
@@ -1458,4 +1465,49 @@ public bool IsClientValid(int client)
 	if (!IsClientInGame(client))return false;
 	if (!IsClientAuthorized(client))return false;
 	return true;
+}
+
+bool HasClientCompletedContract(int client, char UUID[MAX_UUID_SIZE])
+{
+	// Could this be made any faster? I'm not a real programmer.
+	// The answer is, yes it can.
+	if (!IsClientValid(client) || IsFakeClient(client)) return false;
+	return (CompletedContracts[client].FindString(UUID) != -1);
+}
+
+bool CanActivateContract(int client, char UUID[MAX_UUID_SIZE])
+{
+	// Grab the Contract from the schema.
+	if (g_ContractSchema.JumpToKey(UUID))
+	{
+		// Construct the required contracts.
+		if (g_ContractSchema.JumpToKey("required_contracts", false))
+		{
+			int Value = 0;
+			for (;;)
+			{
+				char ContractUUID[MAX_UUID_SIZE];
+				char ValueStr[4];
+				IntToString(Value, ValueStr, sizeof(ValueStr));
+
+				g_ContractSchema.GetString(ValueStr, ContractUUID, sizeof(ContractUUID), "{}");
+				// If we reach a blank UUID, we're at the end of the list.
+				if (StrEqual("{}", ContractUUID)) break;
+				if (CompletedContracts[client].FindString(ContractUUID) != -1)
+				{
+					g_ContractSchema.Rewind();
+					return true;
+				}
+				Value++;
+			}
+			g_ContractSchema.GoBack();
+		}
+		else
+		{
+			g_ContractSchema.Rewind();
+			return true;	
+		}
+	}
+	g_ContractSchema.Rewind();
+	return false;
 }

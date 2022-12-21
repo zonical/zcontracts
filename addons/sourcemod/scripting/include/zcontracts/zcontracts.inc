@@ -167,6 +167,10 @@ enum struct Contract
 
 	// Boolean value representing what classes can use this contract. (TF2 only!)
 	bool m_bClass[10];
+	
+	// The contracts the client must have completed before
+	// being allowed to activate this Contract.
+	ArrayList m_hRequiredContracts;
 
 	// Restrictions.
 	char m_sWeaponNameRestriction[64];
@@ -262,6 +266,7 @@ enum struct Contract
 	**/
 	void Initalize()
 	{
+		this.m_hRequiredContracts = new ArrayList();
 		this.m_hObjectives = new ArrayList(sizeof(ContractObjective));
 		this.m_iProgress = 0;
 		this.m_bInitalized = true;
