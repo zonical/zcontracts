@@ -1,6 +1,7 @@
 // Menu objects.
 static Menu gContractMenu;
 Panel gContractObjeciveDisplay[MAXPLAYERS+1];
+Panel gHelpDisplay[MAXPLAYERS+1];
 char g_Menu_CurrentDirectory[MAXPLAYERS+1][MAX_DIRECTORY_SIZE];
 int g_Menu_DirectoryDeepness[MAXPLAYERS+1] = { 1, ... };
 
@@ -17,13 +18,11 @@ void CreateContractMenu()
 	
 	gContractMenu = new Menu(ContractMenuHandler, MENU_ACTIONS_ALL);
 	gContractMenu.SetTitle("ZContracts - Contract Selector");
-	gContractMenu.ExitButton = true;
 	gContractMenu.OptionFlags = MENUFLAG_NO_SOUND;
 
 	// This is a display for the current directory for the client. We will manipulate this
 	// in menu logic later.
 	gContractMenu.AddItem("#directory", "filler");
-	gContractMenu.AddItem("$pref", "Open Client Preferences");
 	
 	// Add our directories to the menu. We'll hide options depending on what
 	// we should be able to see.
@@ -52,7 +51,9 @@ void CreateContractMenu()
 		while(g_ContractSchema.GotoNextKey());
 	}
 	g_ContractSchema.Rewind();
+
 }
+
 
 /**
  * By default, all items in the global Contracker will be invisible to the client.
@@ -181,11 +182,6 @@ int ContractMenuHandler(Menu menu, MenuAction action, int param1, int param2)
 					SetClientContract(param1, MenuKey);	
 				}
 			}
-			// Open our preference list.
-			else if (StrEqual("$pref", MenuKey))
-			{
-				ConstructPreferencePanel(param1);
-			}
 			// This is a directory instead.
 			// Clear our current menu and populate it with new items.
 			else
@@ -214,8 +210,21 @@ int ContractMenuHandler(Menu menu, MenuAction action, int param1, int param2)
  * display instead. The Objective display contains an option to
  * open the global Contracker.
 **/
-public Action OpenContrackerForClient(int client, int args)
+public Action OpenContrackerForClientCmd(int client, int args)
 {	
+	if (PlayerHelpTextEnabled[client])
+	{
+		ConstructHelpPanel(client);
+	}
+	else
+	{
+		OpenContrackerForClient(client);
+	}
+	return Plugin_Handled;
+}
+
+void OpenContrackerForClient(int client)
+{
 	Contract ClientContract;
 	GetClientContract(client, ClientContract);
 
@@ -229,7 +238,6 @@ public Action OpenContrackerForClient(int client, int args)
 	{
 		gContractMenu.Display(client, MENU_TIME_FOREVER);
 	}
-	return Plugin_Handled;
 }
 
 /**
@@ -348,5 +356,40 @@ public int ObjectiveDisplayHandler(Menu menu, MenuAction action, int param1, int
 			gContractMenu.Display(param1, MENU_TIME_FOREVER);
 		}
     }
+	return 0;
+}
+
+void ConstructHelpPanel(int client)
+{
+	gHelpDisplay[client] = new Panel();
+	gHelpDisplay[client].SetTitle("ZContracts");
+	gHelpDisplay[client].DrawText("Welcome to ZContracts - a custom Contracker implementation."); 
+	gHelpDisplay[client].DrawText("To select a Contract, press the corrosponding menu option.");
+	gHelpDisplay[client].DrawText("Directories are notated with \">>\". They contain more Contracts inside.");
+	gHelpDisplay[client].DrawText("If you wish to disable the HUD or sounds, type \"/zcpref\" in chat.");
+	gHelpDisplay[client].DrawText(" ");
+	gHelpDisplay[client].DrawItem("Take me to the Contracker and never show this again!");
+	gHelpDisplay[client].DrawItem("Take me to the Contracker, but show this again later.");
+	gHelpDisplay[client].DrawItem("Close this display.");
+
+	gHelpDisplay[client].Send(client, HelpPanelHandler, MENU_TIME_FOREVER);
+}
+
+public int HelpPanelHandler(Menu menu, MenuAction action, int param1, int param2)
+{
+	if (action == MenuAction_Select)
+	{
+		if (param2 == 1)
+		{
+			// TODO: This doesn't change for some reason. Check me!
+			PlayerHelpTextEnabled[param1] = !PlayerHelpTextEnabled[param1];
+			SaveClientPreferences(param1);
+			OpenContrackerForClient(param1);
+		}
+		if (param2 == 2)
+		{
+			OpenContrackerForClient(param1);
+		} 
+	}
 	return 0;
 }

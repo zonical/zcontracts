@@ -124,7 +124,7 @@ public void CB_SetContractProgressDatabase(Database db, DBResultSet results, con
 {
     if (results.AffectedRows < 1)
     {
-        if (g_DebugQuery.BoolValue && !StrEqual(error, ""))
+        if (g_DebugQuery.BoolValue && !StrEqual(error, "") && IsClientValid(client))
         {
             LogMessage("[ZContracts] %N SAVE: Failed to save progress for contract [SQL ERR: %s]", client, error);
         }
@@ -179,13 +179,13 @@ public void CB_SetObjectiveProgressDatabase(Database db, DBResultSet results, co
 {
     if (results.AffectedRows < 1)
     {
-        if (g_DebugQuery.BoolValue && !StrEqual(error, ""))
+        if (g_DebugQuery.BoolValue && !StrEqual(error, "") && IsClientValid(client))
         {
             LogMessage("[ZContracts] %N SAVE: Failed to save progress for objective [SQL ERR: %s]", client, error);
         }
         return;
     }
-    if (g_DebugQuery.BoolValue)
+    if (g_DebugQuery.BoolValue && IsClientValid(client))
     {
         LogMessage("[ZContracts] %N SAVE: Sucessfully saved progress for objective.", client);
     }
@@ -299,7 +299,7 @@ public void CB_SetClientContract_Contract(Database db, DBResultSet results, cons
     while (results.FetchRow())
     {
         ClientContract.m_iProgress = results.FetchInt(2);
-        if (g_DebugQuery.BoolValue)
+        if (g_DebugQuery.BoolValue && IsClientValid(client))
         {
             LogMessage("[ZContracts] %N LOAD: Successfully grabbed Contract progress from database (%d/%d).", client, ClientContract.m_iProgress, ClientContract.m_iMaxProgress);
         }

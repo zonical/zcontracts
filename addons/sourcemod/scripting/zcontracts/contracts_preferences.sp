@@ -1,13 +1,22 @@
 #define SOUNDS_DB_NAME "use_sounds"
 #define HINT_DB_NAME "use_hint_text"
 #define HUD_DB_NAME "use_contract_hud"
+#define HELP_DB_NAME "display_help_text"
 
 Panel PrefPanel[MAXPLAYERS+1];
 
 // Preferences
+bool PlayerHelpTextEnabled[MAXPLAYERS+1] = { true, ... };
 bool PlayerSoundsEnabled[MAXPLAYERS+1] = { true, ... };
 bool PlayerHUDEnabled[MAXPLAYERS+1] = { true, ... };
 bool PlayerHintEnabled[MAXPLAYERS+1] = { true, ... };
+
+public Action OpenPrefPanelCmd(int client, int args)
+{
+    if (!IsClientValid(client) || IsFakeClient(client)) return Plugin_Continue;
+    ConstructPreferencePanel(client);
+    return Plugin_Continue;
+}
 
 void ConstructPreferencePanel(int client)
 {
@@ -90,17 +99,23 @@ public void CB_LoadAllClientPreferences(Database db, DBResultSet results, const 
         PlayerSoundsEnabled[client] = g_PlaySounds.BoolValue;
         PlayerHUDEnabled[client] = g_DisplayProgressHud.BoolValue;
         PlayerHintEnabled[client] = g_DisplayHudMessages.BoolValue;
+        PlayerHelpTextEnabled[client] = true; // No server default.
 
         return;
     }
     while (results.FetchRow())
     {
+        int HelpIndex = -1;
         int SoundIndex = -1;
         int HUDIndex = -1;
         int HintIndex = -1;
         
         // Check to see if this field exists or not. Version checking would be helpful here
         // in the future if there are any breaking changes.
+        if (results.FieldNameToNum(HELP_DB_NAME, HelpIndex))
+        {
+            PlayerHelpTextEnabled[client] = view_as<bool>(results.FetchInt(HelpIndex));
+        }
         if (results.FieldNameToNum(SOUNDS_DB_NAME, SoundIndex))
         {
             PlayerSoundsEnabled[client] = view_as<bool>(results.FetchInt(SoundIndex));
@@ -136,19 +151,24 @@ void SaveClientPreferences(int client)
 
     char query[1024];
     g_DB.Format(query, sizeof(query),
-        "INSERT INTO preferences (steamid64, version, %s, %s, %s) VALUES ('%s', %d, %d, %d, %d)"
-    ... " ON DUPLICATE KEY UPDATE version = %d, %s = %d, %s = %d, %s = %d",
-    SOUNDS_DB_NAME, HINT_DB_NAME, HUD_DB_NAME, steamid64, CONTRACKER_VERSION, PlayerSoundsEnabled[client], PlayerHintEnabled[client], PlayerHUDEnabled[client],
-    CONTRACKER_VERSION, SOUNDS_DB_NAME, PlayerSoundsEnabled[client], HINT_DB_NAME, PlayerHintEnabled[client], HUD_DB_NAME, PlayerHUDEnabled[client]);
+        "INSERT INTO preferences (steamid64, version, %s, %s, %s, %s) VALUES ('%s', %d, %d, %d, %d, %d)"
+    ... " ON DUPLICATE KEY UPDATE version = %d, %s = %d, %s = %d, %s = %d, %s = %d",
+    SOUNDS_DB_NAME, HINT_DB_NAME, HUD_DB_NAME, HELP_DB_NAME, 
+    steamid64, CONTRACKER_VERSION, PlayerSoundsEnabled[client], PlayerHintEnabled[client], PlayerHUDEnabled[client], PlayerHelpTextEnabled[client],
+    CONTRACKER_VERSION,
+    SOUNDS_DB_NAME, PlayerSoundsEnabled[client],
+    HINT_DB_NAME, PlayerHintEnabled[client],
+    HUD_DB_NAME, PlayerHUDEnabled[client],
+    HELP_DB_NAME, PlayerHelpTextEnabled[client]);
 
     g_DB.Query(CB_SaveClientPreferences, query, client, DBPrio_High); 
 }
 
 public void CB_SaveClientPreferences(Database db, DBResultSet results, const char[] error, int client)
 {
-    if (results.AffectedRows >= 1 && g_DebugQuery.BoolValue)
+    if (results.AffectedRows >= 1 && g_DebugQuery.BoolValue && IsClientValid(client))
     {
-        LogMessage("[ZContracts] %N PREFERENCES: Loaded client preferences.", client);
+        LogMessage("[ZContracts] %N PREFERENCES: Saved client preferences.", client);
     }
     return;
 }

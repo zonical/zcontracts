@@ -63,7 +63,8 @@ float g_NextHUDUpdate[MAXPLAYERS+1] = { -1.0, ... };
 // Major version number, feature number, patch number
 #define PLUGIN_VERSION "0.1.0"
 // This value should be incremented with every breaking version made to the
-// database so saves can be easily converted.
+// database so saves can be easily converted. For developers who fork this project and
+// wish to merge changes, do not increment this number until merge.
 #define CONTRACKER_VERSION 1
 // How often the HUD will refresh itself.
 #define HUD_REFRESH_RATE 0.5
@@ -188,9 +189,12 @@ public void OnPluginStart()
 	RegAdminCmd("zc_reload_contracts", ReloadContracts, ADMFLAG_ROOT);
 	RegAdminCmd("zc_reload_database", ReloadDatabase, ADMFLAG_ROOT);
 
-	RegConsoleCmd("sm_contract", OpenContrackerForClient);
-	RegConsoleCmd("sm_contracts", OpenContrackerForClient);
-	RegConsoleCmd("sm_c", OpenContrackerForClient);
+	RegConsoleCmd("sm_contract", OpenContrackerForClientCmd);
+	RegConsoleCmd("sm_contracts", OpenContrackerForClientCmd);
+	RegConsoleCmd("sm_c", OpenContrackerForClientCmd);
+	RegConsoleCmd("sm_zc", OpenContrackerForClientCmd);
+	RegConsoleCmd("sm_cpref", OpenPrefPanelCmd);
+	RegConsoleCmd("sm_zcpref", OpenPrefPanelCmd);
 }
 
 // ============ SM FORWARD FUNCTIONS ============
@@ -684,7 +688,7 @@ public Action Timer_DrawContrackerHud(Handle hTimer)
 				// Adds +xCP value to the end of the text.
 				if (ClientContract.m_bHUD_ContractUpdate)
 				{
-					SetHudTextParams(1.0, -1.0, 1.0, 52, 235, 70, 255, 1, HUD_REFRESH_RATE + 0.1);
+					SetHudTextParams(1.0, -1.0, 1.0, 52, 235, 70, 255, 1);
 					char AddText[16] = " +%dCP";
 					Format(AddText, sizeof(AddText), AddText, ClientContract.m_iHUD_UpdateValue);
 					StrCat(ProgressText, sizeof(ProgressText), AddText);
@@ -719,7 +723,7 @@ public Action Timer_DrawContrackerHud(Handle hTimer)
 				// Adds +x value to the end of the text.
 				if (ClientContract.m_iHUD_ObjectiveUpdate == ClientContractObjective.m_iInternalID)
 				{
-					SetHudTextParams(1.0, -1.0, 1.0, 52, 235, 70, 255, 1, HUD_REFRESH_RATE + 0.1);
+					SetHudTextParams(1.0, -1.0, 1.0, 52, 235, 70, 255, 1);
 					char AddText[16] = " +%d";
 					Format(AddText, sizeof(AddText), AddText, ClientContract.m_iHUD_UpdateValue);
 					StrCat(ObjectiveText, sizeof(ObjectiveText), AddText);
@@ -1013,7 +1017,7 @@ void IncrementContractProgress(int client, int value, Contract ClientContract, C
 	}
 
 	// Print HINT text to chat.
-	if (g_DisplayHudMessages.BoolValue)
+	if (g_DisplayHudMessages.BoolValue && PlayerHintEnabled[client])
 	{							
 		char MessageText[256];
 		if (ClientContractObjective.m_bNoMultiplication)
@@ -1061,7 +1065,7 @@ void IncrementObjectiveProgress(int client, int value, Contract ClientContract, 
 	}
 
 	// Display HINT message to the client.
-	if (g_DisplayHudMessages.BoolValue)
+	if (g_DisplayHudMessages.BoolValue && PlayerHintEnabled[client])
 	{
 		char MessageText[256];
 		if (ClientContractObjective.m_bNoMultiplication)
