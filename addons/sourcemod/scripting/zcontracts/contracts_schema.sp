@@ -10,11 +10,14 @@ ConVar g_ConfigSearchPath;
 ConVar g_RequiredFileExt;
 ConVar g_DisabledPath;
 
+int g_ContractsLoaded;
+
 #define MAXIMUM_TEAMS 4
 
 public KeyValues LoadContractsSchema()
 {
-	KeyValues contractSchema = new KeyValues("Items");
+	KeyValues contractSchema = new KeyValues("Contracts");
+	g_ContractsLoaded = 0;
 	
 	// We'll ditch the single file legacy format and instead load separate contract files.
 	// These will all be loaded and merged together in one single schema.
@@ -308,7 +311,7 @@ public void ProcessContractsSchema()
 		while(g_ContractSchema.GotoNextKey());
 	}
 	g_ContractSchema.Rewind();
-	
+	g_ContractsLoaded = iContractCount;
 	PrintToServer("[ZContracts] Loaded %d contracts.", iContractCount);
 }
 

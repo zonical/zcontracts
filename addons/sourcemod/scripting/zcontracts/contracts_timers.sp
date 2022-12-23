@@ -7,6 +7,9 @@ public Action EventTimer(Handle hTimer, DataPack hPack)
 	int client = hPack.ReadCell();
 	int iObjectiveID = hPack.ReadCell();
 	int iEventID = hPack.ReadCell();
+
+	// If our client disconnects, stop the timer.
+	if (!IsClientValid(client)) return Plugin_Stop;
 	
 	// Get our contracts.
 	Contract hContract;

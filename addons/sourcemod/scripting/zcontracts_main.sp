@@ -1,8 +1,8 @@
 // LIST:
 // TODO: Port to CSGO
-// TODO: Required contracts.
 
 #pragma semicolon 1
+#pragma newdecls required
 
 // There are engine checks for game extensions!
 #undef REQUIRE_EXTENSIONS
@@ -31,6 +31,7 @@ ConVar g_DatabaseUpdateTime;
 ConVar g_DisplayHudMessages;
 ConVar g_DisplayProgressHud;
 ConVar g_PlaySounds;
+ConVar g_BotContracts;
 
 #if defined DEBUG
 ConVar g_DebugEvents;
@@ -58,7 +59,7 @@ ArrayList g_ObjectiveUpdateQueue;
 float g_NextHUDUpdate[MAXPLAYERS+1] = { -1.0, ... };
 
 // Major version number, feature number, patch number
-#define PLUGIN_VERSION "0.1.0"
+#define PLUGIN_VERSION "0.2.0"
 // This value should be incremented with every breaking version made to the
 // database so saves can be easily converted. For developers who fork this project and
 // wish to merge changes, do not increment this number until merge.
@@ -117,6 +118,7 @@ public void OnPluginStart()
 	g_DisplayHudMessages = CreateConVar("zc_display_hud_messages", "1", "If enabled, players will see a hint-box in their HUD when they gain progress on their Contract or an Objective.");
 	g_PlaySounds = CreateConVar("zc_play_sounds", "1", "If enabled, sounds will play when interacting with the Contracker and when progress is made when a Contract is active.");
 	g_DisplayProgressHud = CreateConVar("zc_display_hud_progress", "1", "If enabled, players will see text on the right-side of their screen displaying Contract progress.");
+	g_BotContracts = CreateConVar("zc_bot_contracts", "0", "If enabled, bots will be allowed to select Contracts. They will automatically select a new Contract after completion.");
 
 	switch (GetEngineVersion())
 	{
@@ -199,18 +201,26 @@ public void OnPluginStart()
 
 public void OnClientPostAdminCheck(int client)
 {
+	// Delete the old list of completed contracts if it exists.
+	delete CompletedContracts[client];
+	CompletedContracts[client] = new ArrayList(MAX_UUID_SIZE);
+	g_Menu_CurrentDirectory[client] = "root";
+	g_Menu_DirectoryDeepness[client] = 1;
+
 	// For some reason, having all the database loading functions in this forward
 	// caused some to not be called at all. To make sure everything is prepared,
 	// we'll call this a frame later.
-	if (IsClientValid(client)
+	if (IsClientValid(client) 
 	&& !IsFakeClient(client)
 	&& g_DB != null)
 	{
-		g_Menu_CurrentDirectory[client] = "root";
-		g_Menu_DirectoryDeepness[client] = 1;
 		RequestFrame(DelayedLoad, client);
 	}
-	
+	// If we're a bot, load a random Contract.
+	if (IsClientValid(client) && IsFakeClient(client) && g_BotContracts.BoolValue)
+	{
+		GiveRandomContract(client);
+	}
 }
 
 public void DelayedLoad(int client)
@@ -314,7 +324,7 @@ public any Native_CallContrackerEvent(Handle plugin, int numParams)
 		return ThrowNativeError(SP_ERROR_NATIVE, "Invalid client index (%d)", client);
 	}
 
-	if (IsFakeClient(client)) return false;
+	if (IsFakeClient(client) && !g_BotContracts.BoolValue) return false;
 	if (GetGameTime() >= g_LastValidProgressTime && g_LastValidProgressTime != -1.0) return false;
 
 	Contract ClientContract;
@@ -335,7 +345,7 @@ public any Native_CallContrackerEvent(Handle plugin, int numParams)
 		ClientContract.GetObjective(i, ClientContractObjective);
 
 		if (!ClientContractObjective.m_bInitalized || ClientContractObjective.IsObjectiveComplete()) continue;
-
+		
 		// Check to see if we have this event in any of our objective event triggers.
 		bool EventCheckPassed = false;
 		for (int j = 0; j < ClientContractObjective.m_hEvents.Length; j++)
@@ -382,6 +392,7 @@ public any Native_CallContrackerEvent(Handle plugin, int numParams)
 		ObjUpdate.m_sEvent = event;
 		g_ObjectiveUpdateQueue.PushArray(ObjUpdate, sizeof(ObjectiveUpdate));
 	}
+	
 	return true;
 }
 
@@ -401,10 +412,11 @@ public any Native_SetClientContract(Handle plugin, int numParams)
 	bool dont_notify = GetNativeCell(4);
 
 	// Are we a bot?
-	if (!IsClientValid(client) || IsFakeClient(client))
+	if (!IsClientValid(client))
 	{
 		return ThrowNativeError(SP_ERROR_NATIVE, "Invalid client index (%d)", client);
 	}
+	if (IsFakeClient(client) && !g_BotContracts.BoolValue) return false;
 
 	if (UUID[0] != '{')
     {
@@ -438,24 +450,27 @@ public any Native_SetClientContract(Handle plugin, int numParams)
 	}
 	ClientContracts[client] = ClientContract;
 
-	// Get the client's SteamID64.
-	char steamid64[64];
-	GetClientAuthId(client, AuthId_SteamID64, steamid64, sizeof(steamid64));
-
-	// TODO: Can we make this into one query?
-	// TODO: Implement version checking when required! "version" key in SQL
-	char contract_query[1024];
-	if (ClientContract.m_iContractType == Contract_ContractProgress)
+	if (!IsFakeClient(client))
 	{
-		g_DB.Format(contract_query, sizeof(contract_query),
-		"SELECT * FROM contract_progress WHERE steamid64 = '%s' AND contract_uuid = '%s'", steamid64, UUID);
-		g_DB.Query(CB_SetClientContract_Contract, contract_query, client);
+		// Get the client's SteamID64.
+		char steamid64[64];
+		GetClientAuthId(client, AuthId_SteamID64, steamid64, sizeof(steamid64));
+
+		// TODO: Can we make this into one query?
+		// TODO: Implement version checking when required! "version" key in SQL
+		char contract_query[1024];
+		if (ClientContract.m_iContractType == Contract_ContractProgress)
+		{
+			g_DB.Format(contract_query, sizeof(contract_query),
+			"SELECT * FROM contract_progress WHERE steamid64 = '%s' AND contract_uuid = '%s'", steamid64, UUID);
+			g_DB.Query(CB_SetClientContract_Contract, contract_query, client);
+		}
+		char objective_query[1024];
+		g_DB.Format(objective_query, sizeof(objective_query), 
+		"SELECT * FROM objective_progress WHERE steamid64 = '%s' AND contract_uuid = '%s' AND (objective_id BETWEEN 0 AND %d) ORDER BY objective_id ASC;", 
+		steamid64, ClientContract.m_sUUID, ClientContract.m_hObjectives.Length);
+		g_DB.Query(CB_SetClientContract_Objective, objective_query, client);
 	}
-	char objective_query[1024];
-	g_DB.Format(objective_query, sizeof(objective_query), 
-	"SELECT * FROM objective_progress WHERE steamid64 = '%s' AND contract_uuid = '%s' AND (objective_id BETWEEN 0 AND %d) ORDER BY objective_id ASC;", 
-	steamid64, ClientContract.m_sUUID, ClientContract.m_hObjectives.Length);
-	g_DB.Query(CB_SetClientContract_Objective, objective_query, client);
 
 	if (!dont_notify)
 	{
@@ -485,11 +500,12 @@ public any Native_SetClientContractStruct(Handle plugin, int numParams)
 	bool dont_notify = GetNativeCell(4);
 
 	// Are we a bot?
-	if (!IsClientValid(client) || IsFakeClient(client))
+	if (!IsClientValid(client))
 	{
 		return ThrowNativeError(SP_ERROR_NATIVE, "Invalid client index (%d)", client);
 	}
 
+	if (IsFakeClient(client) && !g_BotContracts.BoolValue) return false;
 	if (NewContract.m_sUUID[0] != '{')
     {
         return ThrowNativeError(SP_ERROR_NATIVE, "Invalid UUID passed. (%s)", NewContract.m_sUUID);
@@ -564,6 +580,8 @@ public Action Timer_DisplayContractInfo(Handle hTimer, int client)
  */
 void SaveContractSession(int client, char UUID[MAX_UUID_SIZE])
 {
+	// Bots cannot save sessions in the database.
+	if (IsFakeClient(client) && !g_BotContracts.BoolValue) return;
 	if (!IsClientValid(client) || IsFakeClient(client))
 	{
 		ThrowError("Invalid client index. (%d)", client);
@@ -615,24 +633,26 @@ public void CB_SaveContractSession(Database db, DBResultSet results, const char[
  */
 void GrabContractFromLastSession(int client)
 {
-    if (!IsClientValid(client) || IsFakeClient(client))
+	// Bots cannot grab sessions from the database.
+	if (IsFakeClient(client) && !g_BotContracts.BoolValue) return;
+	if (!IsClientValid(client) || IsFakeClient(client))
 	{
 		ThrowError("Invalid client index. (%d)", client);
 	}
 
-    if (g_DebugSessions.BoolValue)
-    {
-        LogMessage("[ZContracts] %N SESSION: Attempting to grab last Contract session.", client);
-    }
+	if (g_DebugSessions.BoolValue)
+	{
+		LogMessage("[ZContracts] %N SESSION: Attempting to grab last Contract session.", client);
+	}
 
-    // Get the client's SteamID64.
-    char steamid64[64];
-    GetClientAuthId(client, AuthId_SteamID64, steamid64, sizeof(steamid64));
+	// Get the client's SteamID64.
+	char steamid64[64];
+	GetClientAuthId(client, AuthId_SteamID64, steamid64, sizeof(steamid64));
 
-    char query[256];
-    g_DB.Format(query, sizeof(query), 
-    "SELECT contract_uuid FROM selected_contract WHERE steamid64 = '%s'", steamid64);
-    g_DB.Query(CB_GetContractFromLastSession, query, client, DBPrio_High);
+	char query[256];
+	g_DB.Format(query, sizeof(query), 
+	"SELECT contract_uuid FROM selected_contract WHERE steamid64 = '%s'", steamid64);
+	g_DB.Query(CB_GetContractFromLastSession, query, client, DBPrio_High);
 }
 
 public void CB_GetContractFromLastSession(Database db, DBResultSet results, const char[] error, int client)
@@ -995,6 +1015,12 @@ void ProcessLogicForContractObjective(Contract ClientContract, int objective_id,
 		SaveClientContractProgress(client, ClientContract);
 		SaveCompletedContract(client, ClientContract.m_sUUID);
 		CompletedContracts[client].PushString(ClientContract.m_sUUID);
+
+		// If we're a bot, grant a new Contract straight away.
+		if (IsFakeClient(client) && g_BotContracts.BoolValue)
+		{
+			GiveRandomContract(client);
+		}
 	}
 }
 
@@ -1221,12 +1247,34 @@ public Action OnSetupEnd(Event event, const char[] name, bool dontBroadcast)
 **/
 public Action DebugSetContract(int client, int args)
 {	
-	// Grab UUID.
-	char sUUID[64];
-	GetCmdArg(1, sUUID, sizeof(sUUID));
-	PrintToChat(client, "Setting contract: %s", sUUID);
+	char Targets[64];
+	GetCmdArg(1, Targets, sizeof(Targets));
+	char UUID[64];
+	GetCmdArg(2, UUID, sizeof(UUID));
+
+	char target_name[MAX_TARGET_LENGTH];
+	int target_list[MAXPLAYERS], target_count;
+	bool tn_is_ml;
 	
-	SetClientContract(client, sUUID);
+	if ((target_count = ProcessTargetString(
+			Targets,
+			client,
+			target_list,
+			MAXPLAYERS,
+			COMMAND_FILTER_ALIVE,
+			target_name,
+			sizeof(target_name),
+			tn_is_ml)) <= 0)
+	{
+		ReplyToTargetError(client, target_count);
+		return Plugin_Handled;
+	}
+	
+	for (int i = 0; i < target_count; i++)
+	{
+		SetClientContract(client, UUID, false, false);
+	}
+	
 	return Plugin_Handled;
 }
 
@@ -1471,12 +1519,19 @@ bool HasClientCompletedContract(int client, char UUID[MAX_UUID_SIZE])
 {
 	// Could this be made any faster? I'm not a real programmer.
 	// The answer is, yes it can.
-	if (!IsClientValid(client) || IsFakeClient(client)) return false;
+	if (!IsClientValid(client)) return false;
+	if (IsFakeClient(client) && !g_BotContracts.BoolValue) return false;
 	return (CompletedContracts[client].FindString(UUID) != -1);
 }
 
 bool CanActivateContract(int client, char UUID[MAX_UUID_SIZE])
 {
+	if (IsFakeClient(client) && !g_BotContracts.BoolValue) return false;
+	if (!IsClientValid(client))
+	{
+		ThrowError("Invalid client index. (%d)", client);
+	}
+
 	// Grab the Contract from the schema.
 	if (g_ContractSchema.JumpToKey(UUID))
 	{
@@ -1510,4 +1565,49 @@ bool CanActivateContract(int client, char UUID[MAX_UUID_SIZE])
 	}
 	g_ContractSchema.Rewind();
 	return false;
+}
+
+// TODO: Can this be made faster?
+void GiveRandomContract(int client)
+{
+	if (IsFakeClient(client) && !g_BotContracts.BoolValue) return;
+	if (!IsClientValid(client))
+	{
+		ThrowError("Invalid client index. (%d)", client);
+	}
+	int RandomContractID = GetRandomInt(0, g_ContractsLoaded-1);
+	char RandomUUID[MAX_UUID_SIZE];
+	int i = 0;
+
+	g_ContractSchema.GotoFirstSubKey();
+	do
+	{
+		if (i == RandomContractID)
+		{
+			g_ContractSchema.GetSectionName(RandomUUID, sizeof(RandomUUID));
+			break;
+		}
+		i++;
+	}
+	while(g_ContractSchema.GotoNextKey());
+	g_ContractSchema.Rewind();
+
+	// See if we can activate.
+	if (!CanActivateContract(client, RandomUUID) || HasClientCompletedContract(client, RandomUUID))
+	{
+		// Try again.
+		GiveRandomContract(client);
+		return;
+	}
+
+	// Grant Contract.
+	if (IsFakeClient(client) && !g_BotContracts.BoolValue)
+	{
+		SetClientContract(client, RandomUUID, false, false);
+	}
+	else
+	{
+		SetClientContract(client, RandomUUID, true, true);
+	}
+	
 }

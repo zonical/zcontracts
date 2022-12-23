@@ -38,6 +38,8 @@ public Action OnPlayerDeath(Event event, const char[] name, bool dontBroadcast)
 	int victim = GetClientOfUserId(event.GetInt("userid"));
 	int death_flags = event.GetInt("death_flags");
 
+	if (IsFakeClient(attacker)) return Plugin_Continue;
+
 	char weapon[128];
 	event.GetString("weapon", weapon, sizeof(weapon));
 	
@@ -75,6 +77,8 @@ public Action OnPlayerHurt(Event event, const char[] name, bool dontBroadcast)
 	int attacker = GetClientOfUserId(event.GetInt("attacker"));
 	int victim = GetClientOfUserId(event.GetInt("userid"));
 	int damage = event.GetInt("damageamount");
+
+	//if (IsFakeClient(attacker)) return Plugin_Continue;
 	
 	if (IsClientValid(attacker) && IsClientValid(victim))
 	{
@@ -121,6 +125,7 @@ public Action OnObjectBuilt(Event event, const char[] name, bool dontBroadcast)
 {
 	int client = GetClientOfUserId(event.GetInt("userid"));
 	if (!IsClientValid(client)) return Plugin_Continue;
+	if (IsFakeClient(client)) return Plugin_Continue;
 
 	TFObjectType building = view_as<TFObjectType>(event.GetInt("object"));
 	switch (building)
@@ -172,8 +177,9 @@ public Action OnObjectDestroyed(Event event, const char[] name, bool dontBroadca
 public Action OnPayloadPushed(Event event, const char[] name, bool dontBroadcast)
 {
 	int client = event.GetInt("pusher");
+	if (!IsClientValid(client)) return Plugin_Continue;
+	if (IsFakeClient(client)) return Plugin_Continue;
 	float progress = event.GetFloat("distance");
-	PrintToChat(client, "%N progress: %d", client, progress);
 	CallContrackerEvent(client, "CONTRACTS_TF2_PL_ESCORT", 1);
 		
 	return Plugin_Continue;

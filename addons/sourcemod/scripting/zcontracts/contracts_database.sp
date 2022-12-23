@@ -206,6 +206,7 @@ public any Native_SaveClientContractProgress(Handle plugin, int numParams)
     Contract ClientContract;
     GetNativeArray(2, ClientContract, sizeof(Contract));
 
+    if (IsFakeClient(client) && g_BotContracts.BoolValue) return false;
     if (!IsClientValid(client) || IsFakeClient(client))
 	{
 		ThrowNativeError(SP_ERROR_NATIVE, "Invalid client index. (%d)", client);
@@ -256,6 +257,7 @@ public any Native_SaveClientObjectiveProgress(Handle plugin, int numParams)
     ContractObjective ClientContractObjective;
     GetNativeArray(3, ClientContractObjective, sizeof(ContractObjective));
 
+    if (IsFakeClient(client) && g_BotContracts.BoolValue) return false;
     if (!IsClientValid(client) || IsFakeClient(client))
 	{
 		ThrowNativeError(SP_ERROR_NATIVE, "Invalid client index. (%d)", client);
@@ -340,6 +342,7 @@ public void CB_SetClientContract_Objective(Database db, DBResultSet results, con
 
 void SaveCompletedContract(int client, char UUID[MAX_UUID_SIZE])
 {
+    if (IsFakeClient(client) && !g_BotContracts.BoolValue) return;
     if (!IsClientValid(client) || IsFakeClient(client))
     {
         ThrowError("Invalid client index. (%d)", client);
@@ -378,10 +381,6 @@ void LoadCompletedContracts(int client)
     {
         LogMessage("[ZContracts] %N COMPLETE: Attempting to load completion status of all attempted Contracts.", client);
     }
-
-    // Delete the old list of completed contracts if it exists.
-    delete CompletedContracts[client];
-    CompletedContracts[client] = new ArrayList(MAX_UUID_SIZE);
 
     // Get the client's SteamID64.
     char steamid64[64];
