@@ -402,7 +402,6 @@ public void CB_LoadCompletedContracts(Database db, DBResultSet results, const ch
     {
         char UUID[MAX_UUID_SIZE];
         results.FetchString(0, UUID, sizeof(UUID));
-        PrintToChat(client, "LOADED %s", UUID);
         CompletedContracts[client].PushString(UUID);
     }
 
