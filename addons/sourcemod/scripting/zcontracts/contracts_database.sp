@@ -346,7 +346,7 @@ public void CB_SetClientContract_Objective(Database db, DBResultSet results, con
 
 void SaveCompletedContract(int client, char UUID[MAX_UUID_SIZE])
 {
-    if (IsFakeClient(client) && !g_BotContracts.BoolValue) return;
+    if (IsFakeClient(client) && g_BotContracts.BoolValue) return;
     if (!IsClientValid(client) || IsFakeClient(client))
     {
         ThrowError("Invalid client index. (%d)", client);
