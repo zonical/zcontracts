@@ -32,6 +32,8 @@ ConVar g_DisplayHudMessages;
 ConVar g_DisplayProgressHud;
 ConVar g_PlaySounds;
 ConVar g_BotContracts;
+ConVar g_LocalSave;
+ConVar g_LocalSavePath;
 
 #if defined DEBUG
 ConVar g_DebugEvents;
@@ -101,6 +103,7 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 	CreateNative("SaveClientObjectiveProgress", Native_SaveClientObjectiveProgress);
 	CreateNative("SetContractProgressDatabase", Native_SetContractProgressDatabase);
 	CreateNative("SetObjectiveProgressDatabase", Native_SetObjectiveProgressDatabase);
+	CreateNative("MarkContractAsCompleted", Native_MarkContractAsCompleted);
 	return APLRes_Success;
 }
 
@@ -109,12 +112,15 @@ public void OnPluginStart()
 	PrintToServer("[ZContracts] Initalizing ZContracts %s - Contracker Version: %d", PLUGIN_VERSION, CONTRACKER_VERSION);
 
 	// ================ CONVARS ================
-	g_ConfigSearchPath = CreateConVar("zc_schema_search_path", "configs/zcontracts", "The path, relative to the \"sourcemods/\" directory, to find Contract definition files. Changing this Value will cause a reload of the Contract schema.");
-	g_RequiredFileExt = CreateConVar("zc_schema_required_ext", ".txt", "The file extension that Contract definition files must have in order to be considered valid. Changing this Value will cause a reload of the Contract schema.");
-	g_DisabledPath = CreateConVar("zc_schema_disabled_path", "configs/zcontracts/disabled", "If a search path has this string in it, any Contract's loaded in or derived from this path will not be loaded. Changing this Value will cause a reload of the Contract schema.");
+	g_ConfigSearchPath = CreateConVar("zc_schema_search_path", "configs/zcontracts", "The path, relative to the \"sourcemods/\" directory, to find Contract definition files. Changing this vlue will cause a reload of the Contract schema.");
+	g_RequiredFileExt = CreateConVar("zc_schema_required_ext", ".txt", "The file extension that Contract definition files must have in order to be considered valid. Changing this value will cause a reload of the Contract schema.");
+	g_DisabledPath = CreateConVar("zc_schema_disabled_path", "configs/zcontracts/disabled", "If a search path has this string in it, any Contract's loaded in or derived from this path will not be loaded. Changing this value will cause a reload of the Contract schema.");
 	
-	g_UpdatesPerSecond = CreateConVar("zc_updates_per_second", "8", "How many objective updates to process per second.");
 	g_DatabaseUpdateTime = CreateConVar("zc_database_update_time", "30", "How long to wait before sending Contract updates to the database for all players.");
+	g_LocalSave = CreateConVar("zc_local_save", "1", "If enabled, progress, session and preference data will be saved locally if the database is offline.");
+	g_LocalSavePath = CreateConVar("zc_local_save_path", "configs/zcontracts_local", "The path, relative to the \"sourcemods/\" directory, to save local data. Changing this value will attempt to save all files in the old directory to the database");
+
+	g_UpdatesPerSecond = CreateConVar("zc_updates_per_second", "8", "How many objective updates to process per second.");
 	g_DisplayHudMessages = CreateConVar("zc_display_hud_messages", "1", "If enabled, players will see a hint-box in their HUD when they gain progress on their Contract or an Objective.");
 	g_PlaySounds = CreateConVar("zc_play_sounds", "1", "If enabled, sounds will play when interacting with the Contracker and when progress is made when a Contract is active.");
 	g_DisplayProgressHud = CreateConVar("zc_display_hud_progress", "1", "If enabled, players will see text on the right-side of their screen displaying Contract progress.");
@@ -169,6 +175,8 @@ public void OnPluginStart()
 
 	// ================ DATABASE ================
 	Database.Connect(GotDatabase, "zcontracts");
+	g_LocalSavePath.GetString(LocalSavePath, sizeof(LocalSavePath));
+	BuildPath(Path_SM, LocalSavePath, sizeof(LocalSavePath), LocalSavePath);
 
 	// ================ PLAYER INIT ================
 	for (int i = 0; i < MAXPLAYERS+1; i++)
@@ -826,6 +834,24 @@ public Action Timer_ProcessEvents(Handle hTimer)
 		event = ObjUpdate.m_sEvent;
 		char uuid[MAX_UUID_SIZE];
 		uuid = ObjUpdate.m_sUUID;
+
+		// Is our client still connected?
+		if (!IsClientValid(client))
+		{
+			// Remove any other update from the queue.
+			for (int i = 0; i < g_ObjectiveUpdateQueue.Length; i++)
+			{
+				ObjectiveUpdate OutdatedUpdate;
+				g_ObjectiveUpdateQueue.GetArray(i, OutdatedUpdate);
+				if (ObjUpdate.m_iClient == client)
+				{
+					// Remove.
+					g_ObjectiveUpdateQueue.Erase(i);
+					i--;
+				}
+			}
+			continue;
+		}
 		
 		// Grab the objective from our client's contract.
 		Contract ClientContract;

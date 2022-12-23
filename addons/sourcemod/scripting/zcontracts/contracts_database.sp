@@ -1,3 +1,5 @@
+char LocalSavePath[PLATFORM_MAX_PATH];
+
 /**
  * This is called when we connect to the database. If we do,
  * load player session data for all of the current clients.
@@ -233,7 +235,7 @@ public any Native_SaveClientContractProgress(Handle plugin, int numParams)
         }
         if (ClientContract.IsContractComplete())
         {
-            SaveCompletedContract(client, ClientContract.m_sUUID);
+            MarkContractAsCompleted(client, ClientContract.m_sUUID);
         }
         return true;
     }
@@ -344,8 +346,20 @@ public void CB_SetClientContract_Objective(Database db, DBResultSet results, con
     ClientContracts[client] = ClientContract;
 }
 
-void SaveCompletedContract(int client, char UUID[MAX_UUID_SIZE])
+/**
+ * Saves an Objective to the database for a client.
+ *
+ * @param client    Client index.
+ * @param UUID	UUID of the Contract that contains this objective.
+ * @param ClientObjective The enum struct of the objective to save.
+ * @error           Client index is invalid or the ClientObjective is invalid.         
+ */
+public any Native_MarkContractAsCompleted(Handle plugin, int numParams)
 {
+    int client = GetNativeCell(1);
+    char UUID[MAX_UUID_SIZE];
+    GetNativeString(2, UUID, sizeof(UUID));
+
     if (IsFakeClient(client) && g_BotContracts.BoolValue) return;
     if (!IsClientValid(client) || IsFakeClient(client))
     {
@@ -409,4 +423,40 @@ public void CB_LoadCompletedContracts(Database db, DBResultSet results, const ch
     {
         LogMessage("[ZContracts] %N COMPLETE: Loaded %d attempted Contracts.", client, results.RowCount);
     }
+}
+
+public any Native_SaveLocalContractProgress(Handle plugin, int numParams)
+{
+    int client = GetNativeCell(1);
+    Contract ClientContract;
+    GetNativeArray(2, ClientContract, sizeof(Contract));
+
+    if (!IsClientValid(client) || IsFakeClient(client))
+    {
+        ThrowError("Invalid client index. (%d)", client);
+    }
+    if (ClientContract.m_sUUID[0] != '{')
+    {
+        ThrowError("Invalid UUID passed. (%s)", ClientContract.m_sUUID);
+    }
+
+    // Get the client's SteamID64.
+    char steamid64[64];
+    GetClientAuthId(client, AuthId_SteamID64, steamid64, sizeof(steamid64));
+}
+
+public any Native_SetLocalClientSession(Handle plugin, int numParams)
+{
+    int client = GetNativeCell(1);
+    char UUID[MAX_UUID_SIZE];
+    GetNativeString(2, UUID, sizeof(UUID));
+
+    if (!IsClientValid(client) || IsFakeClient(client))
+    {
+        ThrowError("Invalid client index. (%d)", client);
+    }
+
+    // Get the client's SteamID64.
+    char steamid64[64];
+    GetClientAuthId(client, AuthId_SteamID64, steamid64, sizeof(steamid64));
 }

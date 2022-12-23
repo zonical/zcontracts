@@ -389,6 +389,14 @@ native bool SetContractProgressDatabase(int client, char UUID[MAX_UUID_SIZE], in
 native bool SetObjectiveProgressDatabase(int client, char UUID[MAX_UUID_SIZE], int objective_id, int value);
 
 /**
+ * Marks the contract as complete in the database.
+ * @param client	Client index.
+ * @param UUID		The UUID of the contract.
+ * @error	Client index is invalid.
+*/
+native bool MarkContractAsCompleted(int client, char UUID[MAX_UUID_SIZE]);
+
+/**
  * Sent on client completion of a Contract objective.
  *
  * @param client    	Client index.
