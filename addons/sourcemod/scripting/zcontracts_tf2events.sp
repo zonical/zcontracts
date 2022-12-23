@@ -38,6 +38,7 @@ public Action OnPlayerDeath(Event event, const char[] name, bool dontBroadcast)
 	int victim = GetClientOfUserId(event.GetInt("userid"));
 	int death_flags = event.GetInt("death_flags");
 
+	if (!IsClientValid(attacker)) return Plugin_Continue;
 	if (IsFakeClient(attacker)) return Plugin_Continue;
 
 	char weapon[128];

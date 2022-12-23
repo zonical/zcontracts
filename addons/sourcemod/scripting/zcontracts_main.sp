@@ -950,6 +950,13 @@ void ProcessLogicForContractObjective(Contract ClientContract, int objective_id,
 						ContractObjectiveEvent m_hEventToReset;
 						Objective.m_hEvents.GetArray(h, m_hEventToReset);
 						m_hEventToReset.m_iCurrentThreshold = 0;
+
+						// If we have any timers active, cancel them.
+						if (m_hEventToReset.m_hTimer != INVALID_HANDLE)
+						{
+							KillTimer(m_hEventToReset.m_hTimer, true);
+							m_hEventToReset.m_hTimer = INVALID_HANDLE;
+						}
 						Objective.m_hEvents.SetArray(h, m_hEventToReset);
 					}
 				}
@@ -1013,7 +1020,6 @@ void ProcessLogicForContractObjective(Contract ClientContract, int objective_id,
 		Call_Finish();
 
 		SaveClientContractProgress(client, ClientContract);
-		SaveCompletedContract(client, ClientContract.m_sUUID);
 		CompletedContracts[client].PushString(ClientContract.m_sUUID);
 
 		// If we're a bot, grant a new Contract straight away.

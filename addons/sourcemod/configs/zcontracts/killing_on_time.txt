@@ -24,7 +24,7 @@
 			{
 				"description"		"Kill three players within ten seconds."
 				"maximum_cp"	"3"
-				"dont_multiply"	"1"
+				"no_multiply"	"1"
 				
 				// The events that this objective looks out for.
 				"events"		
@@ -42,6 +42,11 @@
 							"time"		"10.0"
 							"loop"		"1"
 						}
+					}
+					"CONTRACTS_PLAYER_DEATH"
+					{
+						"type"		"reset"
+						"threshold"	"1"
 					}
 				}
 			}

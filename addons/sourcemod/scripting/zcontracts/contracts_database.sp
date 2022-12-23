@@ -231,6 +231,10 @@ public any Native_SaveClientContractProgress(Handle plugin, int numParams)
         {
             SetContractProgressDatabase(client, ClientContract.m_sUUID, ClientContract.m_iProgress);
         }
+        if (ClientContract.IsContractComplete())
+        {
+            SaveCompletedContract(client, ClientContract.m_sUUID);
+        }
         return true;
     }
 
