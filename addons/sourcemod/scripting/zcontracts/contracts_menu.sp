@@ -274,14 +274,24 @@ void OpenContrackerForClient(int client)
 **/
 void CreateObjectiveDisplay(int client, Contract ClientContract, bool unknown)
 {
+	if (!unknown && PlayerSoundsEnabled[client]) EmitGameSoundToClient(client, "CYOA.NodeActivate");
+
 	// Construct our panel for the client.
 	delete gContractObjeciveDisplay[client];
 	gContractObjeciveDisplay[client] = new Panel();
-	char PanelTitle[128] = "\"%s\"";
+	char PanelTitle[128] = "\"%s\" || ";
 	Format(PanelTitle, sizeof(PanelTitle), PanelTitle, ClientContract.m_sContractName);
+	
+	// Draw difficulty text.
+	char Difficulty[32] = "Difficulty: ";
+	for (int i = 0; i < ClientContract.m_iDifficulty; i++)
+	{
+		StrCat(Difficulty, sizeof(Difficulty), "%s");
+		Format(Difficulty, sizeof(Difficulty), Difficulty, "★");
+	}
+	//gContractObjeciveDisplay[client].DrawText(Difficulty);
+	StrCat(PanelTitle, sizeof(PanelTitle), Difficulty);
 	gContractObjeciveDisplay[client].SetTitle(PanelTitle);
-
-	if (!unknown && PlayerSoundsEnabled[client]) EmitGameSoundToClient(client, "CYOA.NodeActivate");
 
 	switch (ClientContract.m_iContractType)
 	{

@@ -4,6 +4,7 @@
 	{
 		"name"		"Killing on Time"
 		"type"		"1"
+		"difficulty"	"5"
 		
 		// What classes can do this contract?
 		"classes"

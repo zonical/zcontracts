@@ -159,11 +159,17 @@ enum struct Contract
 	bool m_bInitalized;
 	bool m_bActive;
 
+	// Internal representation of the Contract.
 	char m_sUUID[MAX_UUID_SIZE];
+
+	// Display name of the Contract.
 	char m_sContractName[MAX_CONTRACT_NAME_SIZE];
 	
 	// Path of where this Contract should be stored in the global Contracker.
 	char m_sDirectoryPath[MAX_DIRECTORY_SIZE]; 
+
+	// Difficulty of the Contract.
+	int m_iDifficulty;
 
 	// Boolean value representing what classes can use this contract. (TF2 only!)
 	bool m_bClass[10];
