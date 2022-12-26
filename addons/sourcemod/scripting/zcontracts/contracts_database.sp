@@ -1,5 +1,3 @@
-char LocalSavePath[PLATFORM_MAX_PATH];
-
 /**
  * This is called when we connect to the database. If we do,
  * load player session data for all of the current clients.
@@ -8,7 +6,8 @@ public void GotDatabase(Database db, const char[] error, any data)
 {
     if (db == null)
     {
-        LogError("Database failure: %s", error);
+        LogError("[ZContracts] Failed to connect to database... reattempting in %f seconds: failure: %s", g_DatabaseRetryTime.FloatValue, error);
+        g_DatabaseRetryTimer = CreateTimer(g_DatabaseRetryTime.FloatValue, Timer_RetryDBConnect);
     } 
     else 
     {
@@ -20,9 +19,9 @@ public void GotDatabase(Database db, const char[] error, any data)
             // Grab the players Contract from the last session.
             if (IsClientValid(i) && !IsFakeClient(i))
             {
-                GrabContractFromLastSession(i);
-                LoadAllClientPreferences(i);
-                LoadCompletedContracts(i);
+                DB_LoadContractFromLastSession(i);
+                DB_LoadAllClientPreferences(i);
+                DB_LoadCompletedContracts(i);
             }
         }
     }
@@ -45,6 +44,22 @@ public void OnDatabaseUpdateChange(ConVar convar, char[] oldValue, char[] newVal
 }
 
 /**
+ * The ConVar "zc_database_retry_time" is used when an attempt to connect to the database
+ * fails and we need to reattempt at a later point.
+ */
+public void OnDatabaseRetryChange(ConVar convar, char[] oldValue, char[] newValue)
+{
+    delete g_DatabaseRetryTimer;
+    g_DatabaseRetryTimer = CreateTimer(StringToFloat(newValue), Timer_RetryDBConnect);
+}
+
+public Action Timer_RetryDBConnect(Handle hTimer)
+{
+    Database.Connect(GotDatabase, "zcontracts");
+    return Plugin_Continue;
+}
+
+/**
  * The ConVar "zc_database_update_time" controls how often we update the database
  * with all of the player Contract information.
  */
@@ -61,26 +76,56 @@ public Action Timer_SaveAllToDB(Handle hTimer)
         GetClientContract(i, ClientContract);
         if (!ClientContract.IsContractInitalized()) continue;
 
-        if (ClientContract.m_bNeedsDBSave)
+        if (g_DB != null)
         {
-            SaveClientContractProgress(i, ClientContract);
-            ClientContract.m_bNeedsDBSave = false;
-        }
-
-        for (int j = 0; j < ClientContract.m_hObjectives.Length; j++)
-        {
-            ContractObjective ClientContractObjective;
-            ClientContract.GetObjective(j, ClientContractObjective);
-            if (!ClientContractObjective.m_bInitalized) continue;
-
-            if (ClientContractObjective.m_bNeedsDBSave)
+            // Save the Contract.
+            if (ClientContract.m_bNeedsDBSave)
             {
-                SaveClientObjectiveProgress(i, ClientContract.m_sUUID, ClientContractObjective);
-                ClientContractObjective.m_bNeedsDBSave = false;
-                ClientContract.SaveObjective(j, ClientContractObjective);
+                SaveClientContractProgress(i, ClientContract);
+                ClientContract.m_bNeedsDBSave = false;
+            }
+            // Save each of our objectives.
+            for (int j = 0; j < ClientContract.m_hObjectives.Length; j++)
+            {
+                ContractObjective ClientContractObjective;
+                ClientContract.GetObjective(j, ClientContractObjective);
+                if (!ClientContractObjective.m_bInitalized) continue;
+
+                if (ClientContractObjective.m_bNeedsDBSave)
+                {
+                    SaveClientObjectiveProgress(i, ClientContract.m_sUUID, ClientContractObjective);
+                    ClientContractObjective.m_bNeedsDBSave = false;
+                    ClientContract.SaveObjective(j, ClientContractObjective);
+                }
             }
         }
-
+        else if (g_LocalSave.BoolValue)
+        {
+            bool NeedsSave = ClientContract.m_bNeedsDBSave;
+            if (!NeedsSave)
+            {
+                // Check to see if any of our objectives need saving.
+                for (int j = 0; j < ClientContract.m_hObjectives.Length; j++)
+                {
+                    ContractObjective ClientContractObjective;
+                    ClientContract.GetObjective(j, ClientContractObjective);
+                    if (!ClientContractObjective.m_bInitalized) continue;
+                    if (ClientContractObjective.m_bNeedsDBSave)
+                    {
+                        NeedsSave = true;
+                        ClientContractObjective.m_bNeedsDBSave = false;
+                        ClientContract.SaveObjective(j, ClientContractObjective);
+                        break;
+                    }
+                }
+            }
+            if (NeedsSave)
+            {
+                SaveLocalContractProgress(i, ClientContract);
+                ClientContract.m_bNeedsDBSave = false;
+            }
+        }
+    
         ClientContracts[i] = ClientContract;
     }
     return Plugin_Continue;
@@ -360,7 +405,7 @@ public any Native_MarkContractAsCompleted(Handle plugin, int numParams)
     char UUID[MAX_UUID_SIZE];
     GetNativeString(2, UUID, sizeof(UUID));
 
-    if (IsFakeClient(client) && g_BotContracts.BoolValue) return;
+    if (IsFakeClient(client) && g_BotContracts.BoolValue) return false;
     if (!IsClientValid(client) || IsFakeClient(client))
     {
         ThrowError("Invalid client index. (%d)", client);
@@ -377,7 +422,7 @@ public any Native_MarkContractAsCompleted(Handle plugin, int numParams)
     char query[1024];
     g_DB.Format(query, sizeof(query), "INSERT INTO completed_contracts (steamid64, contract_uuid) VALUES ('%s', '%s')", steamid64, UUID);
     g_DB.Query(CB_SaveCompletedContract, query, client, DBPrio_High);
-    return; 
+    return true; 
 }
 
 public void CB_SaveCompletedContract(Database db, DBResultSet results, const char[] error, int client)
@@ -388,7 +433,7 @@ public void CB_SaveCompletedContract(Database db, DBResultSet results, const cha
     }
 }
 
-void LoadCompletedContracts(int client)
+void DB_LoadCompletedContracts(int client)
 {
     if (!IsClientValid(client) || IsFakeClient(client))
     {
@@ -423,40 +468,4 @@ public void CB_LoadCompletedContracts(Database db, DBResultSet results, const ch
     {
         LogMessage("[ZContracts] %N COMPLETE: Loaded %d attempted Contracts.", client, results.RowCount);
     }
-}
-
-public any Native_SaveLocalContractProgress(Handle plugin, int numParams)
-{
-    int client = GetNativeCell(1);
-    Contract ClientContract;
-    GetNativeArray(2, ClientContract, sizeof(Contract));
-
-    if (!IsClientValid(client) || IsFakeClient(client))
-    {
-        ThrowError("Invalid client index. (%d)", client);
-    }
-    if (ClientContract.m_sUUID[0] != '{')
-    {
-        ThrowError("Invalid UUID passed. (%s)", ClientContract.m_sUUID);
-    }
-
-    // Get the client's SteamID64.
-    char steamid64[64];
-    GetClientAuthId(client, AuthId_SteamID64, steamid64, sizeof(steamid64));
-}
-
-public any Native_SetLocalClientSession(Handle plugin, int numParams)
-{
-    int client = GetNativeCell(1);
-    char UUID[MAX_UUID_SIZE];
-    GetNativeString(2, UUID, sizeof(UUID));
-
-    if (!IsClientValid(client) || IsFakeClient(client))
-    {
-        ThrowError("Invalid client index. (%d)", client);
-    }
-
-    // Get the client's SteamID64.
-    char steamid64[64];
-    GetClientAuthId(client, AuthId_SteamID64, steamid64, sizeof(steamid64));
 }

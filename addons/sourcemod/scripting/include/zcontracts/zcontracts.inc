@@ -348,6 +348,8 @@ native bool GetClientContract(int client, any buffer[sizeof(Contract)]);
  */
 native bool CallContrackerEvent(int client, char event[MAX_EVENT_SIZE], int value, bool can_combine = false);
 
+// =========================== DATABASE SAVING ===========================
+
 /**
  * Saves a Contract to the database for a client.
  *
@@ -395,6 +397,33 @@ native bool SetObjectiveProgressDatabase(int client, char UUID[MAX_UUID_SIZE], i
  * @error	Client index is invalid.
 */
 native bool MarkContractAsCompleted(int client, char UUID[MAX_UUID_SIZE]);
+
+// =========================== LOCAL SAVING ===========================
+
+/**
+ * Saves the progress of a Contract to a file on disk.
+ * @param client 	Client index.
+ * @param ClientContract	Contract struct to save.
+ * @error	Client index is invalid.
+ */
+native bool SaveLocalContractProgress(int client, any ClientContract[sizeof(Contract)]);
+
+/**
+ * Saves the session of a client to a file on disk.
+ * @param client	Client index.
+ * @param UUID	UUID to save as the session.
+ * @error	Client index is invalid.
+ */
+native bool SaveLocalClientSession(int client, char UUID[MAX_UUID_SIZE]);
+
+/**
+ * Saves the preferences of a client to a file on disk.
+ * @param client	Client index.
+ * @error	Client index is invalid.
+ */
+native bool SaveLocalClientPreferences(int client);
+
+// =========================== FORWARDS ===========================
 
 /**
  * Sent on client completion of a Contract objective.

@@ -69,7 +69,7 @@ public int PrefPanelHandler(Menu menu, MenuAction action, int param1, int param2
     return 0;
 }
 
-void LoadAllClientPreferences(int client)
+void DB_LoadAllClientPreferences(int client)
 {
     if (!IsClientValid(client) || IsFakeClient(client))
     {
@@ -171,18 +171,4 @@ public void CB_SaveClientPreferences(Database db, DBResultSet results, const cha
         LogMessage("[ZContracts] %N PREFERENCES: Saved client preferences.", client);
     }
     return;
-}
-
-public any Native_SaveLocalClientPreferences(Handle plugin, int numParams)
-{
-    int client = GetNativeCell(1)
-
-    if (!IsClientValid(client) || IsFakeClient(client))
-    {
-        ThrowError("Invalid client index. (%d)", client);
-    }
-
-    // Get the client's SteamID64.
-    char steamid64[64];
-    GetClientAuthId(client, AuthId_SteamID64, steamid64, sizeof(steamid64)); 
 }
