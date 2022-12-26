@@ -23,6 +23,9 @@ You will need the latest release of nosoop's stocksoup if you wish to build the 
   - "Objective Based" Contracts require all Objectives to be completed to finish a Contract.
   - "Contract Based" Contracts require getting a certain amount of points to finish a Contract.
 
+## Usage.
+This plugin, like any other SourceMod plugin, falls under the [SourceMod License](https://www.sourcemod.net/license.php) (specifically GPLv3). You are free to use this plugin on your server and modify the plugin source code to suit your own needs. Although not required, I would appreciate a mention in your server credits for the development/time that went into this plugin. The sample Contracts provided in this repositiory are free to be used, modified, or deleted.
+
 ## Questions, Issues, PR's.
 Feel free to contact me at `ZoNiCaL#9740` on Discord if you have any questions.
 I am open to pull-requests if there are any fixes or optimisations that I haven't made. If there are any bugs or feature requests, feel free to make an issue.
