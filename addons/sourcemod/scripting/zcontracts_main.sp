@@ -239,7 +239,7 @@ public void OnClientPostAdminCheck(int client)
 		else if (g_LocalSave.BoolValue)
 		{
 			Local_LoadContractFromLastSession(client);
-			//Local_LoadAllClientPreferences(client);
+			Local_LoadAllClientPreferences(client);
 			//Local_LoadCompletedContracts(client);
 		}
 	}

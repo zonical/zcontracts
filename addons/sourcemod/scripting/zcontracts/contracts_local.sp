@@ -301,3 +301,52 @@ void Local_LoadContractProgress(int client, char UUID[MAX_UUID_SIZE], Contract C
     }
     delete LocalSave;
 }
+
+
+void Local_LoadAllClientPreferences(int client)
+{
+    if (!IsClientValid(client) || IsFakeClient(client))
+    {
+        ThrowError("Invalid client index. (%d)", client);
+    }
+#if defined DEBUG
+    if (g_DebugOffline.BoolValue)
+    {
+        LogMessage("[ZContracts] %N OFFLINE LOAD: Loading client preferences.", client);
+    }
+#endif
+
+    // Get the client's SteamID64.
+    char steamid64[64];
+    GetClientAuthId(client, AuthId_SteamID64, steamid64, sizeof(steamid64)); 
+
+    // Load.
+    KeyValues LocalSave = LoadLocalSave(steamid64);
+    if (LocalSave.JumpToKey("preferences"))
+    {
+    #if defined DEBUG
+        if (g_DebugOffline.BoolValue)
+        {
+            LogMessage("[ZContracts] %N OFFLINE LOAD: Loaded client preferences.", client);
+        }
+#endif
+        PlayerHelpTextEnabled[client] = view_as<bool>(LocalSave.GetNum(HELP_DB_NAME, 1));
+        PlayerHintEnabled[client] = view_as<bool>(LocalSave.GetNum(HINT_DB_NAME, g_DisplayHudMessages.BoolValue));
+        PlayerSoundsEnabled[client] = view_as<bool>(LocalSave.GetNum(SOUNDS_DB_NAME, g_PlaySounds.BoolValue));
+        PlayerHUDEnabled[client] = view_as<bool>(LocalSave.GetNum(HUD_DB_NAME, g_DisplayProgressHud.BoolValue));
+    }
+    else
+    {
+#if defined DEBUG
+        if (g_DebugOffline.BoolValue)
+        {
+            LogMessage("[ZContracts] %N OFFLINE LOAD: No client preferences found.", client);
+            PlayerHelpTextEnabled[client] = true;
+            PlayerHintEnabled[client] = g_DisplayHudMessages.BoolValue;
+            PlayerSoundsEnabled[client] = g_PlaySounds.BoolValue;
+            PlayerHUDEnabled[client] = g_DisplayProgressHud.BoolValue;
+        }
+#endif
+    }
+    delete LocalSave;
+}
