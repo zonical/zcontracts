@@ -1,5 +1,7 @@
 // LIST:
 // TODO: Port to CSGO
+// TODO: When database connection is established, save all local saves.
+// TODO: When local save folder is changed, try and save to database.
 
 #pragma semicolon 1
 #pragma newdecls required
@@ -240,7 +242,7 @@ public void OnClientPostAdminCheck(int client)
 		{
 			Local_LoadContractFromLastSession(client);
 			Local_LoadAllClientPreferences(client);
-			//Local_LoadCompletedContracts(client);
+			Local_LoadCompletedContracts(client);
 		}
 	}
 	// If we're a bot, load a random Contract.

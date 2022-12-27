@@ -350,3 +350,47 @@ void Local_LoadAllClientPreferences(int client)
     }
     delete LocalSave;
 }
+
+void Local_LoadCompletedContracts(int client)
+{
+    if (!IsClientValid(client) || IsFakeClient(client))
+    {
+        ThrowError("Invalid client index. (%d)", client);
+    }
+#if defined DEBUG
+    if (g_DebugOffline.BoolValue)
+    {
+        LogMessage("[ZContracts] %N OFFLINE LOAD: Loading completed contracts.", client);
+    }
+#endif
+
+    // Get the client's SteamID64.
+    char steamid64[64];
+    GetClientAuthId(client, AuthId_SteamID64, steamid64, sizeof(steamid64)); 
+
+    // Load.
+    KeyValues LocalSave = LoadLocalSave(steamid64);
+    if (LocalSave.JumpToKey("contracts"))
+    {
+        // Loop over all of our contracts to see if we've completed this.
+        LocalSave.GotoFirstSubKey();
+        char ContractUUID[MAX_UUID_SIZE];
+        do
+        {
+            LocalSave.GetSectionName(ContractUUID, sizeof(ContractUUID));
+            if (view_as<bool>(LocalSave.GetNum("completed")))
+            {
+                // Save internally.
+                CompletedContracts[client].PushString(ContractUUID);
+            }
+        }
+        while (LocalSave.GotoNextKey());
+    }
+#if defined DEBUG
+    if (g_DebugOffline.BoolValue)
+    {
+        LogMessage("[ZContracts] %N OFFLINE LOAD: Loaded %d completed contracts.", client, CompletedContracts[client].Length);
+    }
+#endif
+    delete LocalSave;
+}
