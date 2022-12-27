@@ -30,3 +30,8 @@ This plugin, like any other SourceMod plugin, falls under the [SourceMod License
 Feel free to contact me at `ZoNiCaL#9740` on Discord if you have any questions.
 I am open to pull-requests if there are any fixes or optimisations that I haven't made. If there are any bugs or feature requests, feel free to make an issue.
 Please clearly explain what you're trying to accomplish with your threads and don't be a dick.
+
+# Special Thanks:
+- Creators.TF: for being the reason this project was created and for helping develop my SourceMod abilities.
+- nosoop: Small snippits of Contract schema-loading code was borrowed from Custom Weapons X while I was creating a custom version of the plugin for Creators.TF
+- HiGPS & BalanceMod: For reviving this project after the closure of Creators.TF.
