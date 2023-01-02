@@ -19,6 +19,7 @@
 
 Database g_DB = null;
 Handle g_DatabaseUpdateTimer;
+Handle g_DatabaseRetryTimer;
 
 // Player Contracts.
 Contract OldClientContracts[MAXPLAYERS+1];
@@ -28,12 +29,16 @@ ArrayList CompletedContracts[MAXPLAYERS+1];
 // ConVars.
 ConVar g_UpdatesPerSecond;
 ConVar g_DatabaseUpdateTime;
+ConVar g_DatabaseRetryTime;
 ConVar g_DisplayHudMessages;
 ConVar g_DisplayProgressHud;
 ConVar g_PlaySounds;
 ConVar g_BotContracts;
+ConVar g_LocalSave;
+ConVar g_LocalSavePath;
 
 #if defined DEBUG
+ConVar g_DebugOffline;
 ConVar g_DebugEvents;
 ConVar g_DebugProcessing;
 ConVar g_DebugQuery;
@@ -59,7 +64,7 @@ ArrayList g_ObjectiveUpdateQueue;
 float g_NextHUDUpdate[MAXPLAYERS+1] = { -1.0, ... };
 
 // Major version number, feature number, patch number
-#define PLUGIN_VERSION "0.2.0"
+#define PLUGIN_VERSION "0.3.1"
 // This value should be incremented with every breaking version made to the
 // database so saves can be easily converted. For developers who fork this project and
 // wish to merge changes, do not increment this number until merge.
@@ -73,6 +78,7 @@ float g_NextHUDUpdate[MAXPLAYERS+1] = { -1.0, ... };
 #include "zcontracts/contracts_database.sp"
 #include "zcontracts/contracts_preferences.sp"
 #include "zcontracts/contracts_menu.sp"
+#include "zcontracts/contracts_local.sp"
 
 public Plugin myinfo =
 {
@@ -101,6 +107,13 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 	CreateNative("SaveClientObjectiveProgress", Native_SaveClientObjectiveProgress);
 	CreateNative("SetContractProgressDatabase", Native_SetContractProgressDatabase);
 	CreateNative("SetObjectiveProgressDatabase", Native_SetObjectiveProgressDatabase);
+	CreateNative("MarkContractAsCompleted", Native_MarkContractAsCompleted);
+	CreateNative("SetSessionDatabase", Native_SetSessionDatabase);
+
+	CreateNative("SaveLocalContractProgress", Native_SaveLocalContractProgress);
+	CreateNative("SaveLocalClientSession", Native_SaveLocalClientSession);
+	CreateNative("SaveLocalClientPreferences", Native_SaveLocalClientPreferences);
+	CreateNative("TransferLocalSavesToDatabase", Native_TransferLocalSavesToDatabase);
 	return APLRes_Success;
 }
 
@@ -109,12 +122,16 @@ public void OnPluginStart()
 	PrintToServer("[ZContracts] Initalizing ZContracts %s - Contracker Version: %d", PLUGIN_VERSION, CONTRACKER_VERSION);
 
 	// ================ CONVARS ================
-	g_ConfigSearchPath = CreateConVar("zc_schema_search_path", "configs/zcontracts", "The path, relative to the \"sourcemods/\" directory, to find Contract definition files. Changing this Value will cause a reload of the Contract schema.");
-	g_RequiredFileExt = CreateConVar("zc_schema_required_ext", ".txt", "The file extension that Contract definition files must have in order to be considered valid. Changing this Value will cause a reload of the Contract schema.");
-	g_DisabledPath = CreateConVar("zc_schema_disabled_path", "configs/zcontracts/disabled", "If a search path has this string in it, any Contract's loaded in or derived from this path will not be loaded. Changing this Value will cause a reload of the Contract schema.");
+	g_ConfigSearchPath = CreateConVar("zc_schema_search_path", "configs/zcontracts", "The path, relative to the \"sourcemods/\" directory, to find Contract definition files. Changing this vlue will cause a reload of the Contract schema.");
+	g_RequiredFileExt = CreateConVar("zc_schema_required_ext", ".txt", "The file extension that Contract definition files must have in order to be considered valid. Changing this value will cause a reload of the Contract schema.");
+	g_DisabledPath = CreateConVar("zc_schema_disabled_path", "configs/zcontracts/disabled", "If a search path has this string in it, any Contract's loaded in or derived from this path will not be loaded. Changing this value will cause a reload of the Contract schema.");
 	
-	g_UpdatesPerSecond = CreateConVar("zc_updates_per_second", "12", "How many objective updates to process per second.");
+	g_DatabaseRetryTime = CreateConVar("zc_database_retry_time", "30", "If a connection attempt to the database fails, reattempt in this amount of time.");
 	g_DatabaseUpdateTime = CreateConVar("zc_database_update_time", "30", "How long to wait before sending Contract updates to the database for all players.");
+	g_LocalSave = CreateConVar("zc_local_save", "1", "If enabled, progress, session and preference data will be saved locally if the database is offline.");
+	g_LocalSavePath = CreateConVar("zc_local_save_path", "configs/zcontracts_local", "The path, relative to the \"sourcemods/\" directory, to save local data. Changing this value will attempt to save all files in the old directory to the database");
+
+	g_UpdatesPerSecond = CreateConVar("zc_updates_per_second", "8", "How many objective updates to process per second.");
 	g_DisplayHudMessages = CreateConVar("zc_display_hud_messages", "1", "If enabled, players will see a hint-box in their HUD when they gain progress on their Contract or an Objective.");
 	g_PlaySounds = CreateConVar("zc_play_sounds", "1", "If enabled, sounds will play when interacting with the Contracker and when progress is made when a Contract is active.");
 	g_DisplayProgressHud = CreateConVar("zc_display_hud_progress", "1", "If enabled, players will see text on the right-side of their screen displaying Contract progress.");
@@ -131,6 +148,7 @@ public void OnPluginStart()
 	}
 
 #if defined DEBUG
+	g_DebugOffline = CreateConVar("zc_debug_offline_events", "0", "Logs every time an offline save is made.");
 	g_DebugEvents = CreateConVar("zc_debug_print_events", "0", "Logs every time an event is sent.");
 	g_DebugProcessing = CreateConVar("zc_debug_processing", "0", "Logs every time an event is processed.");
 	g_DebugQuery = CreateConVar("zc_debug_queries", "0", "Logs every time a query is sent to the database.");
@@ -138,10 +156,12 @@ public void OnPluginStart()
 	g_DebugSessions = CreateConVar("zc_debug_sessions", "0", "Logs every time a session is restored.");
 #endif
 
+	g_DatabaseRetryTime.AddChangeHook(OnDatabaseRetryChange);
 	g_DatabaseUpdateTime.AddChangeHook(OnDatabaseUpdateChange);
 	g_ConfigSearchPath.AddChangeHook(OnSchemaConVarChange);
 	g_RequiredFileExt.AddChangeHook(OnSchemaConVarChange);
 	g_DisabledPath.AddChangeHook(OnSchemaConVarChange);
+	g_LocalSavePath.AddChangeHook(OnLocalSavePathChange);
 
 	// ================ EVENTS ================
 	HookEvent("teamplay_round_win", OnRoundWin);
@@ -169,6 +189,8 @@ public void OnPluginStart()
 
 	// ================ DATABASE ================
 	Database.Connect(GotDatabase, "zcontracts");
+	g_LocalSavePath.GetString(LocalSavePath, sizeof(LocalSavePath));
+	BuildPath(Path_SM, LocalSavePath, sizeof(LocalSavePath), LocalSavePath);
 
 	// ================ PLAYER INIT ================
 	for (int i = 0; i < MAXPLAYERS+1; i++)
@@ -182,10 +204,11 @@ public void OnPluginStart()
 	RegAdminCmd("sm_setobjectiveprogress", DebugSetObjectiveProgress, ADMFLAG_BAN);
 	RegAdminCmd("sm_triggerevent", DebugTriggerEvent, ADMFLAG_BAN);
 	RegAdminCmd("sm_savecontract", DebugSaveContract, ADMFLAG_KICK);
+	RegAdminCmd("sm_savelocalplayer", DebugSaveLocalPlayer, ADMFLAG_KICK);
 	//RegAdminCmd("sm_resetcontract", DebugResetContract, ADMFLAG_BAN);
 	RegAdminCmd("sm_debugcontract", DebugContractInfo, ADMFLAG_ROOT);
-	RegAdminCmd("zc_reload_contracts", ReloadContracts, ADMFLAG_ROOT);
-	RegAdminCmd("zc_reload_database", ReloadDatabase, ADMFLAG_ROOT);
+	RegAdminCmd("zc_reload", ReloadContracts, ADMFLAG_ROOT);
+	RegAdminCmd("zc_connect", ReloadDatabase, ADMFLAG_ROOT);
 
 	RegConsoleCmd("sm_contract", OpenContrackerForClientCmd);
 	RegConsoleCmd("sm_contracts", OpenContrackerForClientCmd);
@@ -211,10 +234,18 @@ public void OnClientPostAdminCheck(int client)
 	// caused some to not be called at all. To make sure everything is prepared,
 	// we'll call this a frame later.
 	if (IsClientValid(client) 
-	&& !IsFakeClient(client)
-	&& g_DB != null)
+	&& !IsFakeClient(client))
 	{
-		RequestFrame(DelayedLoad, client);
+		if (g_DB != null)
+		{
+			RequestFrame(DelayedLoad, client);
+		}
+		else if (g_LocalSave.BoolValue)
+		{
+			Local_LoadContractFromLastSession(client);
+			Local_LoadAllClientPreferences(client);
+			Local_LoadCompletedContracts(client);
+		}
 	}
 	// If we're a bot, load a random Contract.
 	if (IsClientValid(client) && IsFakeClient(client) && g_BotContracts.BoolValue)
@@ -230,30 +261,40 @@ public void DelayedLoad(int client)
 	ClientContracts[client] = BlankContract;
 	OldClientContracts[client] = BlankContract;
 
-	GrabContractFromLastSession(client);
-	LoadAllClientPreferences(client);
-	LoadCompletedContracts(client);
+	DB_LoadContractFromLastSession(client);
+	DB_LoadAllClientPreferences(client);
+	DB_LoadCompletedContracts(client);
 }
 
 public void OnClientDisconnect(int client)
 {
 	if (IsClientValid(client)
-	&& !IsFakeClient(client)
-	&& g_DB != null)
+	&& !IsFakeClient(client))
 	{
-		SaveClientPreferences(client);
-
-		Contract ClientContract;
-		GetClientContract(client, ClientContract);
-
-		SaveClientContractProgress(client, ClientContracts[client]);
-		for (int i = 0; i < ClientContract.m_hObjectives.Length; i++)
+		if (g_DB != null)
 		{
-			ContractObjective ClientContractObjective;
-			ClientContract.GetObjective(i, ClientContractObjective);
-			if (!ClientContractObjective.m_bInitalized) continue;
+			SaveClientPreferences(client);
 
-			SaveClientObjectiveProgress(client, ClientContract.m_sUUID, ClientContractObjective);
+			Contract ClientContract;
+			GetClientContract(client, ClientContract);
+
+			SaveClientContractProgress(client, ClientContracts[client]);
+			for (int i = 0; i < ClientContract.m_hObjectives.Length; i++)
+			{
+				ContractObjective ClientContractObjective;
+				ClientContract.GetObjective(i, ClientContractObjective);
+				if (!ClientContractObjective.m_bInitalized) continue;
+
+				SaveClientObjectiveProgress(client, ClientContract.m_sUUID, ClientContractObjective);
+			}
+		}
+		else if (g_LocalSave.BoolValue)
+		{
+			SaveLocalClientPreferences(client);
+
+			Contract ClientContract;
+			GetClientContract(client, ClientContract);
+			SaveClientContractProgress(client, ClientContract);
 		}
 	}
 
@@ -431,14 +472,21 @@ public any Native_SetClientContract(Handle plugin, int numParams)
 
 	if (OldClientContract.IsContractInitalized())
 	{
-		SaveClientContractProgress(client, OldClientContract);
-		for (int i = 0; i < OldClientContract.m_hObjectives.Length; i++)
+		if (g_DB != null)
 		{
-			ContractObjective ClientContractObjective;
-			OldClientContract.GetObjective(i, ClientContractObjective);
-			if (!ClientContractObjective.m_bInitalized) continue;
+			SaveClientContractProgress(client, OldClientContract);
+			for (int i = 0; i < OldClientContract.m_hObjectives.Length; i++)
+			{
+				ContractObjective ClientContractObjective;
+				OldClientContract.GetObjective(i, ClientContractObjective);
+				if (!ClientContractObjective.m_bInitalized) continue;
 
-			SaveClientObjectiveProgress(client, OldClientContract.m_sUUID, ClientContractObjective);
+				SaveClientObjectiveProgress(client, OldClientContract.m_sUUID, ClientContractObjective);
+			}
+		}
+		else if (g_LocalSave.BoolValue)
+		{
+			SaveLocalContractProgress(client, OldClientContract);
 		}
 	}
 
@@ -452,24 +500,31 @@ public any Native_SetClientContract(Handle plugin, int numParams)
 
 	if (!IsFakeClient(client))
 	{
-		// Get the client's SteamID64.
-		char steamid64[64];
-		GetClientAuthId(client, AuthId_SteamID64, steamid64, sizeof(steamid64));
-
-		// TODO: Can we make this into one query?
-		// TODO: Implement version checking when required! "version" key in SQL
-		char contract_query[1024];
-		if (ClientContract.m_iContractType == Contract_ContractProgress)
+		if (g_DB != null)
 		{
-			g_DB.Format(contract_query, sizeof(contract_query),
-			"SELECT * FROM contract_progress WHERE steamid64 = '%s' AND contract_uuid = '%s'", steamid64, UUID);
-			g_DB.Query(CB_SetClientContract_Contract, contract_query, client);
+			// Get the client's SteamID64.
+			char steamid64[64];
+			GetClientAuthId(client, AuthId_SteamID64, steamid64, sizeof(steamid64));
+
+			// TODO: Can we make this into one query?
+			// TODO: Implement version checking when required! "version" key in SQL
+			char contract_query[1024];
+			if (ClientContract.m_iContractType == Contract_ContractProgress)
+			{
+				g_DB.Format(contract_query, sizeof(contract_query),
+				"SELECT * FROM contract_progress WHERE steamid64 = '%s' AND contract_uuid = '%s'", steamid64, UUID);
+				g_DB.Query(CB_SetClientContract_Contract, contract_query, client);
+			}
+			char objective_query[1024];
+			g_DB.Format(objective_query, sizeof(objective_query), 
+			"SELECT * FROM objective_progress WHERE steamid64 = '%s' AND contract_uuid = '%s' AND (objective_id BETWEEN 0 AND %d) ORDER BY objective_id ASC;", 
+			steamid64, ClientContract.m_sUUID, ClientContract.m_hObjectives.Length);
+			g_DB.Query(CB_SetClientContract_Objective, objective_query, client);
 		}
-		char objective_query[1024];
-		g_DB.Format(objective_query, sizeof(objective_query), 
-		"SELECT * FROM objective_progress WHERE steamid64 = '%s' AND contract_uuid = '%s' AND (objective_id BETWEEN 0 AND %d) ORDER BY objective_id ASC;", 
-		steamid64, ClientContract.m_sUUID, ClientContract.m_hObjectives.Length);
-		g_DB.Query(CB_SetClientContract_Objective, objective_query, client);
+		else if (g_LocalSave.BoolValue)
+		{
+			Local_LoadContractProgress(client, ClientContract.m_sUUID, ClientContracts[client]);
+		}
 	}
 
 	if (!dont_notify)
@@ -480,7 +535,19 @@ public any Native_SetClientContract(Handle plugin, int numParams)
 	}
 
 	// Set this Contract as our current session.
-	if (!dont_save) SaveContractSession(client, ClientContract.m_sUUID);
+	if (!dont_save)
+	{
+		if (g_DB != null)
+		{
+			char steamid64[64];
+			GetClientAuthId(client, AuthId_SteamID64, steamid64, sizeof(steamid64));
+			SetSessionDatabase(steamid64, ClientContract.m_sUUID);
+		}
+		else if (g_LocalSave.BoolValue)
+		{
+			SaveLocalClientSession(client, ClientContract.m_sUUID);
+		}
+	}
 
 	LogMessage("[ZContracts] %N CONTRACT: Set Contract to: %s [ID: %s]", client, ClientContract.m_sContractName, ClientContract.m_sUUID);
 
@@ -519,19 +586,25 @@ public any Native_SetClientContractStruct(Handle plugin, int numParams)
 
 	if (OldClientContract.IsContractInitalized())
 	{
-		SaveClientContractProgress(client, OldClientContract);
-		for (int i = 0; i < OldClientContract.m_hObjectives.Length; i++)
+		if (g_DB != null)
 		{
-			ContractObjective ClientContractObjective;
-			OldClientContract.GetObjective(i, ClientContractObjective);
-			if (!ClientContractObjective.m_bInitalized) continue;
+			SaveClientContractProgress(client, OldClientContract);
+			for (int i = 0; i < OldClientContract.m_hObjectives.Length; i++)
+			{
+				ContractObjective ClientContractObjective;
+				OldClientContract.GetObjective(i, ClientContractObjective);
+				if (!ClientContractObjective.m_bInitalized) continue;
 
-			SaveClientObjectiveProgress(client, OldClientContract.m_sUUID, ClientContractObjective);
+				SaveClientObjectiveProgress(client, OldClientContract.m_sUUID, ClientContractObjective);
+			}
+		}
+		else if (g_LocalSave.BoolValue)
+		{
+			SaveLocalContractProgress(client, OldClientContract);
 		}
 	}
 
 	ClientContracts[client] = NewContract;
-
 	LogMessage("[ZContracts] %N CONTRACT: Set Contract to: %s [ID: %s]", client, NewContract.m_sContractName, NewContract.m_sUUID);
 
 	if (!dont_notify)
@@ -541,7 +614,19 @@ public any Native_SetClientContractStruct(Handle plugin, int numParams)
 	}
 
 	// Set this Contract as our current session.
-	if (!dont_save) SaveContractSession(client, NewContract.m_sUUID);
+	if (!dont_save)
+	{
+		if (g_DB != null)
+		{
+			char steamid64[64];
+			GetClientAuthId(client, AuthId_SteamID64, steamid64, sizeof(steamid64));
+			SetSessionDatabase(steamid64, NewContract.m_sUUID);
+		}
+		else if (g_LocalSave.BoolValue)
+		{
+			SaveLocalClientSession(client, NewContract.m_sUUID);
+		}
+	}
 
 	// Reset our current directory in the Contracker.
 	g_Menu_CurrentDirectory[client] = "root";
@@ -572,66 +657,13 @@ public Action Timer_DisplayContractInfo(Handle hTimer, int client)
 // ============ CONTRACKER SESSION ============
 
 /**
- * Saves the client's Contract UUID to the database. If the client disconnects,
- * this value will be used to grab the Contract again on reconnect.
- *
- * @param client    	        Client index.
- * @error                       Client index is invalid. 
- */
-void SaveContractSession(int client, char UUID[MAX_UUID_SIZE])
-{
-	// Bots cannot save sessions in the database.
-	if (IsFakeClient(client) && !g_BotContracts.BoolValue) return;
-	if (!IsClientValid(client) || IsFakeClient(client))
-	{
-		ThrowError("Invalid client index. (%d)", client);
-	}
-	if (UUID[0] != '{')
-	{
-		ThrowError("Invalid UUID passed. (%s)", UUID);
-	}
-
-	// Get the client's SteamID64.
-	char steamid64[64];
-	GetClientAuthId(client, AuthId_SteamID64, steamid64, sizeof(steamid64));
-
-	if (g_DebugSessions.BoolValue)
-	{
-		LogMessage("[ZContracts] %N SESSION: Attempting to save Contract session.", client);
-	}
-
-	char query[1024];
-	g_DB.Format(query, sizeof(query),
-		"INSERT INTO selected_contract (steamid64, contract_uuid) VALUES ('%s', '%s')"
-	... " ON DUPLICATE KEY UPDATE contract_uuid = '%s'", steamid64, UUID, UUID);
-
-	g_DB.Query(CB_SaveContractSession, query, client, DBPrio_High);
-}
-
-public void CB_SaveContractSession(Database db, DBResultSet results, const char[] error, int client)
-{
-    if (results.AffectedRows < 1)
-    {
-        if (g_DebugQuery.BoolValue)
-        {
-            LogMessage("[ZContracts] %N SESSION: Failed to save Contract session. [SQL ERR: %s]", client, error);
-        }
-        return;
-    }
-    if (g_DebugQuery.BoolValue)
-    {
-        LogMessage("[ZContracts] %N SESSION: Successfuly saved Contract session.", client);
-    }
-}
-
-/**
  * Gets the last Contract the client selected from their last game session and
  * sets it as the active Contract.
  *
  * @param client    	        Client index.
  * @error                       Client index is invalid. 
  */
-void GrabContractFromLastSession(int client)
+void DB_LoadContractFromLastSession(int client)
 {
 	// Bots cannot grab sessions from the database.
 	if (IsFakeClient(client) && !g_BotContracts.BoolValue) return;
@@ -826,6 +858,24 @@ public Action Timer_ProcessEvents(Handle hTimer)
 		event = ObjUpdate.m_sEvent;
 		char uuid[MAX_UUID_SIZE];
 		uuid = ObjUpdate.m_sUUID;
+
+		// Is our client still connected?
+		if (!IsClientValid(client))
+		{
+			// Remove any other update from the queue.
+			for (int i = 0; i < g_ObjectiveUpdateQueue.Length; i++)
+			{
+				ObjectiveUpdate OutdatedUpdate;
+				g_ObjectiveUpdateQueue.GetArray(i, OutdatedUpdate);
+				if (ObjUpdate.m_iClient == client)
+				{
+					// Remove.
+					g_ObjectiveUpdateQueue.Erase(i);
+					i--;
+				}
+			}
+			continue;
+		}
 		
 		// Grab the objective from our client's contract.
 		Contract ClientContract;
@@ -994,7 +1044,14 @@ void ProcessLogicForContractObjective(Contract ClientContract, int objective_id,
 		Call_PushArray(Objective, sizeof(ContractObjective));
 		Call_Finish();
 
-		SaveClientObjectiveProgress(client, ClientContract.m_sUUID, Objective);
+		if (g_DB != null)
+		{
+			SaveClientObjectiveProgress(client, ClientContract.m_sUUID, Objective);
+		}
+		else if (g_LocalSave.BoolValue)
+		{
+			SaveLocalContractProgress(client, ClientContract);
+		}
 	}
 
 	// Is our contract now complete?
@@ -1019,7 +1076,15 @@ void ProcessLogicForContractObjective(Contract ClientContract, int objective_id,
 		Call_PushArray(ClientContract, sizeof(Contract));
 		Call_Finish();
 
-		SaveClientContractProgress(client, ClientContract);
+		if (g_DB != null)
+		{
+			SaveClientContractProgress(client, ClientContract);
+		}
+		else if (g_LocalSave.BoolValue)
+		{
+			SaveLocalContractProgress(client, ClientContract);
+		}
+
 		CompletedContracts[client].PushString(ClientContract.m_sUUID);
 
 		// If we're a bot, grant a new Contract straight away.
@@ -1379,7 +1444,9 @@ public Action DebugSetContractProgress(int client, int args)
 	
 	for (int i = 0; i < target_count; i++)
 	{
-		SetContractProgressDatabase(target_list[i], UUID, GetCmdArgInt(3));
+		char steamid64[64];
+		GetClientAuthId(target_list[i], AuthId_SteamID64, steamid64, sizeof(steamid64));
+		SetContractProgressDatabase(steamid64, UUID, GetCmdArgInt(3));
 	}
 
 	return Plugin_Handled;
@@ -1418,7 +1485,9 @@ public Action DebugSetObjectiveProgress(int client, int args)
 	
 	for (int i = 0; i < target_count; i++)
 	{
-		SetObjectiveProgressDatabase(target_list[i], UUID, GetCmdArgInt(3), GetCmdArgInt(4));
+		char steamid64[64];
+		GetClientAuthId(target_list[i], AuthId_SteamID64, steamid64, sizeof(steamid64));
+		SetObjectiveProgressDatabase(steamid64, UUID, GetCmdArgInt(3), GetCmdArgInt(4));
 	}
 
 	return Plugin_Handled;

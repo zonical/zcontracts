@@ -69,7 +69,7 @@ public int PrefPanelHandler(Menu menu, MenuAction action, int param1, int param2
     return 0;
 }
 
-void LoadAllClientPreferences(int client)
+void DB_LoadAllClientPreferences(int client)
 {
     if (!IsClientValid(client) || IsFakeClient(client))
     {
@@ -161,15 +161,21 @@ void SaveClientPreferences(int client)
     HUD_DB_NAME, PlayerHUDEnabled[client],
     HELP_DB_NAME, PlayerHelpTextEnabled[client]);
 
-    g_DB.Query(CB_SaveClientPreferences, query, client, DBPrio_High); 
+    DataPack dp = new DataPack();
+    dp.WriteString(steamid64);
+    dp.Reset();
+
+    g_DB.Query(CB_SaveClientPreferences, query, dp, DBPrio_High); 
 }
 
-public void CB_SaveClientPreferences(Database db, DBResultSet results, const char[] error, int client)
+public void CB_SaveClientPreferences(Database db, DBResultSet results, const char[] error, DataPack dp)
 {
-    if (results.AffectedRows >= 1 && g_DebugQuery.BoolValue && IsClientValid(client))
+    char steamid64[64];
+    dp.ReadString(steamid64, sizeof(steamid64));
+
+    if (results.AffectedRows >= 1 && g_DebugQuery.BoolValue)
     {
-        LogMessage("[ZContracts] %N PREFERENCES: Saved client preferences.", client);
+        LogMessage("[ZContracts] %s PREFERENCES: Saved client preferences.", steamid64);
     }
     return;
 }
-
