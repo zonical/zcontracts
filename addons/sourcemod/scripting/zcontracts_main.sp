@@ -1,7 +1,5 @@
 // LIST:
 // TODO: Port to CSGO
-// TODO: When database connection is established, save all local saves.
-// TODO: When local save folder is changed, try and save to database.
 
 #pragma semicolon 1
 #pragma newdecls required
@@ -66,7 +64,7 @@ ArrayList g_ObjectiveUpdateQueue;
 float g_NextHUDUpdate[MAXPLAYERS+1] = { -1.0, ... };
 
 // Major version number, feature number, patch number
-#define PLUGIN_VERSION "0.2.0"
+#define PLUGIN_VERSION "0.3.1"
 // This value should be incremented with every breaking version made to the
 // database so saves can be easily converted. For developers who fork this project and
 // wish to merge changes, do not increment this number until merge.
@@ -110,10 +108,12 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 	CreateNative("SetContractProgressDatabase", Native_SetContractProgressDatabase);
 	CreateNative("SetObjectiveProgressDatabase", Native_SetObjectiveProgressDatabase);
 	CreateNative("MarkContractAsCompleted", Native_MarkContractAsCompleted);
+	CreateNative("SetSessionDatabase", Native_SetSessionDatabase);
 
 	CreateNative("SaveLocalContractProgress", Native_SaveLocalContractProgress);
 	CreateNative("SaveLocalClientSession", Native_SaveLocalClientSession);
 	CreateNative("SaveLocalClientPreferences", Native_SaveLocalClientPreferences);
+	CreateNative("TransferLocalSavesToDatabase", Native_TransferLocalSavesToDatabase);
 	return APLRes_Success;
 }
 
@@ -161,6 +161,7 @@ public void OnPluginStart()
 	g_ConfigSearchPath.AddChangeHook(OnSchemaConVarChange);
 	g_RequiredFileExt.AddChangeHook(OnSchemaConVarChange);
 	g_DisabledPath.AddChangeHook(OnSchemaConVarChange);
+	g_LocalSavePath.AddChangeHook(OnLocalSavePathChange);
 
 	// ================ EVENTS ================
 	HookEvent("teamplay_round_win", OnRoundWin);
@@ -203,10 +204,11 @@ public void OnPluginStart()
 	RegAdminCmd("sm_setobjectiveprogress", DebugSetObjectiveProgress, ADMFLAG_BAN);
 	RegAdminCmd("sm_triggerevent", DebugTriggerEvent, ADMFLAG_BAN);
 	RegAdminCmd("sm_savecontract", DebugSaveContract, ADMFLAG_KICK);
+	RegAdminCmd("sm_savelocalplayer", DebugSaveLocalPlayer, ADMFLAG_KICK);
 	//RegAdminCmd("sm_resetcontract", DebugResetContract, ADMFLAG_BAN);
 	RegAdminCmd("sm_debugcontract", DebugContractInfo, ADMFLAG_ROOT);
-	RegAdminCmd("zc_reload_contracts", ReloadContracts, ADMFLAG_ROOT);
-	RegAdminCmd("zc_reload_database", ReloadDatabase, ADMFLAG_ROOT);
+	RegAdminCmd("zc_reload", ReloadContracts, ADMFLAG_ROOT);
+	RegAdminCmd("zc_connect", ReloadDatabase, ADMFLAG_ROOT);
 
 	RegConsoleCmd("sm_contract", OpenContrackerForClientCmd);
 	RegConsoleCmd("sm_contracts", OpenContrackerForClientCmd);
@@ -537,7 +539,9 @@ public any Native_SetClientContract(Handle plugin, int numParams)
 	{
 		if (g_DB != null)
 		{
-			SaveContractSession(client, ClientContract.m_sUUID);
+			char steamid64[64];
+			GetClientAuthId(client, AuthId_SteamID64, steamid64, sizeof(steamid64));
+			SetSessionDatabase(steamid64, ClientContract.m_sUUID);
 		}
 		else if (g_LocalSave.BoolValue)
 		{
@@ -614,7 +618,9 @@ public any Native_SetClientContractStruct(Handle plugin, int numParams)
 	{
 		if (g_DB != null)
 		{
-			SaveContractSession(client, NewContract.m_sUUID);
+			char steamid64[64];
+			GetClientAuthId(client, AuthId_SteamID64, steamid64, sizeof(steamid64));
+			SetSessionDatabase(steamid64, NewContract.m_sUUID);
 		}
 		else if (g_LocalSave.BoolValue)
 		{
@@ -649,59 +655,6 @@ public Action Timer_DisplayContractInfo(Handle hTimer, int client)
 }
 
 // ============ CONTRACKER SESSION ============
-
-/**
- * Saves the client's Contract UUID to the database. If the client disconnects,
- * this value will be used to grab the Contract again on reconnect.
- *
- * @param client    	        Client index.
- * @error                       Client index is invalid. 
- */
-void SaveContractSession(int client, char UUID[MAX_UUID_SIZE])
-{
-	// Bots cannot save sessions in the database.
-	if (IsFakeClient(client) && !g_BotContracts.BoolValue) return;
-	if (!IsClientValid(client) || IsFakeClient(client))
-	{
-		ThrowError("Invalid client index. (%d)", client);
-	}
-	if (UUID[0] != '{')
-	{
-		ThrowError("Invalid UUID passed. (%s)", UUID);
-	}
-
-	// Get the client's SteamID64.
-	char steamid64[64];
-	GetClientAuthId(client, AuthId_SteamID64, steamid64, sizeof(steamid64));
-
-	if (g_DebugSessions.BoolValue)
-	{
-		LogMessage("[ZContracts] %N SESSION: Attempting to save Contract session.", client);
-	}
-
-	char query[1024];
-	g_DB.Format(query, sizeof(query),
-		"INSERT INTO selected_contract (steamid64, contract_uuid) VALUES ('%s', '%s')"
-	... " ON DUPLICATE KEY UPDATE contract_uuid = '%s'", steamid64, UUID, UUID);
-
-	g_DB.Query(CB_SaveContractSession, query, client, DBPrio_High);
-}
-
-public void CB_SaveContractSession(Database db, DBResultSet results, const char[] error, int client)
-{
-    if (results.AffectedRows < 1)
-    {
-        if (g_DebugQuery.BoolValue)
-        {
-            LogMessage("[ZContracts] %N SESSION: Failed to save Contract session. [SQL ERR: %s]", client, error);
-        }
-        return;
-    }
-    if (g_DebugQuery.BoolValue)
-    {
-        LogMessage("[ZContracts] %N SESSION: Successfuly saved Contract session.", client);
-    }
-}
 
 /**
  * Gets the last Contract the client selected from their last game session and
@@ -1491,7 +1444,9 @@ public Action DebugSetContractProgress(int client, int args)
 	
 	for (int i = 0; i < target_count; i++)
 	{
-		SetContractProgressDatabase(target_list[i], UUID, GetCmdArgInt(3));
+		char steamid64[64];
+		GetClientAuthId(target_list[i], AuthId_SteamID64, steamid64, sizeof(steamid64));
+		SetContractProgressDatabase(steamid64, UUID, GetCmdArgInt(3));
 	}
 
 	return Plugin_Handled;
@@ -1530,7 +1485,9 @@ public Action DebugSetObjectiveProgress(int client, int args)
 	
 	for (int i = 0; i < target_count; i++)
 	{
-		SetObjectiveProgressDatabase(target_list[i], UUID, GetCmdArgInt(3), GetCmdArgInt(4));
+		char steamid64[64];
+		GetClientAuthId(target_list[i], AuthId_SteamID64, steamid64, sizeof(steamid64));
+		SetObjectiveProgressDatabase(steamid64, UUID, GetCmdArgInt(3), GetCmdArgInt(4));
 	}
 
 	return Plugin_Handled;

@@ -2,6 +2,19 @@
 
 char LocalSavePath[PLATFORM_MAX_PATH];
 
+public void OnLocalSavePathChange(ConVar convar, char[] oldValue, char[] newValue)
+{
+    // Save all our old stuff first.
+    if (g_DB != null) TransferLocalSavesToDatabase();
+
+    // Construct our new path.
+    strcopy(LocalSavePath, sizeof(LocalSavePath), newValue);
+    BuildPath(Path_SM, LocalSavePath, sizeof(LocalSavePath), LocalSavePath);
+
+    // Perform a new save.
+    if (g_DB != null) TransferLocalSavesToDatabase();
+}
+
 /**
  * Creates a local save file for a client.
  * 
@@ -27,7 +40,6 @@ bool DoesLocalSaveExist(char SteamID64[64])
     char FileName[PLATFORM_MAX_PATH];
     Format(FileName, sizeof(FileName), "%s/%s.txt", LocalSavePath, SteamID64);
     return FileExists(FileName);
-    
 }
 
 /**
@@ -393,4 +405,161 @@ void Local_LoadCompletedContracts(int client)
     }
 #endif
     delete LocalSave;
+}
+
+public any Native_TransferLocalSavesToDatabase(Handle plugin, int numParams)
+{
+    ArrayList SaveFiles = GetFilesInDirectoryRecursive(LocalSavePath);
+    for (int i = 0; i < SaveFiles.Length; i++)
+    {
+        // Grab this file from the directory.
+        char LocalSaveFilePath[PLATFORM_MAX_PATH];
+        SaveFiles.GetString(i, LocalSaveFilePath, sizeof(LocalSaveFilePath));
+        NormalizePathToPOSIX(LocalSaveFilePath);
+
+        char SteamID64[64];
+        // Load save.
+        char SplitPathStr[16][72];
+        ExplodeString(LocalSaveFilePath, "/", SplitPathStr, sizeof(SplitPathStr), sizeof(SplitPathStr[]));
+        for (int j = 0; j < sizeof(SplitPathStr); j++)
+        {
+            // Check to see if this string is our SteamID.
+            if (StrContains(SplitPathStr[j], ".txt") >= 0)
+            {
+                SplitString(SplitPathStr[j], ".", SteamID64, sizeof(SteamID64));
+                break;
+            }
+        }
+
+        // Open the save file.
+        KeyValues LocalSave = LoadLocalSave(SteamID64);
+        LogMessage("[ZContracts] Saving %s local file to database.", SteamID64);
+
+        // Save all Contract and Objective data.
+        if (LocalSave.JumpToKey("contracts"))
+        {
+            LocalSave.GotoFirstSubKey();
+            char ContractUUID[MAX_UUID_SIZE];
+            do
+            {
+                LocalSave.GetSectionName(ContractUUID, sizeof(ContractUUID));
+                
+                // Progress.
+                SetContractProgressDatabase(SteamID64, ContractUUID, LocalSave.GetNum("contract_progress"));
+                if (LocalSave.JumpToKey("objective_progress"))
+                {
+                    int id = 0;
+                    LocalSave.GotoFirstSubKey();
+                    do
+                    {
+                        char IDStr[4];
+                        int Value = LocalSave.GetNum(IDStr);
+                        if (Value != 0)
+                        {
+                            IntToString(id, IDStr, sizeof(IDStr));
+                            SetObjectiveProgressDatabase(SteamID64, ContractUUID, id, LocalSave.GetNum(IDStr));
+                        }
+
+                        id++;
+                    }
+                    while (LocalSave.GotoNextKey());
+                    LocalSave.GoBack();
+                }
+
+                // Completion status.
+                if (view_as<bool>(LocalSave.GetNum("completed")))
+                {
+                    MarkContractAsCompleted(SteamID64, ContractUUID);
+                }
+            }
+            while (LocalSave.GotoNextKey());
+            LocalSave.GoBack();
+        }
+        LocalSave.Rewind();
+        
+        // Save the last session.
+        char SessionUUID[MAX_UUID_SIZE];
+        LocalSave.GetString("session", SessionUUID, sizeof(SessionUUID), "{}");
+        if (!StrEqual(SessionUUID, "{}"))
+        {
+            SetSessionDatabase(SteamID64, SessionUUID);
+        }
+
+        // Save contract preferences.
+        if (LocalSave.JumpToKey("preferences"))
+        {
+            bool Sounds, Hint, HUD, Help;
+            Sounds = view_as<bool>(LocalSave.GetNum(SOUNDS_DB_NAME));
+            Hint = view_as<bool>(LocalSave.GetNum(HINT_DB_NAME));
+            HUD = view_as<bool>(LocalSave.GetNum(HUD_DB_NAME));
+            Help = view_as<bool>(LocalSave.GetNum(HELP_DB_NAME));
+
+            char query[1024];
+            g_DB.Format(query, sizeof(query),
+                "INSERT INTO preferences (steamid64, version, %s, %s, %s, %s) VALUES ('%s', %d, %d, %d, %d, %d)"
+            ... " ON DUPLICATE KEY UPDATE version = %d, %s = %d, %s = %d, %s = %d, %s = %d",
+            SOUNDS_DB_NAME, HINT_DB_NAME, HUD_DB_NAME, HELP_DB_NAME, SteamID64, CONTRACKER_VERSION, Sounds, Hint, HUD, Help,
+            CONTRACKER_VERSION, SOUNDS_DB_NAME, Sounds,
+            HINT_DB_NAME, Hint,
+            HUD_DB_NAME, HUD,
+            HELP_DB_NAME, Help);
+
+            DataPack dp = new DataPack();
+            dp.WriteString(SteamID64);
+            dp.Reset();
+
+            g_DB.Query(CB_SaveClientPreferences, query, dp, DBPrio_High); 
+        }
+        LocalSave.Rewind();
+        
+        // TODO: If any of these saves fail for *any* reason, we need to not delete the file from
+        // disk so we can reattempt a save later.
+        DeleteFile(LocalSaveFilePath);
+        delete LocalSave;
+    }
+
+    return true;
+}
+
+
+
+public Action DebugSaveLocalPlayer(int client, int args)
+{
+    if (args < 1)
+    {
+        ReplyToCommand(client, "[ZC] Usage: sm_savelocalplayer <target>");
+        return Plugin_Handled;
+    }
+
+    char Targets[64];
+    GetCmdArg(1, Targets, sizeof(Targets));
+
+    char target_name[MAX_TARGET_LENGTH];
+    int target_list[MAXPLAYERS], target_count;
+    bool tn_is_ml;
+
+    if ((target_count = ProcessTargetString(
+            Targets,
+            client,
+            target_list,
+            MAXPLAYERS,
+            COMMAND_FILTER_ALIVE,
+            target_name,
+            sizeof(target_name),
+            tn_is_ml)) <= 0)
+    {
+        ReplyToTargetError(client, target_count);
+        return Plugin_Handled;
+    }
+
+    for (int i = 0; i < target_count; i++)
+    {
+        Contract ClientContract;
+        GetClientContract(i, ClientContract);
+        SaveLocalContractProgress(i, ClientContract);
+        SaveLocalClientSession(i, ClientContract.m_sUUID);
+        SaveLocalClientPreferences(i);
+    }
+
+    return Plugin_Continue;
 }

@@ -24,6 +24,10 @@ public void GotDatabase(Database db, const char[] error, any data)
                 DB_LoadCompletedContracts(i);
             }
         }
+
+        // Now that we've got a database connection, let's save
+        // everything local to the database.
+        TransferLocalSavesToDatabase();
     }
 }
 
@@ -134,54 +138,54 @@ public Action Timer_SaveAllToDB(Handle hTimer)
 /**
  * Sets the progress of a Contract in the database.
  *
- * @param client    Client index.
+ * @param steamid64    Client index.
  * @param UUID	The UUID of the contract to modify.
  * @param value	The value to save to the database.
  * @error           Client index is invalid.         
  */
 public any Native_SetContractProgressDatabase(Handle plugin, int numParams)
 {
-    int client = GetNativeCell(1);
+    char steamid64[64];
+    GetNativeString(1, steamid64, sizeof(steamid64));
     char UUID[MAX_UUID_SIZE];
     GetNativeString(2, UUID, sizeof(UUID));
     int progress = GetNativeCell(3);
 
-    if (!IsClientValid(client) || IsFakeClient(client))
-	{
-		ThrowNativeError(SP_ERROR_NATIVE, "Invalid client index. (%d)", client);
-	}
     if (UUID[0] != '{')
     {
         ThrowNativeError(SP_ERROR_NATIVE, "Invalid UUID passed. (%s)", UUID);
     }
-
-    // Get the client's SteamID64.
-    char steamid64[64];
-    GetClientAuthId(client, AuthId_SteamID64, steamid64, sizeof(steamid64));
 
     char query[1024];
     g_DB.Format(query, sizeof(query),
         "INSERT INTO contract_progress (steamid64, contract_uuid, progress, version) VALUES ('%s', '%s', %d, %d)"
     ... " ON DUPLICATE KEY UPDATE progress = %d, version = %d", steamid64, UUID, progress, CONTRACKER_VERSION, progress, CONTRACKER_VERSION);
 
-    g_DB.Query(CB_SetContractProgressDatabase, query, client, DBPrio_High);
+    // This is stupid.
+    DataPack dp = new DataPack();
+    dp.WriteString(steamid64);
+    dp.Reset();
+    
+    g_DB.Query(CB_SetContractProgressDatabase, query, dp, DBPrio_High);
     return true;
 }
 
 // Callback for SetContractProgressDatabase.
-public void CB_SetContractProgressDatabase(Database db, DBResultSet results, const char[] error, int client)
+void CB_SetContractProgressDatabase(Database db, DBResultSet results, const char[] error, DataPack dp)
 {
-    if (results.AffectedRows < 1)
+    char steamid64[64];
+    dp.ReadString(steamid64, sizeof(steamid64));
+    delete dp;
+
+    if (results == INVALID_HANDLE) return;
+    if (results.AffectedRows < 1 && g_DebugQuery.BoolValue)
     {
-        if (g_DebugQuery.BoolValue && !StrEqual(error, "") && IsClientValid(client))
-        {
-            LogMessage("[ZContracts] %N SAVE: Failed to save progress for contract [SQL ERR: %s]", client, error);
-        }
+        LogMessage("[ZContracts] %s SAVE: No progress inserted for contract [SQL ERR: %s]", steamid64, error);
         return;
     }
-    if (g_DebugQuery.BoolValue && IsClientValid(client))
+    if (g_DebugQuery.BoolValue)
     {
-        LogMessage("[ZContracts] %N SAVE: Sucessfully saved progress for contract.", client);
+        LogMessage("[ZContracts] %s SAVE: Sucessfully saved progress for contract.", steamid64);
     }
 }
 
@@ -196,47 +200,48 @@ public void CB_SetContractProgressDatabase(Database db, DBResultSet results, con
  */
 public any Native_SetObjectiveProgressDatabase(Handle plugin, int numParams)
 {
-    int client = GetNativeCell(1);
+    char steamid64[64];
+    GetNativeString(1, steamid64, sizeof(steamid64));
     char UUID[MAX_UUID_SIZE];
     GetNativeString(2, UUID, sizeof(UUID));
     int objective_id = GetNativeCell(3);
     int progress = GetNativeCell(4);
 
-    if (!IsClientValid(client) || IsFakeClient(client))
-	{
-		ThrowNativeError(SP_ERROR_NATIVE, "Invalid client index. (%d)", client);
-	}
     if (UUID[0] != '{')
     {
         ThrowNativeError(SP_ERROR_NATIVE, "Invalid UUID passed. (%s)", UUID);
     }
 
-    // Get the client's SteamID64.
-    char steamid64[64];
-    GetClientAuthId(client, AuthId_SteamID64, steamid64, sizeof(steamid64));
+    // This is stupid.
+    DataPack dp = new DataPack();
+    dp.WriteString(steamid64);
+    dp.Reset();
 
     char query[1024];
     g_DB.Format(query, sizeof(query),
         "INSERT INTO objective_progress (steamid64, contract_uuid, objective_id, progress, version) VALUES ('%s', '%s', %d, %d, %d)"
     ... " ON DUPLICATE KEY UPDATE progress = %d, version = %d", steamid64, UUID, objective_id, progress, CONTRACKER_VERSION, progress, CONTRACKER_VERSION);
-    g_DB.Query(CB_SetObjectiveProgressDatabase, query, client, DBPrio_High);
+    PrintToServer(query);
+    g_DB.Query(CB_SetObjectiveProgressDatabase, query, dp, DBPrio_High);
     return true;
 }
 
 // Callback for SetObjectiveProgressDatabase.
-public void CB_SetObjectiveProgressDatabase(Database db, DBResultSet results, const char[] error, int client)
+public void CB_SetObjectiveProgressDatabase(Database db, DBResultSet results, const char[] error, DataPack dp)
 {
-    if (results.AffectedRows < 1)
+    char steamid64[64];
+    dp.ReadString(steamid64, sizeof(steamid64));
+    delete dp;
+
+    if (results == INVALID_HANDLE) return;
+    if (results.AffectedRows < 1 && g_DebugQuery.BoolValue)
     {
-        if (g_DebugQuery.BoolValue && !StrEqual(error, "") && IsClientValid(client))
-        {
-            LogMessage("[ZContracts] %N SAVE: Failed to save progress for objective [SQL ERR: %s]", client, error);
-        }
+        LogMessage("[ZContracts] %s SAVE: No progress inserted for contract objective [SQL ERR: %s]", steamid64, error);
         return;
     }
-    if (g_DebugQuery.BoolValue && IsClientValid(client))
+    if (g_DebugQuery.BoolValue)
     {
-        LogMessage("[ZContracts] %N SAVE: Sucessfully saved progress for objective.", client);
+        LogMessage("[ZContracts] %s SAVE: Sucessfully saved progress for objective.", steamid64);
     }
 }
 
@@ -271,16 +276,19 @@ public any Native_SaveClientContractProgress(Handle plugin, int numParams)
     bool ShouldBlock = false;
     Call_Finish(ShouldBlock);
 
+    char steamid64[64];
+    GetClientAuthId(client, AuthId_SteamID64, steamid64, sizeof(steamid64));
+
     // If noone responded or we got a positive response, save to database.
     if (GetForwardFunctionCount(g_fOnContractPreSave) == 0 || !ShouldBlock)
     {
         if (ClientContract.m_iProgress > 0)
         {
-            SetContractProgressDatabase(client, ClientContract.m_sUUID, ClientContract.m_iProgress);
+            SetContractProgressDatabase(steamid64, ClientContract.m_sUUID, ClientContract.m_iProgress);
         }
         if (ClientContract.IsContractComplete())
         {
-            MarkContractAsCompleted(client, ClientContract.m_sUUID);
+            MarkContractAsCompleted(steamid64, ClientContract.m_sUUID);
         }
         return true;
     }
@@ -326,12 +334,15 @@ public any Native_SaveClientObjectiveProgress(Handle plugin, int numParams)
     bool ShouldBlock = false;
     Call_Finish(ShouldBlock);
 
+    char steamid64[64];
+    GetClientAuthId(client, AuthId_SteamID64, steamid64, sizeof(steamid64));
+
     // If noone responded or we got a positive response, save to database.
     if (GetForwardFunctionCount(g_fOnObjectivePreSave) == 0 || !ShouldBlock)
     {
         if (ClientContractObjective.m_iProgress > 0)
         {
-            SetObjectiveProgressDatabase(client, UUID, ClientContractObjective.m_iInternalID, ClientContractObjective.m_iProgress);
+            SetObjectiveProgressDatabase(steamid64, UUID, ClientContractObjective.m_iInternalID, ClientContractObjective.m_iProgress);
         }
         return true;
     }
@@ -351,6 +362,7 @@ public void CB_SetClientContract_Contract(Database db, DBResultSet results, cons
     Contract ClientContract;
     GetClientContract(client, ClientContract);
 
+    if (results == INVALID_HANDLE) return;
     while (results.FetchRow())
     {
         ClientContract.m_iProgress = results.FetchInt(2);
@@ -372,6 +384,7 @@ public void CB_SetClientContract_Objective(Database db, DBResultSet results, con
     Contract ClientContract;
     GetClientContract(client, ClientContract);
 
+    if (results == INVALID_HANDLE) return;
     while (results.FetchRow())
     {
         ContractObjective hObj;
@@ -401,35 +414,37 @@ public void CB_SetClientContract_Objective(Database db, DBResultSet results, con
  */
 public any Native_MarkContractAsCompleted(Handle plugin, int numParams)
 {
-    int client = GetNativeCell(1);
+    char steamid64[64];
+    GetNativeString(1, steamid64, sizeof(steamid64));
     char UUID[MAX_UUID_SIZE];
     GetNativeString(2, UUID, sizeof(UUID));
 
-    if (IsFakeClient(client) && g_BotContracts.BoolValue) return false;
-    if (!IsClientValid(client) || IsFakeClient(client))
-    {
-        ThrowError("Invalid client index. (%d)", client);
-    }
     if (UUID[0] != '{')
     {
         ThrowError("Invalid UUID passed. (%s)", UUID);
     }
 
-    // Get the client's SteamID64.
-    char steamid64[64];
-    GetClientAuthId(client, AuthId_SteamID64, steamid64, sizeof(steamid64));
+    // This is stupid.
+    DataPack dp = new DataPack();
+    dp.WriteString(steamid64);
+    dp.Reset();
 
     char query[1024];
     g_DB.Format(query, sizeof(query), "INSERT INTO completed_contracts (steamid64, contract_uuid) VALUES ('%s', '%s')", steamid64, UUID);
-    g_DB.Query(CB_SaveCompletedContract, query, client, DBPrio_High);
+    g_DB.Query(CB_SaveCompletedContract, query, dp, DBPrio_High);
     return true; 
 }
 
-public void CB_SaveCompletedContract(Database db, DBResultSet results, const char[] error, int client)
+public void CB_SaveCompletedContract(Database db, DBResultSet results, const char[] error, DataPack dp)
 {
+    char steamid64[64];
+    dp.ReadString(steamid64, sizeof(steamid64));
+    delete dp;
+
+    if (results == INVALID_HANDLE) return;
     if (g_DebugQuery.BoolValue && results.AffectedRows == 1)
     {
-        LogMessage("[ZContracts] %N COMPLETE: Successfully saved Contract completion status.", client);
+        LogMessage("[ZContracts] %s COMPLETE: Successfully saved Contract completion status.", steamid64);
     }
 }
 
@@ -467,5 +482,52 @@ public void CB_LoadCompletedContracts(Database db, DBResultSet results, const ch
     if (g_DebugQuery.BoolValue)
     {
         LogMessage("[ZContracts] %N COMPLETE: Loaded %d attempted Contracts.", client, results.RowCount);
+    }
+}
+
+public any Native_SetSessionDatabase(Handle plugin, int numParams)
+{
+    char steamid64[64];
+    GetNativeString(1, steamid64, sizeof(steamid64));
+    char UUID[MAX_UUID_SIZE];
+    GetNativeString(2, UUID, sizeof(UUID));
+
+    if (UUID[0] != '{')
+    {
+        ThrowError("Invalid UUID passed. (%s)", UUID);
+    }
+
+    if (g_DebugSessions.BoolValue)
+    {
+        LogMessage("[ZContracts] %s SESSION: Attempting to save Contract session.", steamid64);
+    }
+
+    // This is stupid.
+    DataPack dp = new DataPack();
+    dp.WriteString(steamid64);
+    dp.Reset();
+
+    char query[1024];
+    g_DB.Format(query, sizeof(query),
+        "INSERT INTO selected_contract (steamid64, contract_uuid) VALUES ('%s', '%s')"
+    ... " ON DUPLICATE KEY UPDATE contract_uuid = '%s'", steamid64, UUID, UUID);
+
+    g_DB.Query(CB_SetSession, query, dp, DBPrio_High);
+    return true;
+}
+
+public void CB_SetSession(Database db, DBResultSet results, const char[] error, DataPack dp)
+{
+    char steamid64[64];
+    dp.ReadString(steamid64, sizeof(steamid64));
+    delete dp;
+    if (results.AffectedRows < 1 && g_DebugQuery.BoolValue)
+    {
+        LogMessage("[ZContracts] %s SESSION: No change made to Contract session. [SQL ERR: %s]", steamid64, error);
+        return;
+    }
+    if (g_DebugQuery.BoolValue)
+    {
+        LogMessage("[ZContracts] %s SESSION: Successfuly saved Contract session.", steamid64);
     }
 }

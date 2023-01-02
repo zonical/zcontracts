@@ -351,6 +351,14 @@ native bool CallContrackerEvent(int client, char event[MAX_EVENT_SIZE], int valu
 // =========================== DATABASE SAVING ===========================
 
 /**
+ * Sets the active session for a user in the database.
+ * @param steamid64 	SteamID64 of the user.
+ * @param UUID	Contract UUID to save.
+ * @error	Invalid UUID.
+ */
+native bool SetSessionDatabase(char steamid64[64], char UUID[MAX_UUID_SIZE]);
+
+/**
  * Saves a Contract to the database for a client.
  *
  * @param client    Client index.
@@ -372,31 +380,31 @@ native bool SaveClientObjectiveProgress(int client, char UUID[MAX_UUID_SIZE], an
 /**
  * Sets the progress of a Contract in the database.
  *
- * @param client    Client index.
+ * @param steamid64    SteamID64 of the user.
  * @param UUID	The UUID of the contract to modify.
  * @param value	The value to save to the database.
  * @error           Client index is invalid.         
  */
-native bool SetContractProgressDatabase(int client, char UUID[MAX_UUID_SIZE], int value);
+native bool SetContractProgressDatabase(char steamid64[64], char UUID[MAX_UUID_SIZE], int value);
 
 /**
  * Sets the progress of an Objective in the database.
  *
- * @param client    Client index.
+ * @param steamid64    SteamID64 of the user.
  * @param UUID	The UUID of the contract to modify.
  * @param objective_id	The ID of the objective to modify.
  * @param value	The value to save to the database.
  * @error           Client index is invalid.           
  */
-native bool SetObjectiveProgressDatabase(int client, char UUID[MAX_UUID_SIZE], int objective_id, int value);
+native bool SetObjectiveProgressDatabase(char steamid64[64], char UUID[MAX_UUID_SIZE], int objective_id, int value);
 
 /**
  * Marks the contract as complete in the database.
- * @param client	Client index.
+ * @param steamid64    SteamID64 of the user.
  * @param UUID		The UUID of the contract.
  * @error	Client index is invalid.
 */
-native bool MarkContractAsCompleted(int client, char UUID[MAX_UUID_SIZE]);
+native bool MarkContractAsCompleted(char steamid64[64], char UUID[MAX_UUID_SIZE]);
 
 // =========================== LOCAL SAVING ===========================
 
@@ -422,6 +430,11 @@ native bool SaveLocalClientSession(int client, char UUID[MAX_UUID_SIZE]);
  * @error	Client index is invalid.
  */
 native bool SaveLocalClientPreferences(int client);
+
+/**
+ * Save all local files that exist to the database.
+ */
+native bool TransferLocalSavesToDatabase();
 
 // =========================== FORWARDS ===========================
 
