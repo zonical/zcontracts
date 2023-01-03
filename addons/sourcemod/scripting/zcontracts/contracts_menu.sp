@@ -417,7 +417,6 @@ public int HelpPanelHandler(Menu menu, MenuAction action, int param1, int param2
 		{
 			PlayerHelpTextEnabled[param1] = !PlayerHelpTextEnabled[param1];
 			if (g_DB != null) SaveClientPreferences(param1);
-			else if (g_LocalSave.BoolValue) SaveLocalClientPreferences(param1);
 			OpenContrackerForClient(param1);
 		}
 		if (param2 == 2)

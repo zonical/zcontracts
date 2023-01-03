@@ -412,36 +412,6 @@ native bool SetObjectiveProgressDatabase(char steamid64[64], char UUID[MAX_UUID_
 */
 native bool MarkContractAsCompleted(char steamid64[64], char UUID[MAX_UUID_SIZE]);
 
-// =========================== LOCAL SAVING ===========================
-
-/**
- * Saves the progress of a Contract to a file on disk.
- * @param client 	Client index.
- * @param ClientContract	Contract struct to save.
- * @error	Client index is invalid.
- */
-native bool SaveLocalContractProgress(int client, any ClientContract[sizeof(Contract)]);
-
-/**
- * Saves the session of a client to a file on disk.
- * @param client	Client index.
- * @param UUID	UUID to save as the session.
- * @error	Client index is invalid.
- */
-native bool SaveLocalClientSession(int client, char UUID[MAX_UUID_SIZE]);
-
-/**
- * Saves the preferences of a client to a file on disk.
- * @param client	Client index.
- * @error	Client index is invalid.
- */
-native bool SaveLocalClientPreferences(int client);
-
-/**
- * Save all local files that exist to the database.
- */
-native bool TransferLocalSavesToDatabase();
-
 // =========================== FORWARDS ===========================
 
 /**

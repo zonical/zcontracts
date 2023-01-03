@@ -1,3 +1,5 @@
+int g_DatabaseFails = 0;
+
 /**
  * This is called when we connect to the database. If we do,
  * load player session data for all of the current clients.
@@ -6,6 +8,10 @@ public void GotDatabase(Database db, const char[] error, any data)
 {
     if (db == null)
     {
+        if (g_DatabaseFails >= g_DatabaseMaximumFailures.IntValue)
+        {
+            SetFailState("Failed to connect to database.");
+        }
         LogError("[ZContracts] Failed to connect to database... reattempting in %f seconds: failure: %s", g_DatabaseRetryTime.FloatValue, error);
         g_DatabaseRetryTimer = CreateTimer(g_DatabaseRetryTime.FloatValue, Timer_RetryDBConnect);
     } 
@@ -24,10 +30,6 @@ public void GotDatabase(Database db, const char[] error, any data)
                 DB_LoadCompletedContracts(i);
             }
         }
-
-        // Now that we've got a database connection, let's save
-        // everything local to the database.
-        TransferLocalSavesToDatabase();
     }
 }
 
@@ -103,33 +105,6 @@ public Action Timer_SaveAllToDB(Handle hTimer)
                 }
             }
         }
-        else if (g_LocalSave.BoolValue)
-        {
-            bool NeedsSave = ClientContract.m_bNeedsDBSave;
-            if (!NeedsSave)
-            {
-                // Check to see if any of our objectives need saving.
-                for (int j = 0; j < ClientContract.m_hObjectives.Length; j++)
-                {
-                    ContractObjective ClientContractObjective;
-                    ClientContract.GetObjective(j, ClientContractObjective);
-                    if (!ClientContractObjective.m_bInitalized) continue;
-                    if (ClientContractObjective.m_bNeedsDBSave)
-                    {
-                        NeedsSave = true;
-                        ClientContractObjective.m_bNeedsDBSave = false;
-                        ClientContract.SaveObjective(j, ClientContractObjective);
-                        break;
-                    }
-                }
-            }
-            if (NeedsSave)
-            {
-                SaveLocalContractProgress(i, ClientContract);
-                ClientContract.m_bNeedsDBSave = false;
-            }
-        }
-    
         ClientContracts[i] = ClientContract;
     }
     return Plugin_Continue;
