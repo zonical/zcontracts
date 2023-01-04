@@ -1,0 +1,97 @@
+"Contract"
+{
+	"{cf66fc16-bb8b-4832-9f17-d660efa99671}"
+	{
+		"name"		"Capture The Flag"
+		"directory"	"root/mercenary_park/core_modes"
+		"type"		"2"
+		"maximum_cp"	"100"
+
+		// What classes can do this contract?
+		"classes"
+		{
+			"soldier"	"1"
+			"pyro"		"1"
+			"heavy"		"1"
+			"engineer"	"1"
+			"scout"		"1"
+			"demoman"	"1"
+			"sniper"	"1"
+			"medic"		"1"
+			"spy"		"1"
+		}
+
+		"map_restriction"	"ctf_"
+		
+		"objectives"
+		{
+			"1"
+			{
+				"description"		"Score points on a CTF map."
+				"infinite"			"1"
+				
+				// How many points should we give for successfully doing this objective?
+				"award"		"2"
+				
+				// The events that this objective looks out for.
+				"events"		
+				{
+					"CONTRACTS_PLAYER_SCORE"
+					{
+						// What this event should do.
+						"type"		"increment"
+						
+						// How many times does this event need to trigger to add points?
+						"threshold"	"1"	
+					}
+				}
+			}
+			"2"
+			{
+				"description"		"Defend your intelligence."
+				
+				// How many times can we complete this objective?
+				"maximum_uses"	"6"
+
+				// How many points should we give for successfully doing this objective?
+				"award"		"10"
+				
+				// The events that this objective looks out for.
+				"events"		
+				{
+					"CONTRACTS_TF2_FLAG_DEFEND"
+					{
+						// What this event should do.
+						"type"		"increment"
+						
+						// How many times does this event need to trigger to add points?
+						"threshold"	"1"	
+					}
+				}
+			}
+			"3"
+			{
+				"description"		"Capture the flag."
+				
+				// How many times can we complete this objective?
+				"maximum_uses"	"2"
+
+				// How many points should we give for successfully doing this objective?
+				"award"		"15"
+				
+				// The events that this objective looks out for.
+				"events"		
+				{
+					"CONTRACTS_TF2_FLAG_CAPTURE"
+					{
+						// What this event should do.
+						"type"		"increment"
+						
+						// How many times does this event need to trigger to add points?
+						"threshold"	"1"	
+					}
+				}
+			}
+		}
+	}
+}

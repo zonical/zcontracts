@@ -20,14 +20,25 @@ public void OnPluginStart()
 	HookEvent("player_death", OnPlayerDeath);
 	HookEvent("player_hurt", OnPlayerHurt);
 	HookEvent("player_healed", OnPlayerHealed);
+	HookEvent("killed_capping_player", OnKilledCapper);
 
 	HookEvent("player_builtobject", OnObjectBuilt);
 	HookEvent("player_upgradedobject", OnObjectUpgraded);
 	HookEvent("object_destroyed", OnObjectDestroyed);
-
+	
 	HookEvent("payload_pushed", OnPayloadPushed);
 	HookEvent("teamplay_point_captured", OnPointCaptured);
 	HookEvent("teamplay_win_panel", OnWinPanel);
+	HookEvent("teamplay_flag_event", OnFlagEvent);
+}
+
+public void OnAllPluginsLoaded()
+{
+	// Check to see if we have ZContracts loaded.
+	if (!LibraryExists("zcontracts"))
+	{
+		SetFailState("This plugin requires the main ZContracts plugin to function.");
+	}
 }
 
 // Events relating to the attacker killing a victim.
@@ -193,12 +204,38 @@ public Action OnPointCaptured(Event event, const char[] name, bool dontBroadcast
 	for (int i = 0; i < strlen(cappers); i++)
 	{
 		int client = view_as<int>(cappers[i]);
-		PrintToChatAll("%d", client);
 		if (!IsClientValid(client) || IsFakeClient(client)) continue;
 		CallContrackerEvent(client, "CONTRACTS_TF2_CAPTURE_POINT", 1);
 	}
 	return Plugin_Continue;
 }
+
+public Action OnKilledCapper(Event event, const char[] name, bool dontBroadcast)
+{
+	// Get our players.
+	int attacker = GetClientOfUserId(event.GetInt("attacker"));
+	
+	// Make sure we're not the same.
+	if (IsClientValid(attacker) && IsClientValid(victim) && attacker != victim)
+	{
+		CallContrackerEvent(attacker, "CONTRACTS_TF2_KILL_CAPPER", 1, true);
+	}
+}
+
+public Action OnFlagEvent(Event event, const char[] name, bool dontBroadcast)
+{
+	int client = GetClientOfUserId(event.GetInt("attacker"));
+	int event_type = event.GetInt("eventtype");
+	if (!IsClientValid(client)) return Plugin_Continue;
+
+	switch (event_type)
+	{
+		case TF_FLAGEVENT_PICKEDUP: CallContrackerEvent(client, "CONTRACTS_TF2_FLAG_PICKUP", 1);
+		case TF_FLAGEVENT_CAPTURED: CallContrackerEvent(client, "CONTRACTS_TF2_FLAG_CAPTURE", 1);
+		case TF_FLAGEVENT_DEFENDED: CallContrackerEvent(client, "CONTRACTS_TF2_FLAG_DEFEND", 1);
+		case TF_FLAGEVENT_RETURNED: CallContrackerEvent(client, "CONTRACTS_TF2_FLAG_RETURN", 1);
+	}
+} 
 
 public bool IsClientValid(int client)
 {

@@ -21,13 +21,22 @@ public void OnPluginStart()
 	HookEvent("player_death", OnPlayerDeath);
 	HookEvent("player_hurt", OnPlayerHurt);
 	HookEvent("player_spawn", OnPlayerSpawn);
-
+	HookEvent("player_score", OnPlayerScore)
 	HookEvent("teamplay_round_win", OnRoundWin);
 	
 	for (int i = 0; i < MAXPLAYERS + 1; i++)
 	{
 		g_PlayerDamageDealt[i] = 0;
 		g_PlayerDamageTaken[i] = 0;
+	}
+}
+
+public void OnAllPluginsLoaded()
+{
+	// Check to see if we have ZContracts loaded.
+	if (!LibraryExists("zcontracts"))
+	{
+		SetFailState("This plugin requires the main ZContracts plugin to function.");
 	}
 }
 
@@ -77,6 +86,12 @@ public Action OnPlayerSpawn(Event event, const char[] name, bool dontBroadcast)
 {
 	int client = GetClientOfUserId(event.GetInt("userid"));
 	CallContrackerEvent(client, "CONTRACTS_PLAYER_SPAWN", 1);
+}
+
+public Action OnPlayerScore(Event event, const char[] name, bool dontBroadcast)
+{
+	int client = GetClientOfUserId(event.GetInt("userid"));
+	CallContrackerEvent(client, "CONTRACTS_PLAYER_SCORE", 1);
 }
 
 // Events relating to the round ending

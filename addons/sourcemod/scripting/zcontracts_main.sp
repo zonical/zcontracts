@@ -205,6 +205,8 @@ public void OnPluginStart()
 	RegConsoleCmd("sm_zcpref", OpenPrefPanelCmd);
 	RegConsoleCmd("sm_zchelp", OpenHelpPanelCmd);
 	RegConsoleCmd("sm_chelp", OpenHelpPanelCmd);
+
+	RegPluginLibrary("zcontracts");
 }
 
 // ============ SM FORWARD FUNCTIONS ============
