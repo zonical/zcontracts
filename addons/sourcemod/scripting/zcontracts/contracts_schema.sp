@@ -162,8 +162,10 @@ public void CreateContract(KeyValues hContractConf, Contract hContract)
 	hContractConf.GetString("name", hContract.m_sContractName, sizeof(hContract.m_sContractName));
 	hContractConf.GetString("directory", hContract.m_sDirectoryPath, sizeof(hContract.m_sDirectoryPath), "root");
 	hContractConf.GetString("weapon_name_restriction", hContract.m_sWeaponNameRestriction, sizeof(hContract.m_sWeaponNameRestriction));
+
 	// This needs to work across econ-supported games. Disabled for now.
 	//hContractConf.GetString("weapon_itemdef_restriction", hContract.m_sWeaponItemDefRestriction, sizeof(hContract.m_sWeaponItemDefRestriction));
+
 	hContractConf.GetString("weapon_classname_restriction", hContract.m_sWeaponClassnameRestriction, sizeof(hContract.m_sWeaponClassnameRestriction));
 	hContractConf.GetString("map_restriction", hContract.m_sMapRestriction, sizeof(hContract.m_sMapRestriction));
 
@@ -172,28 +174,18 @@ public void CreateContract(KeyValues hContractConf, Contract hContract)
 	hContract.m_iMaxProgress = hContractConf.GetNum("maximum_cp", -1);
 	hContract.m_iDifficulty = hContractConf.GetNum("difficulty", 1);
 
-	// TODO: Call different functions for TF2 and CSGO schema rules.
-	hContractConf.GetString("required_gamerules", hContract.m_sRequiredGameRulesEntity, sizeof(hContract.m_sRequiredGameRulesEntity));
-	// TODO: CSGO gamemode and gametype stuff here.
-
-	// Grab the classes that can do this contract.
+	
 	if (GetEngineVersion() == Engine_TF2)
 	{
-		if (hContractConf.JumpToKey("classes", false))
-		{
-			hContract.m_bClass[TFClass_Scout] 		= view_as<bool>(hContractConf.GetNum("scout", 0));
-			hContract.m_bClass[TFClass_Soldier] 	= view_as<bool>(hContractConf.GetNum("soldier", 0));
-			hContract.m_bClass[TFClass_Pyro] 		= view_as<bool>(hContractConf.GetNum("pyro", 0));
-			hContract.m_bClass[TFClass_DemoMan] 	= view_as<bool>(hContractConf.GetNum("demoman", 0));
-			hContract.m_bClass[TFClass_Heavy]		= view_as<bool>(hContractConf.GetNum("heavy", 0));
-			hContract.m_bClass[TFClass_Engineer] 	= view_as<bool>(hContractConf.GetNum("engineer", 0));
-			hContract.m_bClass[TFClass_Sniper] 		= view_as<bool>(hContractConf.GetNum("sniper", 0));
-			hContract.m_bClass[TFClass_Medic] 		= view_as<bool>(hContractConf.GetNum("medic", 0));
-			hContract.m_bClass[TFClass_Spy] 		= view_as<bool>(hContractConf.GetNum("spy", 0));
-			
-			// Return.
-			hContractConf.GoBack();
-		}
+		// Grab the classes that can do this contract.
+		TF2_ConstructClassRestrictions(hContractConf, hContract);
+		hContractConf.GetString("required_gamerules", hContract.m_sRequiredGameRulesEntity, sizeof(hContract.m_sRequiredGameRulesEntity));
+	}
+	if (GetEngineVersion() == Engine_CSGO)
+	{
+		hContract.m_iGameTypeRestriction = CSGO_GetGameTypeRestriction(hContractConf);
+		hContract.m_iGameModeRestriction = CSGO_GetGameModeRestriction(hContractConf);
+		hContract.m_iSkirmishIDRestriction = CSGO_GetSkirmishRestriction(hContractConf);
 	}
 
 	// Grab the teams that can do this contract.
@@ -220,29 +212,8 @@ public void CreateContract(KeyValues hContractConf, Contract hContract)
 		// to use instead of intergers. 
 		switch (GetEngineVersion())
 		{
-			case Engine_TF2:
-			{
-				if (StrEqual(sTeamBuffer, "red")) iTeamIndex = view_as<int>(TFTeam_Red);
-				if (StrEqual(sTeamBuffer, "blue") 
-				|| StrEqual(sTeamBuffer, "blu")) 
-				{
-					iTeamIndex = view_as<int>(TFTeam_Blue);
-				}
-			}
-			/*
-			case Engine_CSGO:
-			{
-				if (StrEqual(sTeamBuffer, "t") || StrEqual(sTeamBuffer, "terrorists")) 
-				{
-					iTeamIndex = CS_TEAM_T;
-				}
-				if (StrEqual(sTeamBuffer, "ct")
-				|| StrEqual(sTeamBuffer, "counterterrorists")
-				|| StrEqual(sTeamBuffer, "counter-terrorists")) 
-				{
-					iTeamIndex = CS_TEAM_CT;
-				}
-			}*/
+			case Engine_TF2: iTeamIndex = TF2_GetTeamIndexFromString(sTeamBuffer);
+			case Engine_CSGO: iTeamIndex = CSGO_GetTeamIndexFromString(sTeamBuffer);
 		}
 		hContract.m_iTeamRestriction = iTeamIndex;
 	}

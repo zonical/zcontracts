@@ -7,8 +7,6 @@
 
 #include <sourcemod>
 #include <sdktools>
-#include <tf2>
-#include <tf2_stocks>
 #include <float>
 
 #include <zcontracts/zcontracts>
@@ -40,10 +38,6 @@ ConVar g_DebugProgress;
 ConVar g_DebugSessions;
 #endif
 
-ConVar g_TF2_AllowSetupProgress;
-ConVar g_TF2_AllowRoundEndProgress;
-ConVar g_TF2_AllowWaitingProgress;
-
 // Forwards
 GlobalForward g_fOnObjectiveCompleted;
 GlobalForward g_fOnContractCompleted;
@@ -67,6 +61,8 @@ float g_NextHUDUpdate[MAXPLAYERS+1] = { -1.0, ... };
 #define HUD_REFRESH_RATE 0.5
 
 // Subplugins.
+#include "zcontracts/contracts_tf2.sp"
+#include "zcontracts/contracts_csgo.sp"
 #include "zcontracts/contracts_schema.sp"
 #include "zcontracts/contracts_timers.sp"
 #include "zcontracts/contracts_database.sp"
@@ -126,17 +122,6 @@ public void OnPluginStart()
 	g_DisplayProgressHud = CreateConVar("zc_display_hud_progress", "1", "If enabled, players will see text on the right-side of their screen displaying Contract progress.");
 	g_BotContracts = CreateConVar("zc_bot_contracts", "0", "If enabled, bots will be allowed to select Contracts. They will automatically select a new Contract after completion.");
 
-	// TODO: CSGO support in the future!
-	switch (GetEngineVersion())
-	{
-		case Engine_TF2:
-		{
-			g_TF2_AllowSetupProgress = CreateConVar("zctf2_allow_setup_trigger", "1", "If disabled, Objective progress will not be counted during setup time.");
-			g_TF2_AllowRoundEndProgress = CreateConVar("zctf2_allow_roundend_trigger", "0", "If disabled, Objective progress will not be counted after a winner is declared and the next round starts.");
-			g_TF2_AllowWaitingProgress = CreateConVar("zctf2_allow_waitingforplayers_trigger", "0", "If disabled, Objective progress will not be counted during the \"waiting for players\" period before a game starts.");
-		}
-	}
-
 #if defined DEBUG
 	g_DebugEvents = CreateConVar("zc_debug_print_events", "0", "Logs every time an event is sent.");
 	g_DebugProcessing = CreateConVar("zc_debug_processing", "0", "Logs every time an event is processed.");
@@ -151,12 +136,16 @@ public void OnPluginStart()
 	g_RequiredFileExt.AddChangeHook(OnSchemaConVarChange);
 	g_DisabledPath.AddChangeHook(OnSchemaConVarChange);
 
-	// ================ EVENTS ================
-	HookEvent("teamplay_round_win", OnRoundWin);
-	HookEvent("teamplay_round_start", OnRoundStart);
-	HookEvent("teamplay_waiting_begins", OnWaitingStart);
-	HookEvent("teamplay_waiting_ends", OnWaitingEnd);
-	HookEvent("teamplay_setup_finished", OnSetupEnd);
+	// ================ ENGINE SETUP ================
+	switch (GetEngineVersion())
+	{
+		case Engine_TF2:
+		{
+			TF2_CreatePluginConVars();
+			TF2_CreateEventHooks();
+		}
+		// case Engine_CSGO: CSGO_CreatePluginConVars();
+	}
 
 	// ================ SOUNDS ================
 	PrecacheSound("CYOA.StaticFade");
@@ -867,22 +856,25 @@ void ProcessLogicForContractObjective(Contract ClientContract, int objective_id,
 	ClientContract.GetObjective(objective_id, Objective);
 	if (Objective.IsObjectiveComplete()) return;
 
-	// For TF2, perform a class check.
-	if (GetEngineVersion() == Engine_TF2)
-	{
-		TFClassType Class = TF2_GetPlayerClass(client);
-		if (Class == TFClass_Unknown) return;
-		if (!ClientContract.m_bClass[Class]) return;
-	}
-
+	// Restriction checks.
 	char Map[256];
 	GetCurrentMap(Map, sizeof(Map));
-	// Map check.
 	if (!StrEqual(Map, "") && StrContains(Map, ClientContract.m_sMapRestriction) == -1) return;
-	// Checks weapon classname, weapon index and item definition ID (if it exists)
 	if (!PerformWeaponCheck(ClientContract, client)) return;
-	// If this is actually being checked, TF2 *must* pass a valid gamerules entity!
-	if (!ValidGameRulesEntityExists(ClientContract.m_sRequiredGameRulesEntity)) return;
+	switch (GetEngineVersion())
+	{
+		case Engine_TF2:
+		{
+			if (!TF2_IsCorrectClass(client, ClientContract)) return;
+			if (!TF2_ValidGameRulesEntityExists(ClientContract.m_sRequiredGameRulesEntity)) return;
+		}
+		case Engine_CSGO:
+		{
+			if (!CSGO_IsCorrectGameType(ClientContract.m_iGameTypeRestriction)) return;
+			if (!CSGO_IsCorrectGameMode(ClientContract.m_iGameModeRestriction)) return;
+			if (!CSGO_IsCorrectSkirmishID(ClientContract.m_iSkirmishIDRestriction)) return;
+		}
+	}
 
 	// Loop over all of our objectives and see if this event matches.
 	for (int i = 0; i < Objective.m_hEvents.Length; i++)
@@ -1154,113 +1146,6 @@ bool PerformWeaponCheck(Contract ClientContract, int client)
 		}
 	}
 	return true;
-}
-
-// Checks to see if a GameRules entity exists on the current map.
-// Intended for Team Fortress 2.
-bool ValidGameRulesEntityExists(const char[] classname)
-{
-	// Ignore if string is empty.
-	if (StrEqual(classname, "")) return true;
-
-	// If this is TF2, validate that we're actually checking for
-	// a gamerules entity with a classname check.
-	if (GetEngineVersion() == Engine_TF2 &&
-	StrContains(classname, "tf_logic_") == -1) return false;
-
-	// Try and find this entity.
-	int ent = -1;
-	while ((ent = FindEntityByClassname(ent, classname)) != -1)
-	{
-		return true;
-	}
-	return false;
-}
-
-// ============ EVENT FUNCTIONS ============
-public Action OnRoundWin(Event event, const char[] name, bool dontBroadcast)
-{
-	switch (GetEngineVersion())
-	{
-		case Engine_TF2:
-		{
-			if (!g_TF2_AllowRoundEndProgress.BoolValue)
-			{
-				// Block any events from being processed after this time.
-				g_LastValidProgressTime = GetGameTime();
-			}
-			else
-			{
-				g_LastValidProgressTime = -1.0;
-			}
-		}
-	}
-
-	return Plugin_Continue;
-}
-
-public Action OnRoundStart(Event event, const char[] name, bool dontBroadcast)
-{
-	switch (GetEngineVersion())
-	{
-		case Engine_TF2:
-		{
-			if (view_as<bool>(GameRules_GetProp("m_bInSetup")) && !g_TF2_AllowSetupProgress.BoolValue)
-			{
-				// Block any events from being processed after this time.
-				g_LastValidProgressTime = GetGameTime();
-			}
-			else
-			{
-				g_LastValidProgressTime = -1.0;
-			}
-		}
-	}
-	return Plugin_Continue;
-}
-
-public Action OnWaitingStart(Event event, const char[] name, bool dontBroadcast)
-{
-	switch (GetEngineVersion())
-	{
-		case Engine_TF2:
-		{
-			if (!g_TF2_AllowWaitingProgress.BoolValue)
-			{
-				// Block any events from being processed after this time.
-				g_LastValidProgressTime = GetGameTime();
-			}
-			else
-			{
-				g_LastValidProgressTime = -1.0;
-			}
-		}
-	}
-	return Plugin_Continue;
-}
-
-public Action OnWaitingEnd(Event event, const char[] name, bool dontBroadcast)
-{
-	switch (GetEngineVersion())
-	{
-		case Engine_TF2:
-		{
-			g_LastValidProgressTime = -1.0;
-		}
-	}
-	return Plugin_Continue;
-}
-
-public Action OnSetupEnd(Event event, const char[] name, bool dontBroadcast)
-{
-	switch (GetEngineVersion())
-	{
-		case Engine_TF2:
-		{
-			g_LastValidProgressTime = -1.0;
-		}
-	}
-	return Plugin_Continue;
 }
 
 // ============ DEBUG FUNCTIONS ============

@@ -182,10 +182,13 @@ enum struct Contract
 	char m_sWeaponNameRestriction[64];
 	char m_sWeaponItemDefRestriction[64];
 	char m_sWeaponClassnameRestriction[64];
-
-	char m_sRequiredGameRulesEntity[64];
 	char m_sMapRestriction[MAX_UUID_SIZE];
 	int m_iTeamRestriction;
+
+	char m_sRequiredGameRulesEntity[64]; // TF2
+	int m_iGameModeRestriction; // CSGO
+	int m_iGameTypeRestriction; // CSGO
+	int m_iSkirmishIDRestriction; // CSGO
 
 	// What type of Contract are we handling? (see ContractType)
 	ContractType m_iContractType;
