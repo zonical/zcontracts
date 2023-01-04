@@ -162,13 +162,19 @@ public void CreateContract(KeyValues hContractConf, Contract hContract)
 	hContractConf.GetString("name", hContract.m_sContractName, sizeof(hContract.m_sContractName));
 	hContractConf.GetString("directory", hContract.m_sDirectoryPath, sizeof(hContract.m_sDirectoryPath), "root");
 	hContractConf.GetString("weapon_name_restriction", hContract.m_sWeaponNameRestriction, sizeof(hContract.m_sWeaponNameRestriction));
-	hContractConf.GetString("weapon_itemdef_restriction", hContract.m_sWeaponItemDefRestriction, sizeof(hContract.m_sWeaponItemDefRestriction));
+	// This needs to work across econ-supported games. Disabled for now.
+	//hContractConf.GetString("weapon_itemdef_restriction", hContract.m_sWeaponItemDefRestriction, sizeof(hContract.m_sWeaponItemDefRestriction));
 	hContractConf.GetString("weapon_classname_restriction", hContract.m_sWeaponClassnameRestriction, sizeof(hContract.m_sWeaponClassnameRestriction));
 	hContractConf.GetString("map_restriction", hContract.m_sMapRestriction, sizeof(hContract.m_sMapRestriction));
+
 	hContract.m_bNoMultiplication = view_as<bool>(hContractConf.GetNum("no_multiply", 0));
 	hContract.m_iContractType = view_as<ContractType>(hContractConf.GetNum("type", view_as<int>(Contract_ObjectiveProgress))); // stops a warning
 	hContract.m_iMaxProgress = hContractConf.GetNum("maximum_cp", -1);
 	hContract.m_iDifficulty = hContractConf.GetNum("difficulty", 1);
+
+	// TODO: Call different functions for TF2 and CSGO schema rules.
+	hContractConf.GetString("required_gamerules", hContract.m_sRequiredGameRulesEntity, sizeof(hContract.m_sRequiredGameRulesEntity));
+	// TODO: CSGO gamemode and gametype stuff here.
 
 	// Grab the classes that can do this contract.
 	if (GetEngineVersion() == Engine_TF2)
@@ -223,6 +229,7 @@ public void CreateContract(KeyValues hContractConf, Contract hContract)
 					iTeamIndex = view_as<int>(TFTeam_Blue);
 				}
 			}
+			/*
 			case Engine_CSGO:
 			{
 				if (StrEqual(sTeamBuffer, "t") || StrEqual(sTeamBuffer, "terrorists")) 
@@ -235,7 +242,7 @@ public void CreateContract(KeyValues hContractConf, Contract hContract)
 				{
 					iTeamIndex = CS_TEAM_CT;
 				}
-			}
+			}*/
 		}
 		hContract.m_iTeamRestriction = iTeamIndex;
 	}
@@ -283,7 +290,7 @@ public void CreateContract(KeyValues hContractConf, Contract hContract)
 		hContractConf.GoBack();
 	}
 
-	//LogMessage("[ZContracts] Created Contract %s in directory: %s", hContract.m_sUUID, hContract.m_sDirectoryPath);
+	LogMessage("[ZContracts] Created Contract %s (%s) in directory: %s", hContract.m_sUUID, hContract.m_sContractName, hContract.m_sDirectoryPath);
 	hContractConf.GoBack();
 }
 

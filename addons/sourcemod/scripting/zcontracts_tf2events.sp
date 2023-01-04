@@ -216,7 +216,7 @@ public Action OnKilledCapper(Event event, const char[] name, bool dontBroadcast)
 	int attacker = GetClientOfUserId(event.GetInt("attacker"));
 	
 	// Make sure we're not the same.
-	if (IsClientValid(attacker) && IsClientValid(victim) && attacker != victim)
+	if (IsClientValid(attacker))
 	{
 		CallContrackerEvent(attacker, "CONTRACTS_TF2_KILL_CAPPER", 1, true);
 	}

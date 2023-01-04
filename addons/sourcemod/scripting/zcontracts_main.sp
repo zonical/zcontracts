@@ -1,6 +1,3 @@
-// LIST:
-// TODO: Port to CSGO
-
 #pragma semicolon 1
 #pragma newdecls required
 
@@ -12,7 +9,6 @@
 #include <sdktools>
 #include <tf2>
 #include <tf2_stocks>
-#include <cstrike>
 #include <float>
 
 #include <zcontracts/zcontracts>
@@ -76,6 +72,7 @@ float g_NextHUDUpdate[MAXPLAYERS+1] = { -1.0, ... };
 #include "zcontracts/contracts_database.sp"
 #include "zcontracts/contracts_preferences.sp"
 #include "zcontracts/contracts_menu.sp"
+// TODO: CSGO and TF2 (+ any other game) subplugins. Seperate main logic from game logic.
 
 public Plugin myinfo =
 {
@@ -129,6 +126,7 @@ public void OnPluginStart()
 	g_DisplayProgressHud = CreateConVar("zc_display_hud_progress", "1", "If enabled, players will see text on the right-side of their screen displaying Contract progress.");
 	g_BotContracts = CreateConVar("zc_bot_contracts", "0", "If enabled, bots will be allowed to select Contracts. They will automatically select a new Contract after completion.");
 
+	// TODO: CSGO support in the future!
 	switch (GetEngineVersion())
 	{
 		case Engine_TF2:
@@ -879,8 +877,12 @@ void ProcessLogicForContractObjective(Contract ClientContract, int objective_id,
 
 	char Map[256];
 	GetCurrentMap(Map, sizeof(Map));
+	// Map check.
 	if (!StrEqual(Map, "") && StrContains(Map, ClientContract.m_sMapRestriction) == -1) return;
+	// Checks weapon classname, weapon index and item definition ID (if it exists)
 	if (!PerformWeaponCheck(ClientContract, client)) return;
+	// If this is actually being checked, TF2 *must* pass a valid gamerules entity!
+	if (!ValidGameRulesEntityExists(ClientContract.m_sRequiredGameRulesEntity)) return;
 
 	// Loop over all of our objectives and see if this event matches.
 	for (int i = 0; i < Objective.m_hEvents.Length; i++)
@@ -1136,6 +1138,12 @@ bool PerformWeaponCheck(Contract ClientContract, int client)
 		int ClientWeapon = GetEntPropEnt(client, Prop_Send, "m_hActiveWeapon");
 		if (IsValidEntity(ClientWeapon))
 		{
+			// Item definition index check:
+			if (!StrEqual("", ClientContract.m_sWeaponItemDefRestriction))
+			{
+				int DefIndex = GetEntProp(ClientWeapon, Prop_Send, "m_iItemDefinitionIndex");
+				if (DefIndex != StringToInt(ClientContract.m_sWeaponItemDefRestriction)) return false;
+			}
 			// Classname check:
 			if (!StrEqual("", ClientContract.m_sWeaponClassnameRestriction))
 			{
@@ -1143,15 +1151,30 @@ bool PerformWeaponCheck(Contract ClientContract, int client)
 				GetEntityClassname(ClientWeapon, Classname, sizeof(Classname));
 				if (!StrContains(Classname, ClientContract.m_sWeaponClassnameRestriction)) return false;
 			}
-			// Item definition index check:
-			if (!StrEqual("", ClientContract.m_sWeaponItemDefRestriction))
-			{
-				int DefIndex = GetEntProp(ClientWeapon, Prop_Send, "m_iItemDefinitionIndex");
-				if (DefIndex != StringToInt(ClientContract.m_sWeaponItemDefRestriction)) return false;
-			}
 		}
 	}
 	return true;
+}
+
+// Checks to see if a GameRules entity exists on the current map.
+// Intended for Team Fortress 2.
+bool ValidGameRulesEntityExists(const char[] classname)
+{
+	// Ignore if string is empty.
+	if (StrEqual(classname, "")) return true;
+
+	// If this is TF2, validate that we're actually checking for
+	// a gamerules entity with a classname check.
+	if (GetEngineVersion() == Engine_TF2 &&
+	StrContains(classname, "tf_logic_") == -1) return false;
+
+	// Try and find this entity.
+	int ent = -1;
+	while ((ent = FindEntityByClassname(ent, classname)) != -1)
+	{
+		return true;
+	}
+	return false;
 }
 
 // ============ EVENT FUNCTIONS ============
