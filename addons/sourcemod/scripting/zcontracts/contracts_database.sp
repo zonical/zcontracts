@@ -14,6 +14,7 @@ public void GotDatabase(Database db, const char[] error, any data)
         }
         LogError("[ZContracts] Failed to connect to database... reattempting in %f seconds: failure: %s", g_DatabaseRetryTime.FloatValue, error);
         g_DatabaseRetryTimer = CreateTimer(g_DatabaseRetryTime.FloatValue, Timer_RetryDBConnect);
+        g_DatabaseFails++;
     } 
     else 
     {
