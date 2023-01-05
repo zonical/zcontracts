@@ -63,6 +63,8 @@ float g_NextHUDUpdate[MAXPLAYERS+1] = { -1.0, ... };
 // Subplugins.
 #include "zcontracts/contracts_tf2.sp"
 #include "zcontracts/contracts_csgo.sp"
+// Any custom engine plugins must be included before contracts_schema so
+// custom values can be loaded from the schema.
 #include "zcontracts/contracts_schema.sp"
 #include "zcontracts/contracts_timers.sp"
 #include "zcontracts/contracts_database.sp"

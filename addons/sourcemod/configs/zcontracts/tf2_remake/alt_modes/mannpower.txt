@@ -1,0 +1,75 @@
+"Contract"
+{
+	"{35e19fa6-9f8e-4de9-805a-99e78a9ecdc5}"
+	{
+		"name"		"Mannpower"
+		"directory"	"root/mercenary_park/alt_modes"
+		"type"		"2"
+		"maximum_cp"	"100"
+
+		// What classes can do this contract?
+		"classes"
+		{
+			"soldier"	"1"
+			"pyro"		"1"
+			"heavy"		"1"
+			"engineer"	"1"
+			"scout"		"1"
+			"demoman"	"1"
+			"sniper"	"1"
+			"medic"		"1"
+			"spy"		"1"
+		}
+
+		"map_restriction"	"ctf_"
+		"required_gamerules"	"tf_logic_mannpower"
+		
+		"objectives"
+		{
+			"1"
+			{
+				"description"		"Get a kill in Mannpower."
+				"infinite"			"1"
+				
+				// How many points should we give for successfully doing this objective?
+				"award"		"1"
+				
+				// The events that this objective looks out for.
+				"events"		
+				{
+					"CONTRACTS_PLAYER_KILL"
+					{
+						// What this event should do.
+						"type"		"increment"
+						
+						// How many times does this event need to trigger to add points?
+						"threshold"	"1"	
+					}
+				}
+			}
+			"2"
+			{
+				"description"		"Get a kill while grappling."
+				
+				// How many times can we complete this objective?
+				"maximum_uses"	"20"
+
+				// How many points should we give for successfully doing this objective?
+				"award"		"3"
+				
+				// The events that this objective looks out for.
+				"events"		
+				{
+					"CONTRACTS_TF2_PLAYER_KILL_GRAPPLING"
+					{
+						// What this event should do.
+						"type"		"increment"
+						
+						// How many times does this event need to trigger to add points?
+						"threshold"	"1"	
+					}
+				}
+			}
+		}
+	}
+}

@@ -1,9 +1,9 @@
 "Contract"
 {
-	"{c89a0757-c47f-4b6e-b604-13ee100b4039}"
+	"{b3efd33c-7f80-4575-a976-11d1a78b25f5}"
 	{
-		"name"		"Defense (RED)"
-		"directory"	"root/mercenary_park"
+		"name"		"PASS Time"
+		"directory"	"root/mercenary_park/alt_modes"
 		"type"		"2"
 		"maximum_cp"	"100"
 
@@ -21,18 +21,13 @@
 			"spy"		"1"
 		}
 
-		"team_restriction"	"red"
-
-		"required_contracts"
-		{
-			"0"		"{04a49ece-8136-4573-b2d6-e937ca62ec11}"
-		}
+		"map_restriction"	"pass_"
 		
 		"objectives"
 		{
 			"1"
 			{
-				"description"		"Score points on RED team."
+				"description"		"Score points in PASS time."
 				"infinite"			"1"
 				
 				// How many points should we give for successfully doing this objective?
@@ -53,26 +48,18 @@
 			}
 			"2"
 			{
-				"description"		"Defend an Objective while on RED team."
+				"description"		"Make an interception in PASS time."
 				
 				// How many times can we complete this objective?
-				"maximum_uses"	"20"
+				"maximum_uses"	"10"
 
 				// How many points should we give for successfully doing this objective?
-				"award"		"3"
+				"award"		"6"
 				
 				// The events that this objective looks out for.
 				"events"		
 				{
-					"CONTRACTS_TF2_KILL_CAPPER"
-					{
-						// What this event should do.
-						"type"		"increment"
-						
-						// How many times does this event need to trigger to add points?
-						"threshold"	"1"	
-					}
-					"CONTRACTS_TF2_FLAG_DEFEND"
+					"CONTRACTS_TF2_PASS_STEAL"
 					{
 						// What this event should do.
 						"type"		"increment"
@@ -84,7 +71,7 @@
 			}
 			"3"
 			{
-				"description"		"Win a round while on RED team."
+				"description"		"Score a goal with the JACK."
 				
 				// How many times can we complete this objective?
 				"maximum_uses"	"2"
@@ -95,7 +82,7 @@
 				// The events that this objective looks out for.
 				"events"		
 				{
-					"CONTRACTS_GAME_WIN_ROUND"
+					"CONTRACTS_TF2_PASS_SCORE"
 					{
 						// What this event should do.
 						"type"		"increment"

@@ -20,13 +20,23 @@ public void OnPluginStart()
 	HookEvent("player_death", OnPlayerDeath);
 	HookEvent("player_hurt", OnPlayerHurt);
 	HookEvent("player_healed", OnPlayerHealed);
+	HookEvent("player_score_changed", OnPlayerScoreChanged);
 	HookEvent("killed_capping_player", OnKilledCapper);
+	HookEvent("environmental_death", OnWorldDeath);
 
 	HookEvent("player_builtobject", OnObjectBuilt);
 	HookEvent("player_upgradedobject", OnObjectUpgraded);
 	HookEvent("object_destroyed", OnObjectDestroyed);
 	
 	HookEvent("payload_pushed", OnPayloadPushed);
+
+	HookEvent("pass_get", OnPassGet);
+	HookEvent("pass_score", OnPassScore);
+	HookEvent("pass_free", OnPassFree);
+	HookEvent("pass_pass_caught", OnPassCaught);
+	HookEvent("pass_ball_stolen", OnBallStolen);
+	HookEvent("pass_ball_blocked", OnPassBlocked);
+
 	HookEvent("teamplay_point_captured", OnPointCaptured);
 	HookEvent("teamplay_win_panel", OnWinPanel);
 	HookEvent("teamplay_flag_event", OnFlagEvent);
@@ -78,7 +88,40 @@ public Action OnPlayerDeath(Event event, const char[] name, bool dontBroadcast)
 			CallContrackerEvent(attacker, "CONTRACTS_TF2_PLAYER_KILL_SENTRY", 1, true);
 		}
 
+		// Ground check:
+		if (!(GetEntityFlags(attacker) & FL_ONGROUND)) CallContrackerEvent(attacker, "CONTRACTS_TF2_PLAYER_KILL_WHILE_AIRBORNE", 1, true);
+		if (!(GetEntityFlags(victim) & FL_ONGROUND)) CallContrackerEvent(victim, "CONTRACTS_TF2_PLAYER_KILL_AIRBORNE_ENEMY", 1, true);
+
+		// Conditions check:
+		if (TF2_IsPlayerInCondition(attacker, TFCond_GrapplingHook)) CallContrackerEvent(attacker, "CONTRACTS_TF2_PLAYER_KILL_GRAPPLING", 1, true);
+		if (TF2_IsPlayerInCondition(attacker, TFCond_GrapplingHookSafeFall)) CallContrackerEvent(attacker, "CONTRACTS_TF2_PLAYER_KILL_GRAPPLING", 1, true);
+	
+		// Mannpower Conditions:
+		if (TF2_IsPlayerInCondition(attacker, TFCond_RuneStrength)) CallContrackerEvent(attacker, "CONTRACTS_TF2_PLAYER_KILL_STRENGTH", 1, true);
+		if (TF2_IsPlayerInCondition(attacker, TFCond_RuneHaste)) CallContrackerEvent(attacker, "CONTRACTS_TF2_PLAYER_KILLRUNE_HASTE", 1, true);
+		if (TF2_IsPlayerInCondition(attacker, TFCond_RuneRegen)) CallContrackerEvent(attacker, "CONTRACTS_TF2_PLAYER_KILLRUNE_REGEN", 1, true);
+		if (TF2_IsPlayerInCondition(attacker, TFCond_RuneResist)) CallContrackerEvent(attacker, "CONTRACTS_TF2_PLAYER_KILLRUNE_RESIST", 1, true);
+		if (TF2_IsPlayerInCondition(attacker, TFCond_RuneVampire)) CallContrackerEvent(attacker, "CONTRACTS_TF2_PLAYER_KILLRUNE_VAMPIRE", 1, true);
+		if (TF2_IsPlayerInCondition(attacker, TFCond_RunePrecision)) CallContrackerEvent(attacker, "CONTRACTS_TF2_PLAYER_KILLRUNE_PRECISION", 1, true);
+		if (TF2_IsPlayerInCondition(attacker, TFCond_RuneAgility)) CallContrackerEvent(attacker, "CONTRACTS_TF2_PLAYER_KILLRUNE_AGILITY", 1, true);
+		if (TF2_IsPlayerInCondition(attacker, TFCond_RuneKnockout)) CallContrackerEvent(attacker, "CONTRACTS_TF2_PLAYER_KILLRUNE_KNOCKOUT", 1, true);
+		if (TF2_IsPlayerInCondition(attacker, TFCond_RuneImbalance)) CallContrackerEvent(attacker, "CONTRACTS_TF2_PLAYER_KILLRUNE_IMBALANCE", 1, true);
+		if (TF2_IsPlayerInCondition(attacker, TFCond_CritRuneTemp)) CallContrackerEvent(attacker, "CONTRACTS_TF2_PLAYER_KILLRUNE_CRIT", 1, true);
+		if (TF2_IsPlayerInCondition(attacker, TFCond_KingRune)) CallContrackerEvent(attacker, "CONTRACTS_TF2_PLAYER_KILLRUNE_KING", 1, true);
+		if (TF2_IsPlayerInCondition(attacker, TFCond_PlagueRune)) CallContrackerEvent(attacker, "CONTRACTS_TF2_PLAYER_KILLRUNE_PLAGUE", 1, true);
 	}
+
+	// Assister.
+	int assister = GetClientOfUserId(event.GetInt("assister"));
+	if (!IsClientValid(assister)) return Plugin_Continue;
+	if (IsFakeClient(assister)) return Plugin_Continue;
+	if (victim != assister)
+	{
+		CallContrackerEvent(assister, "CONTRACTS_TF2_PLAYER_ASSIST", 1, true);
+		if (TF2_IsPlayerInCondition(attacker, TFCond_Ubercharged)) CallContrackerEvent(assister, "CONTRACTS_TF2_PLAYER_ASSIST_UBER_TEAMMATE", 1, true);
+		if (TF2_IsPlayerInCondition(assister, TFCond_Ubercharged)) CallContrackerEvent(assister, "CONTRACTS_TF2_PLAYER_ASSIST_WHILE_UBERED", 1, true);
+	}
+
 	return Plugin_Continue;
 }
 
@@ -101,6 +144,17 @@ public Action OnPlayerHurt(Event event, const char[] name, bool dontBroadcast)
 		if (event.GetBool("minicrit")) CallContrackerEvent(attacker, "CONTRACTS_TF2_PLAYER_DEAL_MINICRIT", damage, true);
 	}
 
+	return Plugin_Continue;
+}
+
+// Events relating to the attacker killing a victim.
+public Action OnPlayerScoreChanged(Event event, const char[] name, bool dontBroadcast)
+{
+	// Get our players.
+	int client = event.GetInt("player");
+	if (!IsClientValid(client)) return Plugin_Continue;
+	int delta = event.GetInt("delta");
+	if (delta > 0) CallContrackerEvent(client, "CONTRACTS_PLAYER_SCORE", 1, true);
 	return Plugin_Continue;
 }
 
@@ -183,6 +237,25 @@ public Action OnObjectDestroyed(Event event, const char[] name, bool dontBroadca
 		case TFObject_Teleporter: CallContrackerEvent(attacker, "CONTRACTS_TF2_DESTROY_TELEPORTER", 1);
 	}
 
+	int assister = GetClientOfUserId(event.GetInt("assister"));
+	if (IsClientValid(assister))
+	{
+		CallContrackerEvent(assister, "CONTRACTS_TF2_ASSIST_OBJECT_DESTROY", 1);
+		if (TF2_IsPlayerInCondition(assister, TFCond_Ubercharged))
+		{
+			CallContrackerEvent(assister, "CONTRACTS_TF2_ASSIST_OBJECT_DESTROY_UBERED", 1);
+		}
+	}
+
+	int owner = GetClientOfUserId(event.GetInt("userid"));
+	if (!IsClientValid(owner)) return Plugin_Continue;
+	switch (building)
+	{
+		case TFObject_Sentry: CallContrackerEvent(owner, "CONTRACTS_TF2_SENTRY_DESTROYED", 1);
+		case TFObject_Dispenser: CallContrackerEvent(owner, "CONTRACTS_TF2_DISPENSER_DESTROYED", 1);
+		case TFObject_Teleporter: CallContrackerEvent(owner, "CONTRACTS_TF2_TELEPORTER_DESTROYED", 1);
+	}
+
 	return Plugin_Continue;
 }
 
@@ -191,7 +264,6 @@ public Action OnPayloadPushed(Event event, const char[] name, bool dontBroadcast
 	int client = event.GetInt("pusher");
 	if (!IsClientValid(client)) return Plugin_Continue;
 	if (IsFakeClient(client)) return Plugin_Continue;
-	float progress = event.GetFloat("distance");
 	CallContrackerEvent(client, "CONTRACTS_TF2_PL_ESCORT", 1);
 		
 	return Plugin_Continue;
@@ -220,6 +292,7 @@ public Action OnKilledCapper(Event event, const char[] name, bool dontBroadcast)
 	{
 		CallContrackerEvent(attacker, "CONTRACTS_TF2_KILL_CAPPER", 1, true);
 	}
+	return Plugin_Continue;
 }
 
 public Action OnFlagEvent(Event event, const char[] name, bool dontBroadcast)
@@ -235,7 +308,81 @@ public Action OnFlagEvent(Event event, const char[] name, bool dontBroadcast)
 		case TF_FLAGEVENT_DEFENDED: CallContrackerEvent(client, "CONTRACTS_TF2_FLAG_DEFEND", 1);
 		case TF_FLAGEVENT_RETURNED: CallContrackerEvent(client, "CONTRACTS_TF2_FLAG_RETURN", 1);
 	}
+	return Plugin_Continue;
 } 
+
+public Action OnPassGet(Event event, const char[] name, bool dontBroadcast)
+{
+	int client = event.GetInt("owner");
+	if (!IsClientValid(client)) return Plugin_Continue;
+	CallContrackerEvent(client, "CONTRACTS_TF2_PASS_GET", 1);
+	return Plugin_Continue;
+}
+
+public Action OnPassScore(Event event, const char[] name, bool dontBroadcast)
+{
+	int client = event.GetInt("scorer");
+	if (!IsClientValid(client)) return Plugin_Continue;
+	CallContrackerEvent(client, "CONTRACTS_TF2_PASS_SCORE", 1);
+	return Plugin_Continue;
+}
+
+public Action OnPassFree(Event event, const char[] name, bool dontBroadcast)
+{
+	int client = event.GetInt("owner");
+	int attacker = event.GetInt("attacker");
+	if (!IsClientValid(client)) return Plugin_Continue;
+	CallContrackerEvent(client, "CONTRACTS_TF2_PASS_LOSE_BALL", 1);
+	if (!IsClientValid(attacker)) return Plugin_Continue;
+	if (attacker == client) return Plugin_Continue;
+	CallContrackerEvent(attacker, "CONTRACTS_TF2_PASS_ATTACK", 1);
+	return Plugin_Continue;
+}
+
+public Action OnPassCaught(Event event, const char[] name, bool dontBroadcast)
+{
+	int passer = event.GetInt("passer");
+	int catcher = event.GetInt("catcher");
+	if (!IsClientValid(passer)) return Plugin_Continue;
+	CallContrackerEvent(passer, "CONTRACTS_TF2_PASS_BALL", 1);
+	if (!IsClientValid(catcher)) return Plugin_Continue;
+	if (catcher == passer) return Plugin_Continue;
+	CallContrackerEvent(catcher, "CONTRACTS_TF2_PASS_CATCH", 1);
+	return Plugin_Continue;
+}
+
+public Action OnBallStolen(Event event, const char[] name, bool dontBroadcast)
+{
+	int victim = event.GetInt("victim");
+	int attacker = event.GetInt("attacker");
+	if (!IsClientValid(victim)) return Plugin_Continue;
+	CallContrackerEvent(victim, "CONTRACTS_TF2_PASS_LOSE_BALL", 1);
+	if (!IsClientValid(attacker)) return Plugin_Continue;
+	if (attacker == victim) return Plugin_Continue;
+	CallContrackerEvent(attacker, "CONTRACTS_TF2_PASS_STEAL", 1);
+	return Plugin_Continue;
+}
+
+public Action OnPassBlocked(Event event, const char[] name, bool dontBroadcast)
+{
+	int owner = event.GetInt("owner");
+	int blocker = event.GetInt("blocker");
+	if (!IsClientValid(owner)) return Plugin_Continue;
+	CallContrackerEvent(owner, "CONTRACTS_TF2_PASS_LOSE_BALL", 1);
+	if (!IsClientValid(blocker)) return Plugin_Continue;
+	if (blocker == owner) return Plugin_Continue;
+	CallContrackerEvent(blocker, "CONTRACTS_TF2_PASS_BLOCK", 1);
+	return Plugin_Continue;
+}
+
+public Action OnWorldDeath(Event event, const char[] name, bool dontBroadcast)
+{
+	int killer = event.GetInt("killer");
+	if (!IsClientValid(killer)) return Plugin_Continue;
+	CallContrackerEvent(killer, "CONTRACTS_TF2_PLAYER_KILL_WORLD", 1);
+	return Plugin_Continue;
+}
+
 
 public bool IsClientValid(int client)
 {

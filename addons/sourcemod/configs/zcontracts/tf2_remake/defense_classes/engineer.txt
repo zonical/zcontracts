@@ -1,38 +1,28 @@
 "Contract"
 {
-	"{c89a0757-c47f-4b6e-b604-13ee100b4039}"
+	"{24783002-98ab-481a-991c-26b562108801}"
 	{
-		"name"		"Defense (RED)"
-		"directory"	"root/mercenary_park"
+		"name"		"Engineer"
+		"directory"	"root/mercenary_park/defense_classes"
 		"type"		"2"
 		"maximum_cp"	"100"
 
 		// What classes can do this contract?
 		"classes"
 		{
-			"soldier"	"1"
-			"pyro"		"1"
-			"heavy"		"1"
-			"engineer"	"1"
-			"scout"		"1"
-			"demoman"	"1"
-			"sniper"	"1"
-			"medic"		"1"
-			"spy"		"1"
+			"engineer"		"1"
 		}
-
-		"team_restriction"	"red"
 
 		"required_contracts"
 		{
-			"0"		"{04a49ece-8136-4573-b2d6-e937ca62ec11}"
+			"0"		"{c89a0757-c47f-4b6e-b604-13ee100b4039}"
 		}
 		
 		"objectives"
 		{
 			"1"
 			{
-				"description"		"Score points on RED team."
+				"description"		"Score points as Engineer."
 				"infinite"			"1"
 				
 				// How many points should we give for successfully doing this objective?
@@ -53,30 +43,27 @@
 			}
 			"2"
 			{
-				"description"		"Defend an Objective while on RED team."
+				"description"		"Get 3 kills with a single Sentry."
 				
 				// How many times can we complete this objective?
-				"maximum_uses"	"20"
+				"maximum_uses"	"6"
 
 				// How many points should we give for successfully doing this objective?
-				"award"		"3"
+				"award"		"10"
 				
 				// The events that this objective looks out for.
 				"events"		
 				{
-					"CONTRACTS_TF2_KILL_CAPPER"
+					"CONTRACTS_TF2_PLAYER_KILL_SENTRY"
 					{
 						// What this event should do.
 						"type"		"increment"
-						
-						// How many times does this event need to trigger to add points?
-						"threshold"	"1"	
+						"threshold"	"3"
 					}
-					"CONTRACTS_TF2_FLAG_DEFEND"
+					"CONTRACTS_TF2_SENTRY_DESTROYED"
 					{
 						// What this event should do.
-						"type"		"increment"
-						
+						"type"		"reset"
 						// How many times does this event need to trigger to add points?
 						"threshold"	"1"	
 					}
@@ -84,7 +71,7 @@
 			}
 			"3"
 			{
-				"description"		"Win a round while on RED team."
+				"description"		"Dominate a player as Engineer."
 				
 				// How many times can we complete this objective?
 				"maximum_uses"	"2"
@@ -95,7 +82,7 @@
 				// The events that this objective looks out for.
 				"events"		
 				{
-					"CONTRACTS_GAME_WIN_ROUND"
+					"CONTRACTS_TF2_PLAYER_DOMINATION"
 					{
 						// What this event should do.
 						"type"		"increment"

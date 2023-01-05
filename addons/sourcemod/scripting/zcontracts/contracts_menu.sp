@@ -536,6 +536,11 @@ int LockedContractMenuHandler(Menu menu, MenuAction action, int param1, int para
 					Format(MenuDisplay, sizeof(MenuDisplay), "%s [ACTIVE]", MenuDisplay);
 					return RedrawMenuItem(MenuDisplay);
 				}
+				if (!CanActivateContract(param1, MenuKey))
+				{
+					Format(MenuDisplay, sizeof(MenuDisplay), "[X] %s", MenuDisplay);
+					return RedrawMenuItem(MenuDisplay);		
+				}
 				if (HasClientCompletedContract(param1, MenuKey))
 				{
 					Format(MenuDisplay, sizeof(MenuDisplay), "[✓] %s", MenuDisplay);
@@ -558,11 +563,18 @@ int LockedContractMenuHandler(Menu menu, MenuAction action, int param1, int para
 			// Is this a Contract? Select it.
 			if (MenuKey[0] == '{')
 			{
+				// Can we activate this contract?
+				if (!CanActivateContract(param1, MenuKey))
+				{
+					CreateLockedContractMenu(param1, MenuKey);
+					delete menu;
+				}
 				// Are we NOT currently using this contract?
-				if (!StrEqual(MenuKey, ClientContracts[param1].m_sUUID))
+				else if (!StrEqual(MenuKey, ClientContracts[param1].m_sUUID))
 				{
 					SetClientContract(param1, MenuKey);	
 				}
+				
 			}
 		}
 

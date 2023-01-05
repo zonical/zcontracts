@@ -1,38 +1,28 @@
 "Contract"
 {
-	"{c89a0757-c47f-4b6e-b604-13ee100b4039}"
+	"{f52cf56c-ce7f-4963-bf91-e8cdcd486870}"
 	{
-		"name"		"Defense (RED)"
-		"directory"	"root/mercenary_park"
+		"name"		"Demoman"
+		"directory"	"root/mercenary_park/defense_classes"
 		"type"		"2"
 		"maximum_cp"	"100"
 
 		// What classes can do this contract?
 		"classes"
 		{
-			"soldier"	"1"
-			"pyro"		"1"
-			"heavy"		"1"
-			"engineer"	"1"
-			"scout"		"1"
-			"demoman"	"1"
-			"sniper"	"1"
-			"medic"		"1"
-			"spy"		"1"
+			"demoman"		"1"
 		}
-
-		"team_restriction"	"red"
 
 		"required_contracts"
 		{
-			"0"		"{04a49ece-8136-4573-b2d6-e937ca62ec11}"
+			"0"		"{c89a0757-c47f-4b6e-b604-13ee100b4039}"
 		}
 		
 		"objectives"
 		{
 			"1"
 			{
-				"description"		"Score points on RED team."
+				"description"		"Score points as Demoman."
 				"infinite"			"1"
 				
 				// How many points should we give for successfully doing this objective?
@@ -53,13 +43,13 @@
 			}
 			"2"
 			{
-				"description"		"Defend an Objective while on RED team."
+				"description"		"As Demoman, kill an enemy doing the Objective."
 				
 				// How many times can we complete this objective?
-				"maximum_uses"	"20"
+				"maximum_uses"	"15"
 
 				// How many points should we give for successfully doing this objective?
-				"award"		"3"
+				"award"		"4"
 				
 				// The events that this objective looks out for.
 				"events"		
@@ -84,7 +74,7 @@
 			}
 			"3"
 			{
-				"description"		"Win a round while on RED team."
+				"description"		"Dominate a player as Demoman."
 				
 				// How many times can we complete this objective?
 				"maximum_uses"	"2"
@@ -95,7 +85,7 @@
 				// The events that this objective looks out for.
 				"events"		
 				{
-					"CONTRACTS_GAME_WIN_ROUND"
+					"CONTRACTS_TF2_PLAYER_DOMINATION"
 					{
 						// What this event should do.
 						"type"		"increment"
