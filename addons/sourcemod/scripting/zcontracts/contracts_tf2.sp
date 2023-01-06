@@ -108,7 +108,7 @@ int TF2_GetTeamIndexFromString(const char[] team)
         return view_as<int>(TFTeam_Blue);
     }
 
-    return view_as<int>(TFTeam_Unassigned);
+    return -1;
 }
 
 // Checks to see if the client's class matches.

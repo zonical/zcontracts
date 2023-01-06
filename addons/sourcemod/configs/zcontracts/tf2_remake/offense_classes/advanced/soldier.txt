@@ -1,40 +1,41 @@
 "Contract"
 {
-	"{800040bb-fbbb-4f2d-bc0b-f1d03ce1a1cd}"
+	"{5ff07c1d-e10e-4c8d-9020-08c468950905}"
 	{
-		"name"		"Back to Basics"
-		"directory"	"root"
+		"name"		"Advanced Soldier"
+		"directory"	"root/mercenary_park/offense_classes/advanced"
 		"type"		"2"
-		"maximum_cp"	"50"
+		"maximum_cp"	"100"
+		"difficulty"	"2"
 
 		// What classes can do this contract?
 		"classes"
 		{
-			"soldier"	"1"
-			"pyro"		"1"
-			"heavy"		"1"
-			"engineer"	"1"
-			"scout"		"1"
-			"demoman"	"1"
-			"sniper"	"1"
-			"medic"		"1"
-			"spy"		"1"
+			"soldier"		"1"
+		}
+
+		"required_contracts"
+		{
+			"0"		"{2e3bfd2b-3e09-4f8e-9535-2ded035ca59c}" // Offense
+			"1"		"{670aaa69-dc1e-42c0-a456-ec3369729019}"
 		}
 		
 		"objectives"
 		{
 			"1"
 			{
-				"description"		"Kill a player."
-				"infinite"			"1"
+				"description"		"Kill while blast jumpting as Soldier."
 				
+				// How many times can we complete this objective?
+				"infinite"	"1"
+
 				// How many points should we give for successfully doing this objective?
-				"award"		"2"
+				"award"		"3"
 				
 				// The events that this objective looks out for.
 				"events"		
 				{
-					"CONTRACTS_PLAYER_KILL"
+					"CONTRACTS_TF2_PLAYER_KILL_WHILE_AIRBORNE"
 					{
 						// What this event should do.
 						"type"		"increment"
@@ -46,13 +47,13 @@
 			}
 			"2"
 			{
-				"description"		"Dominate a player."
+				"description"		"Dominate a player as Soldier."
 				
 				// How many times can we complete this objective?
-				"maximum_uses"	"2"
+				"maximum_uses"	"4"
 
 				// How many points should we give for successfully doing this objective?
-				"award"		"7"
+				"award"		"15"
 				
 				// The events that this objective looks out for.
 				"events"		
@@ -69,24 +70,29 @@
 			}
 			"3"
 			{
-				"description"		"Get revenge on a player."
+				"description"		"Get 5 kills as Soldier in a single life."
 				
 				// How many times can we complete this objective?
 				"maximum_uses"	"3"
 
 				// How many points should we give for successfully doing this objective?
-				"award"		"5"
+				"award"		"10"
 				
 				// The events that this objective looks out for.
 				"events"		
 				{
-					"CONTRACTS_TF2_PLAYER_KILL_REVENGE"
+					"CONTRACTS_PLAYER_KILL"
 					{
 						// What this event should do.
 						"type"		"increment"
 						
 						// How many times does this event need to trigger to add points?
-						"threshold"	"1"	
+						"threshold"	"5"	
+					}
+					"CONTRACTS_PLAYER_DEATH"
+					{
+						"type"	"reset"
+						"threshold"	"1"
 					}
 				}
 			}

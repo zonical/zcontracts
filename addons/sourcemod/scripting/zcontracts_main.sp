@@ -52,7 +52,7 @@ ArrayList g_ObjectiveUpdateQueue;
 float g_NextHUDUpdate[MAXPLAYERS+1] = { -1.0, ... };
 
 // Major version number, feature number, patch number
-#define PLUGIN_VERSION "0.3.1"
+#define PLUGIN_VERSION "0.4.0"
 // This value should be incremented with every breaking version made to the
 // database so saves can be easily converted. For developers who fork this project and
 // wish to merge changes, do not increment this number until merge.
@@ -863,6 +863,8 @@ void ProcessLogicForContractObjective(Contract ClientContract, int objective_id,
 	GetCurrentMap(Map, sizeof(Map));
 	if (!StrEqual(Map, "") && StrContains(Map, ClientContract.m_sMapRestriction) == -1) return;
 	if (!PerformWeaponCheck(ClientContract, client)) return;
+	if (ClientContract.m_iTeamRestriction != -1 && GetClientTeam(client) != ClientContract.m_iTeamRestriction) return;
+
 	switch (GetEngineVersion())
 	{
 		case Engine_TF2:

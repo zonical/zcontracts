@@ -190,7 +190,7 @@ public void CreateContract(KeyValues hContractConf, Contract hContract)
 
 	// Grab the teams that can do this contract.
 	char sTeamBuffer[64];
-	hContractConf.GetString("team_restriction", sTeamBuffer, sizeof(sTeamBuffer));
+	hContractConf.GetString("team_restriction", sTeamBuffer, sizeof(sTeamBuffer), "-1");
 	// Is this an int? We can easily grab the team index and set it from there.
 	int iTeamIndex = StringToInt(sTeamBuffer);
 	// CS:GO and TF2 team indexes don't go any higher than three. If this plugin
@@ -200,6 +200,7 @@ public void CreateContract(KeyValues hContractConf, Contract hContract)
 	{
 		hContract.m_iTeamRestriction = iTeamIndex;
 	}
+	else if (StrEqual(sTeamBuffer, "0")) hContract.m_iTeamRestriction = -1;
 	else
 	{
 		// Set the  incoming restriction string to be all lowercase.

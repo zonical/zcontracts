@@ -1,9 +1,9 @@
 "Contract"
 {
-	"{754e6818-9008-48d6-9429-f6f2995b8116}"
+	"{ad92af1d-8613-4193-83bd-3cc784bc25b7}"
 	{
-		"name"		"Locked Test"
-		"directory"	"root/testing"
+		"name"		"Testing"
+		"directory"	"root/testing/1/2/3"
 		"type"		"2"
 		"maximum_cp"	"2"
 
@@ -19,11 +19,6 @@
 			"sniper"	"1"
 			"medic"		"1"
 			"spy"		"1"
-		}
-
-		"required_contracts"
-		{
-			"0"		"{42c93235-93d5-4f4f-a73f-b8c011c7c917}"
 		}
 		
 		"objectives"

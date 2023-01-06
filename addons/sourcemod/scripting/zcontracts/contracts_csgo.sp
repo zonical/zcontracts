@@ -13,7 +13,7 @@ int CSGO_GetTeamIndexFromString(const char[] team)
     {
         return CS_TEAM_CT;
     }
-    return CS_TEAM_NONE;
+    return -1;
 }
 
 // Intended for contracts_schema. Returns -1 if no int value can be

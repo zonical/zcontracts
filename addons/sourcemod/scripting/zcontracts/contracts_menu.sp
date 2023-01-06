@@ -18,11 +18,12 @@ void CreateContractMenu()
 	
 	gContractMenu = new Menu(ContractMenuHandler, MENU_ACTIONS_ALL);
 	gContractMenu.SetTitle("ZContracts - Contract Selector");
-	gContractMenu.OptionFlags = MENUFLAG_NO_SOUND;
-
+	gContractMenu.OptionFlags = MENUFLAG_NO_SOUND | MENUFLAG_BUTTON_EXIT;
+	
 	// This is a display for the current directory for the client. We will manipulate this
 	// in menu logic later.
 	gContractMenu.AddItem("#directory", "filler");
+	gContractMenu.AddItem("$back", "<< Back");
 	
 	// Add our directories to the menu. We'll hide options depending on what
 	// we should be able to see.
@@ -77,6 +78,11 @@ int ContractMenuHandler(Menu menu, MenuAction action, int param1, int param2)
 			if (StrEqual(MenuKey, "#directory"))
 			{	
 				return ITEMDRAW_DISABLED;
+			}
+			// If we're in the root key, do not draw.
+			else if (StrEqual(MenuKey, "$back") && StrEqual(g_Menu_CurrentDirectory[param1], "root"))
+			{
+				return ITEMDRAW_IGNORE;
 			}
 
 			// Are we a contract?
@@ -137,7 +143,25 @@ int ContractMenuHandler(Menu menu, MenuAction action, int param1, int param2)
 			// Special directory key:
 			if (StrEqual(MenuKey, "#directory"))
 			{
-				Format(MenuDisplay, sizeof(MenuDisplay), "Current Directory: \"%s\"", g_Menu_CurrentDirectory[param1]);
+				char ShorterDirectory[MAX_DIRECTORY_SIZE];
+				ShortenDirectoryString(g_Menu_CurrentDirectory[param1], ShorterDirectory, sizeof(ShorterDirectory));
+				Format(MenuDisplay, sizeof(MenuDisplay), "Current Directory: \"%s\"", ShorterDirectory);
+				return RedrawMenuItem(MenuDisplay);
+			}
+			// Back button.
+			else if (StrEqual(MenuKey, "$back"))
+			{
+				// Construct previous directory.
+				char PreviousDirectory[MAX_DIRECTORY_SIZE];
+				GetPreviousDirectory(g_Menu_CurrentDirectory[param1], PreviousDirectory, sizeof(PreviousDirectory));
+				char FancyDirectory[MAX_DIRECTORY_SIZE];
+				// Shorten previous directory.
+				ShortenDirectoryString(PreviousDirectory, FancyDirectory, sizeof(FancyDirectory));
+				// Remove the last slash.
+				int pos = strlen(FancyDirectory) - 1;
+				FancyDirectory[pos] = '\0';
+
+				Format(MenuDisplay, sizeof(MenuDisplay), "<< Back: \"%s\"", FancyDirectory);
 				return RedrawMenuItem(MenuDisplay);
 			}
 			// Is this a Contract?
@@ -204,6 +228,21 @@ int ContractMenuHandler(Menu menu, MenuAction action, int param1, int param2)
 				{
 					SetClientContract(param1, MenuKey);	
 				}
+			}
+			// Head back.
+			else if (StrEqual(MenuKey, "$back"))
+			{
+				// Construct previous directory.
+				char PreviousDirectory[MAX_DIRECTORY_SIZE];
+				GetPreviousDirectory(g_Menu_CurrentDirectory[param1], PreviousDirectory, sizeof(PreviousDirectory));
+
+				// Remove the last slash.
+				int pos = strlen(PreviousDirectory) - 1;
+				PreviousDirectory[pos] = '\0';
+
+				g_Menu_CurrentDirectory[param1] = PreviousDirectory;
+				g_Menu_DirectoryDeepness[param1]--;
+				gContractMenu.Display(param1, MENU_TIME_FOREVER);
 			}
 			// This is a directory instead.
 			// Clear our current menu and populate it with new items.
@@ -587,4 +626,42 @@ int LockedContractMenuHandler(Menu menu, MenuAction action, int param1, int para
 		}
 	}
 	return 0;
+}
+
+void ShortenDirectoryString(const char[] Directory, char[] buffer, int size)
+{
+	// Construct a shorter directory.
+	char ShorterDirectory[MAX_DIRECTORY_SIZE];
+	char Folders[16][64];
+	int Splits = ExplodeString(Directory, "/", Folders, sizeof(Folders), sizeof(Folders[]));
+
+	if (Splits > 2)
+	{
+		for (int i = 0; i < Splits - 2; i++) Folders[i] = "..";
+	}
+
+	for (int i = 0; i < Splits; i++)
+	{
+		char FolderWithSlash[64];
+		Format(FolderWithSlash, sizeof(FolderWithSlash), "%s/", Folders[i]);
+		StrCat(ShorterDirectory, sizeof(ShorterDirectory), FolderWithSlash);
+	}
+
+	strcopy(buffer, size, ShorterDirectory);
+}
+
+void GetPreviousDirectory(const char[] Directory, char[] buffer, int size)
+{
+	char PreviousDirectory[MAX_DIRECTORY_SIZE];
+	char Folders[16][64];
+	ExplodeString(Directory, "/", Folders, sizeof(Folders), sizeof(Folders[]));
+	for (int i = 0; i < sizeof(Folders); i++)
+	{
+		if (StrEqual(Folders[i+1], "")) break;
+		char FolderWithSlash[64];
+		Format(FolderWithSlash, sizeof(FolderWithSlash), "%s/", Folders[i]);
+		StrCat(PreviousDirectory, sizeof(PreviousDirectory), FolderWithSlash);
+	}
+
+	strcopy(buffer, size, PreviousDirectory);
 }

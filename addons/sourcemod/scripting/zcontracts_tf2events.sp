@@ -88,6 +88,9 @@ public Action OnPlayerDeath(Event event, const char[] name, bool dontBroadcast)
 			CallContrackerEvent(attacker, "CONTRACTS_TF2_PLAYER_KILL_SENTRY", 1, true);
 		}
 
+		// Reflecting:
+		if (StrContains(weapon, "deflect") != -1) CallContrackerEvent(attacker, "CONTRACTS_TF2_KILL_REFLECT", 1, true);
+
 		// Ground check:
 		if (!(GetEntityFlags(attacker) & FL_ONGROUND)) CallContrackerEvent(attacker, "CONTRACTS_TF2_PLAYER_KILL_WHILE_AIRBORNE", 1, true);
 		if (!(GetEntityFlags(victim) & FL_ONGROUND)) CallContrackerEvent(victim, "CONTRACTS_TF2_PLAYER_KILL_AIRBORNE_ENEMY", 1, true);

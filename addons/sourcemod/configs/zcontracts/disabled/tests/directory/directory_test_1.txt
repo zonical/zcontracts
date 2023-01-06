@@ -1,11 +1,12 @@
 "Contract"
 {
-	"{1d62e3c1-be40-4725-89d0-34cfbd286282}"
+	"{5ff87c1d-e10e-4c8d-9020-08c468950905}"
 	{
-		"name"		"Killing on Time"
-		"type"		"1"
-		"difficulty"	"5"
-		
+		"name"		"Testing"
+		"directory"	"root/testing/1"
+		"type"		"2"
+		"maximum_cp"	"2"
+
 		// What classes can do this contract?
 		"classes"
 		{
@@ -19,13 +20,16 @@
 			"medic"		"1"
 			"spy"		"1"
 		}
+		
 		"objectives"
 		{
 			"1"
 			{
-				"description"		"Kill three players within ten seconds."
-				"maximum_cp"	"3"
-				"no_multiply"	"1"
+				"description"		"Kill a player."
+				"infinite"			"1"
+				
+				// How many points should we give for successfully doing this objective?
+				"award"		"2"
 				
 				// The events that this objective looks out for.
 				"events"		
@@ -36,22 +40,10 @@
 						"type"		"increment"
 						
 						// How many times does this event need to trigger to add points?
-						"threshold"	"3"
-						
-						"timer"
-						{
-							"time"		"10.0"
-							"loop"		"1"
-						}
-					}
-					"CONTRACTS_PLAYER_DEATH"
-					{
-						"type"		"reset"
-						"threshold"	"1"
+						"threshold"	"1"	
 					}
 				}
 			}
-
 		}
 	}
 }

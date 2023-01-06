@@ -1,0 +1,49 @@
+"Contract"
+{
+	"{ad92af1d-8613-4223-83bd-3cc534bc25b8}"
+	{
+		"name"		"Testing"
+		"directory"	"root/testing/1/2/3/4/5/6"
+		"type"		"2"
+		"maximum_cp"	"2"
+
+		// What classes can do this contract?
+		"classes"
+		{
+			"soldier"	"1"
+			"pyro"		"1"
+			"heavy"		"1"
+			"engineer"	"1"
+			"scout"		"1"
+			"demoman"	"1"
+			"sniper"	"1"
+			"medic"		"1"
+			"spy"		"1"
+		}
+		
+		"objectives"
+		{
+			"1"
+			{
+				"description"		"Kill a player."
+				"infinite"			"1"
+				
+				// How many points should we give for successfully doing this objective?
+				"award"		"2"
+				
+				// The events that this objective looks out for.
+				"events"		
+				{
+					"CONTRACTS_PLAYER_KILL"
+					{
+						// What this event should do.
+						"type"		"increment"
+						
+						// How many times does this event need to trigger to add points?
+						"threshold"	"1"	
+					}
+				}
+			}
+		}
+	}
+}
