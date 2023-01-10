@@ -264,7 +264,7 @@ public Action OnObjectDestroyed(Event event, const char[] name, bool dontBroadca
 
 public Action OnPayloadPushed(Event event, const char[] name, bool dontBroadcast)
 {
-	int client = event.GetInt("pusher");
+	int client = GetClientOfUserId(event.GetInt("pusher"));
 	if (!IsClientValid(client)) return Plugin_Continue;
 	if (IsFakeClient(client)) return Plugin_Continue;
 	CallContrackerEvent(client, "CONTRACTS_TF2_PL_ESCORT", 1);

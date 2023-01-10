@@ -198,6 +198,29 @@ public void OnPluginStart()
 	RegPluginLibrary("zcontracts");
 }
 
+public void OnMapEnd()
+{
+	// Save everything just to be safe.
+	for (int i = 1; i < MAXPLAYERS+1; i++)
+	{
+		if (!IsClientValid(i) || IsFakeClient(i)) continue;
+		SaveClientPreferences(i);
+
+		Contract ClientContract;
+		GetClientContract(i, ClientContract);
+
+		SaveClientContractProgress(i, ClientContracts[i]);
+		for (int j = 0; j < ClientContract.m_hObjectives.Length; j++)
+		{
+			ContractObjective ClientContractObjective;
+			ClientContract.GetObjective(j, ClientContractObjective);
+			if (!ClientContractObjective.m_bInitalized) continue;
+
+			SaveClientObjectiveProgress(i, ClientContract.m_sUUID, ClientContractObjective);
+		}
+	}
+}
+
 // ============ SM FORWARD FUNCTIONS ============
 
 public void OnClientPostAdminCheck(int client)
