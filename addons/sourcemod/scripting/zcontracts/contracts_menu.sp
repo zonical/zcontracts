@@ -2,6 +2,8 @@
 static Menu gContractMenu;
 Panel gContractObjeciveDisplay[MAXPLAYERS+1];
 Panel gHelpDisplay[MAXPLAYERS+1];
+Panel gRepeatDisplay[MAXPLAYERS+1];
+char g_RepeatUUID[MAXPLAYERS+1][MAX_UUID_SIZE];
 char g_Menu_CurrentDirectory[MAXPLAYERS+1][MAX_DIRECTORY_SIZE];
 int g_Menu_DirectoryDeepness[MAXPLAYERS+1] = { 1, ... };
 
@@ -102,7 +104,11 @@ int ContractMenuHandler(Menu menu, MenuAction action, int param1, int param2)
 				// Are we currently using this contract?
 				if (StrEqual(MenuKey, ClientContract.m_sUUID)) 
 				{
-					return ITEMDRAW_DISABLED;
+					if (g_RepeatContracts.BoolValue && ClientContract.IsContractComplete())
+					{
+						return ITEMDRAW_DEFAULT;
+					}
+					else return ITEMDRAW_DISABLED;
 				}
 			}
 			// Any special options.
@@ -223,6 +229,37 @@ int ContractMenuHandler(Menu menu, MenuAction action, int param1, int param2)
 				{
 					CreateLockedContractMenu(param1, MenuKey);
 				}
+				// If we're allowed to repeat Contracts, allow us to repeat
+				// our currently selected contract if it's completed.
+				else if (g_RepeatContracts.BoolValue && 
+				StrEqual(MenuKey, ClientContracts[param1].m_sUUID) &&
+				ClientContracts[param1].IsContractComplete())
+				{
+					CompletedContractInfo info;
+					CompletedContracts[param1].GetArray(ClientContracts[param1].m_sUUID, info, sizeof(CompletedContractInfo));
+					if (!info.m_bReset)
+					{
+						ConstructRepeatContractPanel(param1, ClientContracts[param1].m_sUUID);
+					}
+					else 
+					{
+						SetClientContract(param1, MenuKey);	
+					}
+				}
+				else if (g_RepeatContracts.BoolValue &&
+				HasClientCompletedContract(param1, MenuKey))
+				{
+					CompletedContractInfo info;
+					CompletedContracts[param1].GetArray(MenuKey, info, sizeof(CompletedContractInfo));
+					if (!info.m_bReset)
+					{
+						ConstructRepeatContractPanel(param1, MenuKey);
+					}
+					else 
+					{
+						SetClientContract(param1, MenuKey);	
+					}
+				}
 				// Are we NOT currently using this contract?
 				else if (!StrEqual(MenuKey, ClientContracts[param1].m_sUUID))
 				{
@@ -332,6 +369,17 @@ void CreateObjectiveDisplay(int client, Contract ClientContract, bool unknown)
 	StrCat(PanelTitle, sizeof(PanelTitle), Difficulty);
 	gContractObjeciveDisplay[client].SetTitle(PanelTitle);
 
+	// Display the amount of times we've completed this Contract.
+	if (g_RepeatContracts.BoolValue)
+	{
+		CompletedContractInfo info;
+		CompletedContracts[client].GetArray(ClientContract.m_sUUID, info, sizeof(CompletedContractInfo));
+		char text[64] = "Completions: %d";
+		Format(text, sizeof(text), text, info.m_iCompletions);
+		gContractObjeciveDisplay[client].DrawText(text);
+		gContractObjeciveDisplay[client].DrawText(" ");
+	}
+
 	switch (ClientContract.m_iContractType)
 	{
 		case Contract_ContractProgress:
@@ -409,6 +457,8 @@ void CreateObjectiveDisplay(int client, Contract ClientContract, bool unknown)
 		}
 		gContractObjeciveDisplay[client].DrawText(line);
 	}
+	
+	gContractObjeciveDisplay[client].DrawText(" ");
 
 	// Send this to our client.
 	gContractObjeciveDisplay[client].DrawItem("Return to Contracker");
@@ -627,6 +677,67 @@ int LockedContractMenuHandler(Menu menu, MenuAction action, int param1, int para
 	}
 	return 0;
 }
+
+void ConstructRepeatContractPanel(int client, const char[] UUID)
+{
+	gRepeatDisplay[client] = new Panel();
+	gRepeatDisplay[client].SetTitle("ZContracts - Repeat Contract");
+
+	// Grab the Contract name with a little bit of schema tomfoolery.
+	if (!g_ContractSchema.JumpToKey(UUID))
+	{
+		ThrowError("How the fuck did we get here?");
+	}
+	char ContractName[MAX_CONTRACT_NAME_SIZE];
+	g_ContractSchema.GetString("name", ContractName, sizeof(ContractName));
+	g_ContractSchema.Rewind();
+
+	char PromptText[128] = "Do you wish to reset your progress for \"%s\"";
+	Format(PromptText, sizeof(PromptText), PromptText, ContractName);
+	gRepeatDisplay[client].DrawText(PromptText); 
+	gRepeatDisplay[client].DrawText("and activate the Contract?");
+	gRepeatDisplay[client].DrawText(" ");
+	gRepeatDisplay[client].DrawText("NOTE: The Contract will still be marked as completed");
+	gRepeatDisplay[client].DrawText("when you reopen the Contracker.");
+	gRepeatDisplay[client].DrawText(" ");
+	gRepeatDisplay[client].DrawItem("Yes.");
+	gRepeatDisplay[client].DrawItem("No.");
+
+	strcopy(g_RepeatUUID[client], sizeof(g_RepeatUUID[]), UUID);
+	gRepeatDisplay[client].Send(client, RepeatContractPanelHandler, MENU_TIME_FOREVER);
+}
+
+public int RepeatContractPanelHandler(Menu menu, MenuAction action, int param1, int param2)
+{
+	if (action == MenuAction_Select)
+	{
+		if (param2 == 1)
+		{
+			// Grab the SteamID64 of the client so we can delete data from the database.
+			char steamid64[64];
+			GetClientAuthId(param1, AuthId_SteamID64, steamid64, sizeof(steamid64));
+			DeleteContractProgressDatabase(steamid64, g_RepeatUUID[param1]);
+			DeleteAllObjectiveProgressDatabase(steamid64, g_RepeatUUID[param1]);
+
+			CompletedContractInfo info;
+			CompletedContracts[param1].GetArray(g_RepeatUUID[param1], info, sizeof(CompletedContractInfo));
+			info.m_bReset = true;
+			CompletedContracts[param1].SetArray(g_RepeatUUID[param1], info, sizeof(CompletedContractInfo));
+
+			SetCompletedContractInfoDatabase(steamid64, g_RepeatUUID[param1], info);
+			SetClientContract(param1, g_RepeatUUID[param1]);
+
+			g_RepeatUUID[param1] = "";
+		}
+		if (param2 == 2)
+		{
+			OpenContrackerForClient(param1);
+			g_RepeatUUID[param1] = "";
+		} 
+	}
+	return 0;
+}
+
 
 void ShortenDirectoryString(const char[] Directory, char[] buffer, int size)
 {

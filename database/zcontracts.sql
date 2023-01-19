@@ -20,7 +20,9 @@ SET time_zone = "+00:00";
 
 CREATE TABLE `completed_contracts` (
   `steamid64` char(64) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `contract_uuid` char(64) COLLATE utf8mb4_unicode_ci NOT NULL
+  `contract_uuid` char(64) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `completions` tinyint(4) NOT NULL DEFAULT '1',
+  `reset` tinyint(1) NOT NULL DEFAULT '0'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------

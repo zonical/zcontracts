@@ -315,6 +315,12 @@ enum struct ObjectiveUpdate
 	char m_sUUID[MAX_UUID_SIZE];
 }
 
+enum struct CompletedContractInfo
+{
+	int m_iCompletions;
+	bool m_bReset;
+}
+
 /**
  * Set a client's contract.
  *
@@ -410,8 +416,9 @@ native bool SetObjectiveProgressDatabase(char steamid64[64], char UUID[MAX_UUID_
  * Marks the contract as complete in the database.
  * @param steamid64    SteamID64 of the user.
  * @param UUID		The UUID of the contract.
+ * @param data		Contract competion data.
 */
-native bool MarkContractAsCompleted(char steamid64[64], char UUID[MAX_UUID_SIZE]);
+native bool SetCompletedContractInfoDatabase(char steamid64[64], char UUID[MAX_UUID_SIZE], any data[sizeof(CompletedContractInfo)]);
 
 /**
  * Deletes all client progress for a contract.
@@ -427,6 +434,15 @@ native bool DeleteContractProgressDatabase(char steamid64[64], char UUID[MAX_UUI
  * @param objective_id	The objective ID.
 */
 native bool DeleteObjectiveProgressDatabase(char steamid64[64], char UUID[MAX_UUID_SIZE], int objective_id);
+
+/**
+ * Deletes all client progress for all objectives.
+ * @param steamid64    SteamID64 of the user.
+ * @param UUID		The UUID of the contract.
+ * @param objective_id	The objective ID.
+*/
+native bool DeleteAllObjectiveProgressDatabase(char steamid64[64], char UUID[MAX_UUID_SIZE]);
+
 
 // =========================== FORWARDS ===========================
 

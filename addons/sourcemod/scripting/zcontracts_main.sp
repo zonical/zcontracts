@@ -18,7 +18,7 @@ Handle g_DatabaseRetryTimer;
 // Player Contracts.
 Contract OldClientContracts[MAXPLAYERS+1];
 Contract ClientContracts[MAXPLAYERS+1];
-ArrayList CompletedContracts[MAXPLAYERS+1];
+StringMap CompletedContracts[MAXPLAYERS+1];
 
 // ConVars.
 ConVar g_UpdatesPerSecond;
@@ -29,6 +29,8 @@ ConVar g_DisplayHudMessages;
 ConVar g_DisplayProgressHud;
 ConVar g_PlaySounds;
 ConVar g_BotContracts;
+ConVar g_RepeatContracts;
+ConVar g_AutoResetContracts;
 
 #if defined DEBUG
 ConVar g_DebugEvents;
@@ -52,7 +54,7 @@ ArrayList g_ObjectiveUpdateQueue;
 float g_NextHUDUpdate[MAXPLAYERS+1] = { -1.0, ... };
 
 // Major version number, feature number, patch number
-#define PLUGIN_VERSION "0.4.0"
+#define PLUGIN_VERSION "0.5.0"
 // This value should be incremented with every breaking version made to the
 // database so saves can be easily converted. For developers who fork this project and
 // wish to merge changes, do not increment this number until merge.
@@ -101,8 +103,9 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 	CreateNative("SetObjectiveProgressDatabase", Native_SetObjectiveProgressDatabase);
 	CreateNative("DeleteContractProgressDatabase", Native_DeleteContractProgressDatabase);
 	CreateNative("DeleteObjectiveProgressDatabase", Native_DeleteObjectiveProgressDatabase);
+	CreateNative("DeleteAllObjectiveProgressDatabase", Native_DeleteAllObjectiveProgressDatabase);
 	
-	CreateNative("MarkContractAsCompleted", Native_MarkContractAsCompleted);
+	CreateNative("SetCompletedContractInfoDatabase", Native_SetContractCompletionInfoDatabase);
 	CreateNative("SetSessionDatabase", Native_SetSessionDatabase);
 
 	return APLRes_Success;
@@ -116,16 +119,16 @@ public void OnPluginStart()
 	g_ConfigSearchPath = CreateConVar("zc_schema_search_path", "configs/zcontracts", "The path, relative to the \"sourcemods/\" directory, to find Contract definition files. Changing this vlue will cause a reload of the Contract schema.");
 	g_RequiredFileExt = CreateConVar("zc_schema_required_ext", ".txt", "The file extension that Contract definition files must have in order to be considered valid. Changing this value will cause a reload of the Contract schema.");
 	g_DisabledPath = CreateConVar("zc_schema_disabled_path", "configs/zcontracts/disabled", "If a search path has this string in it, any Contract's loaded in or derived from this path will not be loaded. Changing this value will cause a reload of the Contract schema.");
-	
 	g_DatabaseRetryTime = CreateConVar("zc_database_retry_time", "30", "If a connection attempt to the database fails, reattempt in this amount of time.");
 	g_DatabaseUpdateTime = CreateConVar("zc_database_update_time", "30", "How long to wait before sending Contract updates to the database for all players.");
 	g_DatabaseMaximumFailures = CreateConVar("zc_database_max_failures", "3", "How many database reconnects to attempt. If the maximum value is reached, the plugin exits.");
-
 	g_UpdatesPerSecond = CreateConVar("zc_updates_per_second", "8", "How many objective updates to process per second.");
 	g_DisplayHudMessages = CreateConVar("zc_display_hud_messages", "1", "If enabled, players will see a hint-box in their HUD when they gain progress on their Contract or an Objective.");
 	g_PlaySounds = CreateConVar("zc_play_sounds", "1", "If enabled, sounds will play when interacting with the Contracker and when progress is made when a Contract is active.");
 	g_DisplayProgressHud = CreateConVar("zc_display_hud_progress", "1", "If enabled, players will see text on the right-side of their screen displaying Contract progress.");
 	g_BotContracts = CreateConVar("zc_bot_contracts", "0", "If enabled, bots will be allowed to select Contracts. They will automatically select a new Contract after completion.");
+	g_RepeatContracts = CreateConVar("zc_repeatable_contracts", "0", "If enabled, a player can choose to select a completed Contract and reset its progress to complete it again.");
+	g_AutoResetContracts = CreateConVar("zc_autoreset_completed_contracts", "0", "If enabled, when a Contract is completed, its progress will automatically be reset so the player can complete it again.");
 
 #if defined DEBUG
 	g_DebugEvents = CreateConVar("zc_debug_print_events", "0", "Logs every time an event is sent.");
@@ -230,7 +233,7 @@ public void OnClientPostAdminCheck(int client)
 {
 	// Delete the old list of completed contracts if it exists.
 	delete CompletedContracts[client];
-	CompletedContracts[client] = new ArrayList(MAX_UUID_SIZE);
+	CompletedContracts[client] = new StringMap();
 	g_Menu_CurrentDirectory[client] = "root";
 	g_Menu_DirectoryDeepness[client] = 1;
 
@@ -458,7 +461,11 @@ public any Native_SetClientContract(Handle plugin, int numParams)
 	OldClientContract.m_bActive = false;
 	OldClientContracts[client] = OldClientContract;
 
-	if (OldClientContract.IsContractInitalized() && g_DB != null)
+	if (OldClientContract.IsContractInitalized() && 
+	!OldClientContract.IsContractComplete() &&
+	// weird edge case here with bmod implementation:
+	!StrEqual(OldClientContract.m_sUUID, UUID) && 
+	g_DB != null)
 	{
 		SaveClientContractProgress(client, OldClientContract);
 		for (int i = 0; i < OldClientContract.m_hObjectives.Length; i++)
@@ -477,9 +484,10 @@ public any Native_SetClientContract(Handle plugin, int numParams)
 	{
 		return ThrowNativeError(SP_ERROR_NATIVE, "Invalid UUID (%s) for client %d", UUID, client);
 	}
+	ClientContract.m_bActive = true;
 	ClientContracts[client] = ClientContract;
 
-	if (!IsFakeClient(client) && g_DB != null)
+	if (!IsFakeClient(client))
 	{
 		// Get the client's SteamID64.
 		char steamid64[64];
@@ -509,7 +517,7 @@ public any Native_SetClientContract(Handle plugin, int numParams)
 	}
 
 	// Set this Contract as our current session.
-	if (!dont_save && g_DB != null)
+	if (!dont_save)
 	{
 		char steamid64[64];
 		GetClientAuthId(client, AuthId_SteamID64, steamid64, sizeof(steamid64));
@@ -551,7 +559,11 @@ public any Native_SetClientContractStruct(Handle plugin, int numParams)
 	OldClientContract.m_bActive = false;
 	OldClientContracts[client] = OldClientContract;
 
-	if (OldClientContract.IsContractInitalized() && g_DB != null)
+	if (OldClientContract.IsContractInitalized() &&
+	!OldClientContract.IsContractComplete() &&
+	// weird edge case here with bmod implementation:
+	!StrEqual(OldClientContract.m_sUUID, NewContract.m_sUUID) && 
+	g_DB != null)
 	{
 		SaveClientContractProgress(client, OldClientContract);
 		for (int i = 0; i < OldClientContract.m_hObjectives.Length; i++)
@@ -564,6 +576,7 @@ public any Native_SetClientContractStruct(Handle plugin, int numParams)
 		}
 	}
 
+	NewContract.m_bActive = true;
 	ClientContracts[client] = NewContract;
 	LogMessage("[ZContracts] %N CONTRACT: Set Contract to: %s [ID: %s]", client, NewContract.m_sContractName, NewContract.m_sUUID);
 
@@ -985,30 +998,27 @@ void ProcessLogicForContractObjective(Contract ClientContract, int objective_id,
 			ClientContract.SaveObjective(objective_id, Objective);
 			ClientContracts[client] = ClientContract;
 		}
-	}
-	// Print that this objective is complete.
-	if (Objective.IsObjectiveComplete() && !ClientContract.IsContractComplete())
-	{
-		if (g_DebugProgress.BoolValue)
-		{
-			LogMessage("[ZContracts] %N PROGRESS: Objective completed [ID: %s, OBJ: %d]",
-			client, ClientContract.m_sUUID, Objective.m_iInternalID);
-		}
 
-		// Print to chat.
-		//CPrintToChat(client,
-		//"{green}[ZC]{default} Congratulations! You have completed the objective: {lightgreen}\"%s\"{default}",
-		//Objective.m_sDescription);
-		
-		Call_StartForward(g_fOnObjectiveCompleted);
-		Call_PushCell(client);
-		Call_PushString(ClientContract.m_sUUID);
-		Call_PushArray(Objective, sizeof(ContractObjective));
-		Call_Finish();
-
-		if (g_DB != null)
+		if (Objective.IsObjectiveComplete())
 		{
-			SaveClientObjectiveProgress(client, ClientContract.m_sUUID, Objective);
+			if (g_DebugProgress.BoolValue)
+			{
+				LogMessage("[ZContracts] %N PROGRESS: Objective completed [ID: %s, OBJ: %d]",
+				client, ClientContract.m_sUUID, Objective.m_iInternalID);
+			}
+
+			Call_StartForward(g_fOnObjectiveCompleted);
+			Call_PushCell(client);
+			Call_PushString(ClientContract.m_sUUID);
+			Call_PushArray(Objective, sizeof(ContractObjective));
+			Call_Finish();
+
+			if (g_DB != null)
+			{
+				SaveClientObjectiveProgress(client, ClientContract.m_sUUID, Objective);
+			}
+
+			break;
 		}
 	}
 
@@ -1016,17 +1026,11 @@ void ProcessLogicForContractObjective(Contract ClientContract, int objective_id,
 	if (ClientContract.IsContractComplete())
 	{
 		if (PlayerSoundsEnabled[client]) EmitGameSoundToClient(client, "Quest.TurnInAccepted");
-
 		if (g_DebugProgress.BoolValue)
 		{
 			LogMessage("[ZContracts] %N PROGRESS: Contract completed [ID: %s]",
 			client, ClientContract.m_sUUID);
 		}
-
-		// Print to chat.
-		//CPrintToChat(client,
-		//"{green}[ZC]{default} Congratulations! You have completed the contract: {lightgreen}\"%s\"{default}",
-		//ClientContract.m_sContractName);
 
 		Call_StartForward(g_fOnContractCompleted);
 		Call_PushCell(client);
@@ -1034,12 +1038,30 @@ void ProcessLogicForContractObjective(Contract ClientContract, int objective_id,
 		Call_PushArray(ClientContract, sizeof(Contract));
 		Call_Finish();
 
-		if (g_DB != null)
+		// Increment the amount of times we've completed this Contract.
+		char steamid64[64];
+		GetClientAuthId(client, AuthId_SteamID64, steamid64, sizeof(steamid64));
+
+		CompletedContractInfo info;
+		CompletedContracts[client].GetArray(ClientContract.m_sUUID, info, sizeof(CompletedContractInfo));
+		info.m_iCompletions++;
+
+		if (!g_AutoResetContracts.BoolValue)
 		{
 			SaveClientContractProgress(client, ClientContract);
+			info.m_bReset = false;
+		}
+		else // Delete all progress from database and reset the Contract.
+		{
+			DeleteContractProgressDatabase(steamid64, ClientContract.m_sUUID);
+			DeleteAllObjectiveProgressDatabase(steamid64, ClientContract.m_sUUID);
+			SetClientContract(client, ClientContract.m_sUUID, true, true);
+			info.m_bReset = true;
 		}
 
-		CompletedContracts[client].PushString(ClientContract.m_sUUID);
+		// Save completion status to database.
+		CompletedContracts[client].SetArray(ClientContract.m_sUUID, info, sizeof(CompletedContractInfo));
+		SetCompletedContractInfoDatabase(steamid64, ClientContract.m_sUUID, info);
 
 		// If we're a bot, grant a new Contract straight away.
 		if (IsFakeClient(client) && g_BotContracts.BoolValue)
@@ -1464,7 +1486,7 @@ bool HasClientCompletedContract(int client, char UUID[MAX_UUID_SIZE])
 	// The answer is, yes it can.
 	if (!IsClientValid(client)) return false;
 	if (IsFakeClient(client) && !g_BotContracts.BoolValue) return false;
-	return (CompletedContracts[client].FindString(UUID) != -1);
+	return CompletedContracts[client].ContainsKey(UUID);
 }
 
 bool CanActivateContract(int client, char UUID[MAX_UUID_SIZE])
@@ -1491,7 +1513,7 @@ bool CanActivateContract(int client, char UUID[MAX_UUID_SIZE])
 				g_ContractSchema.GetString(ValueStr, ContractUUID, sizeof(ContractUUID), "{}");
 				// If we reach a blank UUID, we're at the end of the list.
 				if (StrEqual("{}", ContractUUID)) break;
-				if (CompletedContracts[client].FindString(ContractUUID) != -1)
+				if (CompletedContracts[client].ContainsKey(ContractUUID))
 				{
 					g_ContractSchema.Rewind();
 					return true;

@@ -141,7 +141,7 @@ public any Native_SetContractProgressDatabase(Handle plugin, int numParams)
     DataPack dp = new DataPack();
     dp.WriteString(steamid64);
     dp.Reset();
-    g_DB.Escape(query, query, sizeof(query));
+
     g_DB.Query(CB_SetContractProgressDatabase, query, dp, DBPrio_High);
     return true;
 }
@@ -197,7 +197,7 @@ public any Native_SetObjectiveProgressDatabase(Handle plugin, int numParams)
     g_DB.Format(query, sizeof(query),
         "INSERT INTO objective_progress (steamid64, contract_uuid, objective_id, progress, version) VALUES ('%s', '%s', %d, %d, %d)"
     ... " ON DUPLICATE KEY UPDATE progress = %d, version = %d", steamid64, UUID, objective_id, progress, CONTRACKER_VERSION, progress, CONTRACKER_VERSION);
-    g_DB.Escape(query, query, sizeof(query));
+
     g_DB.Query(CB_SetObjectiveProgressDatabase, query, dp, DBPrio_High);
     return true;
 }
@@ -258,13 +258,13 @@ public any Native_SaveClientContractProgress(Handle plugin, int numParams)
     // If noone responded or we got a positive response, save to database.
     if (GetForwardFunctionCount(g_fOnContractPreSave) == 0 || !ShouldBlock)
     {
+        if (g_DebugQuery.BoolValue)
+        {
+            LogMessage("[ZContracts] %N SAVE: Contract progress save attempt not interrupted.", client);
+        }
         if (ClientContract.m_iProgress > 0)
         {
             SetContractProgressDatabase(steamid64, ClientContract.m_sUUID, ClientContract.m_iProgress);
-        }
-        if (ClientContract.IsContractComplete())
-        {
-            MarkContractAsCompleted(steamid64, ClientContract.m_sUUID);
         }
         return true;
     }
@@ -411,19 +411,19 @@ public void CB_SetClientContract_Objective(Database db, DBResultSet results, con
 }
 
 /**
- * Saves an Objective to the database for a client.
- *
- * @param client    Client index.
- * @param UUID	UUID of the Contract that contains this objective.
- * @param ClientObjective The enum struct of the objective to save.
- * @error           Client index is invalid or the ClientObjective is invalid.         
- */
-public any Native_MarkContractAsCompleted(Handle plugin, int numParams)
+ * Marks the contract as complete in the database.
+ * @param steamid64    SteamID64 of the user.
+ * @param UUID		The UUID of the contract.
+ * @param data		Contract competion data.
+*/
+public any Native_SetContractCompletionInfoDatabase(Handle plugin, int numParams)
 {
     char steamid64[64];
     GetNativeString(1, steamid64, sizeof(steamid64));
     char UUID[MAX_UUID_SIZE];
     GetNativeString(2, UUID, sizeof(UUID));
+    CompletedContractInfo info;
+    GetNativeArray(3, info, sizeof(CompletedContractInfo));
 
     if (UUID[0] != '{')
     {
@@ -436,8 +436,10 @@ public any Native_MarkContractAsCompleted(Handle plugin, int numParams)
     dp.Reset();
 
     char query[1024];
-    g_DB.Format(query, sizeof(query), "INSERT INTO completed_contracts (steamid64, contract_uuid) VALUES ('%s', '%s')", steamid64, UUID);
-    g_DB.Escape(query, query, sizeof(query));
+    g_DB.Format(query, sizeof(query), "INSERT INTO completed_contracts (steamid64, contract_uuid, completions, reset) VALUES ('%s', '%s', %d, %d)"
+    ... " ON DUPLICATE KEY UPDATE completions = %d, reset = %d",
+    steamid64, UUID, info.m_iCompletions, info.m_bReset, info.m_iCompletions, info.m_bReset);
+
     g_DB.Query(CB_SaveCompletedContract, query, dp, DBPrio_High);
     return true; 
 }
@@ -472,8 +474,7 @@ void DB_LoadCompletedContracts(int client)
     GetClientAuthId(client, AuthId_SteamID64, steamid64, sizeof(steamid64));
 
     char query[1024];
-    g_DB.Format(query, sizeof(query), "SELECT contract_uuid FROM completed_contracts WHERE steamid64 = '%s'", steamid64);
-    g_DB.Escape(query, query, sizeof(query));
+    g_DB.Format(query, sizeof(query), "SELECT * FROM completed_contracts WHERE steamid64 = '%s'", steamid64);
     g_DB.Query(CB_LoadCompletedContracts, query, client, DBPrio_High);
     return;
 }
@@ -483,8 +484,11 @@ public void CB_LoadCompletedContracts(Database db, DBResultSet results, const ch
     while (results.FetchRow())
     {
         char UUID[MAX_UUID_SIZE];
-        results.FetchString(0, UUID, sizeof(UUID));
-        CompletedContracts[client].PushString(UUID);
+        results.FetchString(1, UUID, sizeof(UUID));
+        CompletedContractInfo info;
+        info.m_iCompletions = results.FetchInt(2);
+        info.m_bReset = view_as<bool>(results.FetchInt(3));
+        CompletedContracts[client].SetArray(UUID, info, sizeof(CompletedContractInfo));
     }
 
     if (g_DebugQuery.BoolValue)
@@ -519,7 +523,7 @@ public any Native_SetSessionDatabase(Handle plugin, int numParams)
     g_DB.Format(query, sizeof(query),
         "INSERT INTO selected_contract (steamid64, contract_uuid) VALUES ('%s', '%s')"
     ... " ON DUPLICATE KEY UPDATE contract_uuid = '%s'", steamid64, UUID, UUID);
-    g_DB.Escape(query, query, sizeof(query));
+
     g_DB.Query(CB_SetSession, query, dp, DBPrio_High);
     return true;
 }
@@ -565,7 +569,7 @@ public any Native_DeleteContractProgressDatabase(Handle plugin, int numParams)
     char query[1024];
     g_DB.Format(query, sizeof(query), "DELETE FROM contract_progress WHERE steamid64 = '%s' AND contract_uuid = '%s'",
     steamid64, UUID);
-    g_DB.Escape(query, query, sizeof(query));
+
     g_DB.Query(CB_DeleteContractProgress, query, dp, DBPrio_High);
     return true;
 }
@@ -596,7 +600,32 @@ public any Native_DeleteObjectiveProgressDatabase(Handle plugin, int numParams)
     char query[1024];
     g_DB.Format(query, sizeof(query), "DELETE FROM objective_progress WHERE steamid64 = '%s' AND contract_uuid = '%s' AND objective_id = %d",
     steamid64, UUID, objective_id);
-    g_DB.Escape(query, query, sizeof(query));
+
+    g_DB.Query(CB_DeleteObjectiveProgress, query, dp, DBPrio_High);
+    return true;
+}
+
+public any Native_DeleteAllObjectiveProgressDatabase(Handle plugin, int numParams)
+{
+    char steamid64[64];
+    GetNativeString(1, steamid64, sizeof(steamid64));
+    char UUID[MAX_UUID_SIZE];
+    GetNativeString(2, UUID, sizeof(UUID));
+
+    if (UUID[0] != '{')
+    {
+        ThrowNativeError(SP_ERROR_NATIVE, "Invalid UUID passed. (%s)", UUID);
+    }
+
+    // This is stupid.
+    DataPack dp = new DataPack();
+    dp.WriteString(steamid64);
+    dp.Reset();
+
+    char query[1024];
+    g_DB.Format(query, sizeof(query), "DELETE FROM objective_progress WHERE steamid64 = '%s' AND contract_uuid = '%s'",
+    steamid64, UUID);
+
     g_DB.Query(CB_DeleteObjectiveProgress, query, dp, DBPrio_High);
     return true;
 }
