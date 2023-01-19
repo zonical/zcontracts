@@ -392,8 +392,7 @@ native bool SaveClientObjectiveProgress(int client, char UUID[MAX_UUID_SIZE], an
  *
  * @param steamid64    SteamID64 of the user.
  * @param UUID	The UUID of the contract to modify.
- * @param value	The value to save to the database.
- * @error           Client index is invalid.         
+ * @param value	The value to save to the database.         
  */
 native bool SetContractProgressDatabase(char steamid64[64], char UUID[MAX_UUID_SIZE], int value);
 
@@ -403,8 +402,7 @@ native bool SetContractProgressDatabase(char steamid64[64], char UUID[MAX_UUID_S
  * @param steamid64    SteamID64 of the user.
  * @param UUID	The UUID of the contract to modify.
  * @param objective_id	The ID of the objective to modify.
- * @param value	The value to save to the database.
- * @error           Client index is invalid.           
+ * @param value	The value to save to the database.         
  */
 native bool SetObjectiveProgressDatabase(char steamid64[64], char UUID[MAX_UUID_SIZE], int objective_id, int value);
 
@@ -412,9 +410,23 @@ native bool SetObjectiveProgressDatabase(char steamid64[64], char UUID[MAX_UUID_
  * Marks the contract as complete in the database.
  * @param steamid64    SteamID64 of the user.
  * @param UUID		The UUID of the contract.
- * @error	Client index is invalid.
 */
 native bool MarkContractAsCompleted(char steamid64[64], char UUID[MAX_UUID_SIZE]);
+
+/**
+ * Deletes all client progress for a contract.
+ * @param steamid64    SteamID64 of the user.
+ * @param UUID		The UUID of the contract.
+*/
+native bool DeleteContractProgressDatabase(char steamid64[64], char UUID[MAX_UUID_SIZE]);
+
+/**
+ * Deletes all client progress for an objective.
+ * @param steamid64    SteamID64 of the user.
+ * @param UUID		The UUID of the contract.
+ * @param objective_id	The objective ID.
+*/
+native bool DeleteObjectiveProgressDatabase(char steamid64[64], char UUID[MAX_UUID_SIZE], int objective_id);
 
 // =========================== FORWARDS ===========================
 

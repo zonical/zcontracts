@@ -99,6 +99,9 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 	CreateNative("SaveClientObjectiveProgress", Native_SaveClientObjectiveProgress);
 	CreateNative("SetContractProgressDatabase", Native_SetContractProgressDatabase);
 	CreateNative("SetObjectiveProgressDatabase", Native_SetObjectiveProgressDatabase);
+	CreateNative("DeleteContractProgressDatabase", Native_DeleteContractProgressDatabase);
+	CreateNative("DeleteObjectiveProgressDatabase", Native_DeleteObjectiveProgressDatabase);
+	
 	CreateNative("MarkContractAsCompleted", Native_MarkContractAsCompleted);
 	CreateNative("SetSessionDatabase", Native_SetSessionDatabase);
 
