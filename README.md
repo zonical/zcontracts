@@ -3,12 +3,25 @@
 ZContracts (Beta) - Custom Contracker for SourceMod
 </h1>
 
-
 ZContracts is a plugin designed to emulate the Contracker progression system seen in Team Fortress 2. This project was heavily inspired by and started development during Creators.TF. The goal of this project is to provide an easy way for server developers to create a new gameplay experience for their players by completing as many Contracts as they can.
+
+The plugin is officially supported for Team Fortress 2 and work is being done to support CSGO.
 
 **DISCLAIMER:** This is a beta version! Documentation on existing features will be incomplete. Things are subject to change and there might be breaking changes!
 
-## Installation & Building:
+## Installation
+
+**Requirements:**
+- SourceMod 1.11+ (tested on 1.12.0.6967)
+- MySQL 5.6+ database
+
+**Instructions:**
+1) Extract the contents of `/addons/sourcemod` to your SourceMod installation.
+2) Update `databases.cfg` to include an entry for `"zcontracts"`. An example can be found [here](https://github.com/zonical/zcontracts/blob/master/addons/sourcemod/configs/databases_example.cfg).
+3) Import the [SQL structure](https://github.com/zonical/zcontracts/blob/master/database/zcontracts.sql) into your database. 
+4) Turn on your server. There should be console output that starts with `[ZContracts]` when SourceMod is initalised. It will report how many Contracts are loaded and if a connection is established with the database.
+
+## Building
 You will need the latest release of nosoop's stocksoup if you wish to build the plugin yourself. This is already included as a submodule inside the repository. When cloning the repository, make sure you grab the submodules as well: `git clone --recurse-submodules` and update the submodule when required: `git submodule update --remote --checkout`. Before compiling `zcontracts_main`, make sure there is a `scripting/zcontracts` folder with the required sub-plugins inside.
 
 `zcontracts_events` and `zcontracts_tf2events` are separate plugins that handle calling Contracker events based on events called by the game and engine. They can be removed for custom implentations of events.
