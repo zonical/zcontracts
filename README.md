@@ -26,26 +26,26 @@ You will need the latest release of nosoop's stocksoup if you wish to build the 
 
 `zcontracts_events` and `zcontracts_tf2events` are separate plugins that handle calling Contracker events based on events called by the game and engine. They can be removed for custom implentations of events.
 
-## Features:
+## Features
 - All Contract selection handled in-game. No third party website or API.
 - Contracts can be grouped into directories (e.g `root/offense-contracts`).
 - Objectives can have timer-based events (e.g "Kill three players in ten seconds.")
 - Server operators can easily create and modify Contracts with a text editor.
-- Plugin developers can easily create custom Contracker events with the provided Native functions (`CallContrackerEvent`).
-- Two different types of Contract progress-collection: “Objective Based” and “Contract Based”:
+- [Plugin developers can easily create custom Contracker events with the provided Native functions](https://github.com/zonical/zcontracts/wiki/Natives-and-Forwards).
+- Two different types of Contract progress-collection: “Objective Progress” and “Contract Progress”:
   - "Objective Based" Contracts require all Objectives to be completed to finish a Contract.
   - "Contract Based" Contracts require getting a certain amount of points to finish a Contract.
-- Contracts can be repeated infinitely (controlled by a ConVar)
+- [Lots of customisation (e.g Contracts can be repeated infinitely), all controllable with ConVars](https://github.com/zonical/zcontracts/wiki/ConVar's-and-Console-Commands).
 
-## Usage.
+## Usage
 This plugin, like any other SourceMod plugin, falls under the [SourceMod License](https://www.sourcemod.net/license.php) (specifically GPLv3). You are free to use this plugin on your server and modify the plugin source code to suit your own needs. Although not required, I would appreciate a mention in your server credits for the development/time that went into this plugin. The sample Contracts provided in this repositiory are free to be used, modified, or deleted.
 
-## Questions, Issues, PR's.
+## Questions, Issues, PR's
 Feel free to contact me at `ZoNiCaL#9740` on Discord if you have any questions.
 I am open to pull-requests if there are any fixes or optimisations that I haven't made. If there are any bugs or feature requests, feel free to make an issue.
 Please clearly explain what you're trying to accomplish with your threads and don't be a dick.
 
-# Special Thanks:
+# Special Thanks
 - Creators.TF: for being the reason this project was created and for helping develop my SourceMod abilities.
 - nosoop: Small snippits of Contract schema-loading code was borrowed from Custom Weapons X while I was creating a custom version of the plugin for Creators.TF
 - HiGPS & BalanceMod: For reviving this project after the closure of Creators.TF.
