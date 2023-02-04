@@ -56,7 +56,7 @@ ArrayList g_ObjectiveUpdateQueue;
 float g_NextHUDUpdate[MAXPLAYERS+1] = { -1.0, ... };
 
 // Major version number, feature number, patch number
-#define PLUGIN_VERSION "0.5.0"
+#define PLUGIN_VERSION "0.6.0-unstable"
 // This value should be incremented with every breaking version made to the
 // database so saves can be easily converted. For developers who fork this project and
 // wish to merge changes, do not increment this number until merge.
@@ -1112,25 +1112,33 @@ void ProcessLogicForContractObjective(Contract ClientContract, int objective_id,
 	}
 }
 
+/**
+ * Increments progress for Contract-Style progression Contracts.
+ * 
+ * @param client                      Client index of who triggered the event.
+ * @param value                       Value passed from CallContrackerEvent.
+ * @param ClientContract              Enum struct of the Contract to modify.
+ * @param ClientContractObjective     Enum struct of the Contract Objective to modify.
+ */
 void IncrementContractProgress(int client, int value, Contract ClientContract, ContractObjective ClientContractObjective)
 {
 	if (PlayerSoundsEnabled[client]) PlaySoundFromConfig(client, "IncrementProgress");
 
 	int AddValue = 0;
 
-	// Add progress to our Contract.
+	// This award value will not be multiplied by the value argument. This may be useful for some Contracts.
 	if (ClientContract.m_bNoMultiplication) AddValue = ClientContractObjective.m_iAward;
 	else if (ClientContractObjective.m_bNoMultiplication) AddValue = ClientContractObjective.m_iAward;
 	else AddValue = ClientContractObjective.m_iAward * value;
+	ClientContract.m_iProgress += AddValue;
+	ClientContract.m_iProgress = Int_Min(ClientContract.m_iProgress, ClientContract.m_iMaxProgress);
 
 	// Update HUD.
-	ClientContract.m_iProgress += AddValue;
 	ClientContract.m_iHUD_UpdateValue = AddValue;
 	ClientContract.m_bHUD_ContractUpdate = true;
 
-	// Cap progress.
-	ClientContract.m_iProgress = Int_Min(ClientContract.m_iProgress, ClientContract.m_iMaxProgress);
-
+	// In Contract-Style progression, Objectives are only triggered
+	// once at a time if they are not infinite.
 	if (!ClientContractObjective.m_bInfinite)
 	{
 		ClientContractObjective.m_iProgress++;
@@ -1166,20 +1174,34 @@ void IncrementContractProgress(int client, int value, Contract ClientContract, C
 	ClientContract.m_bNeedsDBSave = true;
 }
 
+/**
+ * Increments progress for Objective-Style progression Contracts.
+ * 
+ * @param client                      Client index of who triggered the event.
+ * @param value                       Value passed from CallContrackerEvent.
+ * @param ClientContract              Enum struct of the Contract to modify.
+ * @param ClientContractObjective     Enum struct of the Contract Objective to modify.
+ */
 void IncrementObjectiveProgress(int client, int value, Contract ClientContract, ContractObjective ClientContractObjective)
 {
 	if (PlayerSoundsEnabled[client]) PlaySoundFromConfig(client, "IncrementProgress");
 
 	int AddValue = 0;
 
-	// Add progress to our Objective.
+	// This award value will not be multiplied by the value argument. This may be useful for some Contracts.
 	if (ClientContractObjective.m_bNoMultiplication) AddValue = ClientContractObjective.m_iAward;
 	else AddValue = ClientContractObjective.m_iAward * value;
-	
 	ClientContractObjective.m_iProgress += AddValue;
+
+	// Update HUD.
 	ClientContract.m_iHUD_UpdateValue = AddValue;
+	ClientContract.m_bHUD_ContractUpdate = true;
 	ClientContract.m_iHUD_ObjectiveUpdate = ClientContractObjective.m_iInternalID;
 
+	// In Objective-Style progression, each Objective tracks its own progress
+	// individually. If the Objective is not infinite, its progress will be clamped.
+	// This allows for Contracts to consist of an Objective that can keep ticking up
+	// and up forever.
 	if (!ClientContractObjective.m_bInfinite)
 	{
 		ClientContractObjective.m_iProgress = Int_Min(ClientContractObjective.m_iProgress, ClientContractObjective.m_iMaxProgress);
