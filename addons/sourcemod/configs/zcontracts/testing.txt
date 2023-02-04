@@ -5,7 +5,7 @@
 		"name"		"Testing #1"
 		"directory"	"root/testing"
 		"type"		"2"
-		"maximum_cp"	"2"
+		"maximum_cp"	"4"
 
 		// What classes can do this contract?
 		"classes"

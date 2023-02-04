@@ -11,9 +11,13 @@
 
 #include <zcontracts/zcontracts>
 
+KeyValues g_Config;
+
 Database g_DB = null;
 Handle g_DatabaseUpdateTimer;
 Handle g_DatabaseRetryTimer;
+
+Handle g_HudSync;
 
 // Player Contracts.
 Contract OldClientContracts[MAXPLAYERS+1];
@@ -32,13 +36,11 @@ ConVar g_BotContracts;
 ConVar g_RepeatContracts;
 ConVar g_AutoResetContracts;
 
-#if defined DEBUG
 ConVar g_DebugEvents;
 ConVar g_DebugProcessing;
 ConVar g_DebugQuery;
 ConVar g_DebugProgress;
 ConVar g_DebugSessions;
-#endif
 
 // Forwards
 GlobalForward g_fOnObjectiveCompleted;
@@ -58,6 +60,8 @@ float g_NextHUDUpdate[MAXPLAYERS+1] = { -1.0, ... };
 // This value should be incremented with every breaking version made to the
 // database so saves can be easily converted. For developers who fork this project and
 // wish to merge changes, do not increment this number until merge.
+// Other plugins should use the GetContrackerVersion() native to get this value, but
+// this main plugin and subplugins are free to use the define name in its place.
 #define CONTRACKER_VERSION 1
 // How often the HUD will refresh itself.
 #define HUD_REFRESH_RATE 0.5
@@ -72,7 +76,6 @@ float g_NextHUDUpdate[MAXPLAYERS+1] = { -1.0, ... };
 #include "zcontracts/contracts_database.sp"
 #include "zcontracts/contracts_preferences.sp"
 #include "zcontracts/contracts_menu.sp"
-// TODO: CSGO and TF2 (+ any other game) subplugins. Seperate main logic from game logic.
 
 public Plugin myinfo =
 {
@@ -85,6 +88,8 @@ public Plugin myinfo =
 
 public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max)
 {
+	RegPluginLibrary("zcontracts");
+	
 	// ================ FORWARDS ================
 	g_fOnObjectiveCompleted = new GlobalForward("OnContractObjectiveCompleted", ET_Ignore, Param_Cell, Param_String, Param_Array);
 	g_fOnContractCompleted = new GlobalForward("OnContractCompleted", ET_Ignore, Param_Cell, Param_String, Param_Array);
@@ -92,6 +97,8 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 	g_fOnObjectivePreSave = new GlobalForward("OnObjectivePreSave", ET_Event, Param_Cell, Param_String, Param_Array);
 
 	// ================ NATIVES ================
+	CreateNative("GetContrackerVersion", Native_GetContrackerVersion);
+
 	CreateNative("SetClientContract", Native_SetClientContract);
 	CreateNative("SetClientContractStruct", Native_SetClientContractStruct);
 	CreateNative("GetClientContract", Native_GetClientContract);
@@ -115,8 +122,20 @@ public void OnPluginStart()
 {
 	PrintToServer("[ZContracts] Initalizing ZContracts %s - Contracker Version: %d", PLUGIN_VERSION, CONTRACKER_VERSION);
 
+	// CONFIG
+	g_Config = new KeyValues("ZContracts");
+	char ConfigDir[PLATFORM_MAX_PATH];
+	BuildPath(Path_SM, ConfigDir, sizeof(ConfigDir), "configs/zcontracts_config.txt");
+	if (!g_Config.ImportFromFile(ConfigDir))
+	{
+		SetFailState("Failed to load config file.");
+	}
+
+	// Create our Hud Sync object.
+	g_HudSync = CreateHudSynchronizer();
+
 	// ================ CONVARS ================
-	g_ConfigSearchPath = CreateConVar("zc_schema_search_path", "configs/zcontracts", "The path, relative to the \"sourcemods/\" directory, to find Contract definition files. Changing this vlue will cause a reload of the Contract schema.");
+	g_ConfigSearchPath = CreateConVar("zc_schema_search_path", "configs/zcontracts", "The path, relative to the \"sourcemods/\" directory, to find Contract definition files. Changing this value will cause a reload of the Contract schema.");
 	g_RequiredFileExt = CreateConVar("zc_schema_required_ext", ".txt", "The file extension that Contract definition files must have in order to be considered valid. Changing this value will cause a reload of the Contract schema.");
 	g_DisabledPath = CreateConVar("zc_schema_disabled_path", "configs/zcontracts/disabled", "If a search path has this string in it, any Contract's loaded in or derived from this path will not be loaded. Changing this value will cause a reload of the Contract schema.");
 	g_DatabaseRetryTime = CreateConVar("zc_database_retry_time", "30", "If a connection attempt to the database fails, reattempt in this amount of time.");
@@ -130,13 +149,11 @@ public void OnPluginStart()
 	g_RepeatContracts = CreateConVar("zc_repeatable_contracts", "0", "If enabled, a player can choose to select a completed Contract and reset its progress to complete it again.");
 	g_AutoResetContracts = CreateConVar("zc_autoreset_completed_contracts", "0", "If enabled, when a Contract is completed, its progress will automatically be reset so the player can complete it again.");
 
-#if defined DEBUG
 	g_DebugEvents = CreateConVar("zc_debug_print_events", "0", "Logs every time an event is sent.");
 	g_DebugProcessing = CreateConVar("zc_debug_processing", "0", "Logs every time an event is processed.");
 	g_DebugQuery = CreateConVar("zc_debug_queries", "0", "Logs every time a query is sent to the database.");
 	g_DebugProgress = CreateConVar("zc_debug_progress", "0", "Logs every time player progress is incremented internally.");
 	g_DebugSessions = CreateConVar("zc_debug_sessions", "0", "Logs every time a session is restored.");
-#endif
 
 	g_DatabaseRetryTime.AddChangeHook(OnDatabaseRetryChange);
 	g_DatabaseUpdateTime.AddChangeHook(OnDatabaseUpdateChange);
@@ -151,17 +168,29 @@ public void OnPluginStart()
 		{
 			TF2_CreatePluginConVars();
 			TF2_CreateEventHooks();
+
+			// Load TF2 sounds.
+			if (g_Config.JumpToKey("tf") && g_Config.JumpToKey("MenuSounds"))
+			{
+				char IncrementProgress[64];
+				g_Config.GetString("IncrementProgress", IncrementProgress, sizeof(IncrementProgress), "Quest.StatusTickNovice");
+				char ContractCompleted[64];
+				g_Config.GetString("ContractCompleted", ContractCompleted, sizeof(ContractCompleted), "Quest.StatusTickNovice");
+				char ProgressLoaded[64];
+				g_Config.GetString("ProgressLoaded", ProgressLoaded, sizeof(ProgressLoaded), "CYOA.NodeActivate");
+				char SelectOption[64];
+				g_Config.GetString("SelectOption", SelectOption, sizeof(SelectOption), "CYOA.StaticFade");
+
+				PrecacheSound(IncrementProgress);
+				PrecacheSound(ContractCompleted);
+				PrecacheSound(ProgressLoaded);
+				PrecacheSound(SelectOption);
+			}
+			g_Config.Rewind();
+			
 		}
 		// case Engine_CSGO: CSGO_CreatePluginConVars();
 	}
-
-	// ================ SOUNDS ================
-	PrecacheSound("CYOA.StaticFade");
-	PrecacheSound("CYOA.NodeActivate");
-	PrecacheSound("Quest.TurnInAccepted");
-	PrecacheSound("Quest.Alert");
-	PrecacheSound("Quest.Decode");
-	PrecacheSound("Quest.StatusTickNovice");
 
 	// ================ CONTRACKER ================
 	ProcessContractsSchema();
@@ -200,8 +229,6 @@ public void OnPluginStart()
 	RegConsoleCmd("sm_zcpref", OpenPrefPanelCmd);
 	RegConsoleCmd("sm_zchelp", OpenHelpPanelCmd);
 	RegConsoleCmd("sm_chelp", OpenHelpPanelCmd);
-
-	RegPluginLibrary("zcontracts");
 }
 
 public void OnMapEnd()
@@ -317,6 +344,17 @@ public Action ReloadContracts(int client, int args)
 // ============ NATIVE FUNCTIONS ============
 
 /**
+ * The Contracker version is used to determine the minimum Contract that should be
+ * loaded from the database. This is intended to be used when a change is made to the
+ * database structure or there is a breaking change in ZContracts.
+ * @return The value of CONTRACKER_VERSION from zcontracts_main.sp
+ */
+public any Native_GetContrackerVersion(Handle plugin, int numParams)
+{
+	return CONTRACKER_VERSION;
+}
+
+/**
  * Obtains a client's active Contract.
  *
  * @param client    Client index.
@@ -378,7 +416,8 @@ public any Native_CallContrackerEvent(Handle plugin, int numParams)
 
 		if (!ClientContractObjective.m_bInitalized || ClientContractObjective.IsObjectiveComplete()) continue;
 		
-		// Check to see if we have this event in any of our objective event triggers.
+		// Check to see if we have this event within our Contract objectives. 
+		// This saves on processing time in ProcessLogicForContractObjective() later on.
 		bool EventCheckPassed = false;
 		for (int j = 0; j < ClientContractObjective.m_hEvents.Length; j++)
 		{
@@ -391,9 +430,13 @@ public any Native_CallContrackerEvent(Handle plugin, int numParams)
 				break;
 			}
 		}
+
+		// This event doesn't exist. Get outta town!
 		if (!EventCheckPassed) continue;
 
-		// Add to the queue for this client.
+		// Check to see if we have this event in the queue already. 
+		// If "can_combine" is set to true when this native is called,
+		// we add the value from this incoming event to the pre-existing event in the queue.
 		if (can_combine && g_ObjectiveUpdateQueue.Length > 0)
 		{
 			bool ObjectiveUpdated = false;
@@ -416,6 +459,7 @@ public any Native_CallContrackerEvent(Handle plugin, int numParams)
 			if (ObjectiveUpdated) continue;
 		}
 		
+		// We reach this point if we can't combine anything.
 		ObjectiveUpdate ObjUpdate;
 		ObjUpdate.m_iClient = client;
 		ObjUpdate.m_iValue = value;
@@ -443,7 +487,6 @@ public any Native_SetClientContract(Handle plugin, int numParams)
 	bool dont_save = GetNativeCell(3);
 	bool dont_notify = GetNativeCell(4);
 
-	// Are we a bot?
 	if (!IsClientValid(client))
 	{
 		return ThrowNativeError(SP_ERROR_NATIVE, "Invalid client index (%d)", client);
@@ -451,9 +494,9 @@ public any Native_SetClientContract(Handle plugin, int numParams)
 	if (IsFakeClient(client) && !g_BotContracts.BoolValue) return false;
 
 	if (UUID[0] != '{')
-    {
-        ThrowNativeError(SP_ERROR_NATIVE, "Invalid UUID passed. (%s)", UUID);
-    }
+	{
+		ThrowNativeError(SP_ERROR_NATIVE, "Invalid UUID passed. (%s)", UUID);
+	}
 
 	// If we have a Contract already selected, save it's progress to the database.
 	Contract OldClientContract;
@@ -463,7 +506,6 @@ public any Native_SetClientContract(Handle plugin, int numParams)
 
 	if (OldClientContract.IsContractInitalized() && 
 	!OldClientContract.IsContractComplete() &&
-	// weird edge case here with bmod implementation:
 	!StrEqual(OldClientContract.m_sUUID, UUID) && 
 	g_DB != null)
 	{
@@ -549,9 +591,9 @@ public any Native_SetClientContractStruct(Handle plugin, int numParams)
 
 	if (IsFakeClient(client) && !g_BotContracts.BoolValue) return false;
 	if (NewContract.m_sUUID[0] != '{')
-    {
-        return ThrowNativeError(SP_ERROR_NATIVE, "Invalid UUID passed. (%s)", NewContract.m_sUUID);
-    }
+	{
+		return ThrowNativeError(SP_ERROR_NATIVE, "Invalid UUID passed. (%s)", NewContract.m_sUUID);
+	}
 
 	// If we have a Contract already selected, save it's progress to the database.
 	Contract OldClientContract;
@@ -786,9 +828,8 @@ public Action Timer_DrawContrackerHud(Handle hTimer)
 				StrCat(DisplayText, sizeof(DisplayText), SavingText);
 			}
 		}
-		
 		// Display text to client.
-		ShowHudText(i, -1, DisplayText);
+		ShowSyncHudText(i, g_HudSync, DisplayText);
 
 		// Just in case we modified the Contract earlier, resave it.
 		ClientContracts[i] = ClientContract;
@@ -913,9 +954,9 @@ void ProcessLogicForContractObjective(Contract ClientContract, int objective_id,
 		}
 		case Engine_CSGO:
 		{
-			if (!CSGO_IsCorrectGameType(ClientContract.m_iGameTypeRestriction)) return;
-			if (!CSGO_IsCorrectGameMode(ClientContract.m_iGameModeRestriction)) return;
-			if (!CSGO_IsCorrectSkirmishID(ClientContract.m_iSkirmishIDRestriction)) return;
+			if (ClientContract.m_iGameTypeRestriction != -1 && !CSGO_IsCorrectGameType(ClientContract.m_iGameTypeRestriction)) return;
+			if (ClientContract.m_iGameModeRestriction != -1 && !CSGO_IsCorrectGameMode(ClientContract.m_iGameModeRestriction)) return;
+			if (ClientContract.m_iSkirmishIDRestriction != -1 && !CSGO_IsCorrectSkirmishID(ClientContract.m_iSkirmishIDRestriction)) return;
 		}
 	}
 
@@ -1025,7 +1066,7 @@ void ProcessLogicForContractObjective(Contract ClientContract, int objective_id,
 	// Is our contract now complete?
 	if (ClientContract.IsContractComplete())
 	{
-		if (PlayerSoundsEnabled[client]) EmitGameSoundToClient(client, "Quest.TurnInAccepted");
+		if (PlayerSoundsEnabled[client]) PlaySoundFromConfig(client, "ContractCompleted");
 		if (g_DebugProgress.BoolValue)
 		{
 			LogMessage("[ZContracts] %N PROGRESS: Contract completed [ID: %s]",
@@ -1073,7 +1114,7 @@ void ProcessLogicForContractObjective(Contract ClientContract, int objective_id,
 
 void IncrementContractProgress(int client, int value, Contract ClientContract, ContractObjective ClientContractObjective)
 {
-	if (PlayerSoundsEnabled[client]) EmitGameSoundToClient(client, "Quest.StatusTickNovice");
+	if (PlayerSoundsEnabled[client]) PlaySoundFromConfig(client, "IncrementProgress");
 
 	int AddValue = 0;
 
@@ -1127,7 +1168,7 @@ void IncrementContractProgress(int client, int value, Contract ClientContract, C
 
 void IncrementObjectiveProgress(int client, int value, Contract ClientContract, ContractObjective ClientContractObjective)
 {
-	if (PlayerSoundsEnabled[client]) EmitGameSoundToClient(client, "Quest.StatusTickNovice");
+	if (PlayerSoundsEnabled[client]) PlaySoundFromConfig(client, "IncrementProgress");
 
 	int AddValue = 0;
 
@@ -1471,6 +1512,23 @@ public Action DebugSaveContract(int client, int args)
 	return Plugin_Handled;
 }
 // ============ UTILITY FUNCTIONS ============
+
+void PlaySoundFromConfig(int client, const char[] action)
+{
+	if (!IsClientValid(client) || IsFakeClient(client)) return;
+
+	char Game[5];
+	GetGameFolderName(Game, sizeof(Game));
+
+	// Get the sound from the config.
+	if (g_Config.JumpToKey(Game) && g_Config.JumpToKey("MenuSounds"))
+	{
+		char SoundName[64];
+		g_Config.GetString(action, SoundName, sizeof(SoundName));
+		EmitGameSoundToClient(client, SoundName);
+	}
+	g_Config.Rewind();
+}
 
 public bool IsClientValid(int client)
 {

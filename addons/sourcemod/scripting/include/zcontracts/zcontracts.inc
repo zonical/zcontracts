@@ -322,6 +322,14 @@ enum struct CompletedContractInfo
 }
 
 /**
+ * The Contracker version is used to determine the minimum Contract that should be
+ * loaded from the database. This is intended to be used when a change is made to the
+ * database structure or there is a breaking change in ZContracts.
+ * @return The value of CONTRACKER_VERSION from zcontracts_main.sp
+ */
+native int GetContrackerVersion();
+
+/**
  * Set a client's contract.
  *
  * @param client    Client index.
@@ -439,7 +447,6 @@ native bool DeleteObjectiveProgressDatabase(char steamid64[64], char UUID[MAX_UU
  * Deletes all client progress for all objectives.
  * @param steamid64    SteamID64 of the user.
  * @param UUID		The UUID of the contract.
- * @param objective_id	The objective ID.
 */
 native bool DeleteAllObjectiveProgressDatabase(char steamid64[64], char UUID[MAX_UUID_SIZE]);
 
@@ -465,7 +472,7 @@ forward void OnContractCompleted(int client, char UUID[MAX_UUID_SIZE], Contract 
 
 /**
  * Called before a contract is saved to the database. This is not called for any
- * low-level value setting functions (e.g SetObjectiveFiresDatabase).
+ * low-level value setting functions (e.g SetContractProgressDatabase).
  *
  * @param client    	Client index.
  * @param uuid    		The UUID of the original Contract.
@@ -475,7 +482,7 @@ forward bool OnContractPreSave(int client, char UUID[MAX_UUID_SIZE], Contract hC
 
 /**
  * Called before an objective is saved to the database. This is not called for any
- * low-level value setting functions (e.g SetObjectiveFiresDatabase).
+ * low-level value setting functions (e.g SetObjectiveProgressDatabase).
  *
  * @param client    	Client index.
  * @param uuid    		The UUID of the original Contract.

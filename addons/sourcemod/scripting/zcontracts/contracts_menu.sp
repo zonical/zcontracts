@@ -289,7 +289,7 @@ int ContractMenuHandler(Menu menu, MenuAction action, int param1, int param2)
 				g_Menu_DirectoryDeepness[param1]++;
 				gContractMenu.Display(param1, MENU_TIME_FOREVER);
 
-				if (PlayerSoundsEnabled[param1]) EmitGameSoundToClient(param1, "CYOA.StaticFade");
+				if (PlayerSoundsEnabled[param1]) PlaySoundFromConfig(param1, "ContractCompleted");
 			}
 		}
 
@@ -350,7 +350,7 @@ void OpenContrackerForClient(int client)
 **/
 void CreateObjectiveDisplay(int client, Contract ClientContract, bool unknown)
 {
-	if (!unknown && PlayerSoundsEnabled[client]) EmitGameSoundToClient(client, "CYOA.NodeActivate");
+	if (!unknown && PlayerSoundsEnabled[client]) PlaySoundFromConfig(client, "ProgressLoaded");
 
 	// Construct our panel for the client.
 	delete gContractObjeciveDisplay[client];
@@ -486,7 +486,7 @@ void ConstructHelpPanel(int client)
 	gHelpDisplay[client] = new Panel();
 	gHelpDisplay[client].SetTitle("ZContracts - Help Page");
 	gHelpDisplay[client].DrawText("Welcome to ZContracts - a custom Contracker implementation."); 
-	gHelpDisplay[client].DrawText("To select a Contract, press the corrosponding menu option.");
+	gHelpDisplay[client].DrawText("To select a Contract, press the corresponding menu option.");
 	gHelpDisplay[client].DrawText("Completed Contracts are marked with [✓], locked Contracts are maked with [X]")
 	gHelpDisplay[client].DrawText("Directories are notated with \">>\". They contain more Contracts inside.");
 	gHelpDisplay[client].DrawText("If you wish to disable the HUD or sounds, type \"/zcpref\" in chat.");

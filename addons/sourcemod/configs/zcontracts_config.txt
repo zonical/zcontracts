@@ -1,0 +1,16 @@
+"ZContracts"
+{
+	"MenuSounds"
+	{
+		"csgo"
+		{
+		}
+		"tf"
+		{
+			"IncrementProgress"	"Quest.StatusTickNovice"
+			"ContractCompleted"	"Quest.TurnInAccepted"
+			"ProgressLoaded"	"CYOA.NodeActivate"
+			"SelectOption"		"CYOA.StaticFade"
+		}
+	}
+}

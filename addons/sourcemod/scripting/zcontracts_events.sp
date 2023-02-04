@@ -22,7 +22,17 @@ public void OnPluginStart()
 	HookEvent("player_hurt", OnPlayerHurt);
 	HookEvent("player_spawn", OnPlayerSpawn);
 	HookEvent("player_score", OnPlayerScore)
-	HookEvent("teamplay_round_win", OnRoundWin);
+
+	// Okay okay okay. I get there are separate plugins for TF2 and CSGO.
+	// But I'm going to make an exception here so that this plugin can be
+	// made easily accessible and have Contract events work across games
+	// with ease.
+	switch (GetEngineVersion())
+	{
+		case Engine_TF2: HookEvent("teamplay_round_win", OnRoundWin);
+		case Engine_CSGO: HookEvent("round_end", OnRoundWin);
+	}
+	
 	
 	for (int i = 0; i < MAXPLAYERS + 1; i++)
 	{
@@ -97,7 +107,14 @@ public Action OnPlayerScore(Event event, const char[] name, bool dontBroadcast)
 // Events relating to the round ending
 public Action OnRoundWin(Event event, const char[] name, bool dontBroadcast)
 {
-	int team = event.GetInt("team");
+	int team;
+
+	switch (GetEngineVersion())
+	{
+		case Engine_TF2: team = event.GetInt("team");
+		case Engine_CSGO: team = event.GetInt("winner");
+	}
+	
 	//int winreason = event.GetInt("winreason");
 
 	for (int i = 0; i < MAXPLAYERS+1; i++)
