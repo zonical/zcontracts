@@ -7,9 +7,17 @@ Panel PrefPanel[MAXPLAYERS+1];
 
 // Preferences
 bool PlayerHelpTextEnabled[MAXPLAYERS+1] = { true, ... };
-bool PlayerSoundsEnabled[MAXPLAYERS+1] = { true, ... };
 bool PlayerHUDEnabled[MAXPLAYERS+1] = { true, ... };
 bool PlayerHintEnabled[MAXPLAYERS+1] = { true, ... };
+
+enum SoundPrefSettings
+{
+    Sounds_Disabled = 0,
+    Sounds_Enabled = 1,
+    Sounds_OnlyCompletion = 2
+}
+
+SoundPrefSettings PlayerSoundsEnabled[MAXPLAYERS+1] = { Sounds_Enabled, ... };
 
 public Action OpenPrefPanelCmd(int client, int args)
 {
@@ -29,7 +37,14 @@ void ConstructPreferencePanel(int client)
     char SoundsString[64] = "Enable Sounds: %s";
     char HudString[64] = "Enable Contract HUD: %s";
     char HintString[64] = "Enable Progress hint text: %s";
-    Format(SoundsString, sizeof(SoundsString), SoundsString, (PlayerSoundsEnabled[client] ? "true" : "false"));
+    
+    switch (PlayerSoundsEnabled[client])
+    {
+        case Sounds_Disabled: Format(SoundsString, sizeof(SoundsString), SoundsString, "No Sounds");
+        case Sounds_Enabled: Format(SoundsString, sizeof(SoundsString), SoundsString, "All Sounds");
+        case Sounds_OnlyCompletion: Format(SoundsString, sizeof(SoundsString), SoundsString, "Completion Sound Only");
+    }
+    
     Format(HudString, sizeof(HudString), HudString, (PlayerHUDEnabled[client] ? "true" : "false"));
     Format(HintString, sizeof(HintString), HintString, (PlayerHintEnabled[client] ? "true" : "false"));
     PrefPanel[client].DrawItem(SoundsString);
@@ -46,8 +61,11 @@ public int PrefPanelHandler(Menu menu, MenuAction action, int param1, int param2
     {
         if (param2 == 1)
         {
-            // TODO: This doesn't change for some reason. Check me!
-            PlayerSoundsEnabled[param1] = !PlayerSoundsEnabled[param1];
+            PlayerSoundsEnabled[param1]++;
+            if (PlayerSoundsEnabled[param1] > Sounds_OnlyCompletion)
+            {
+                PlayerSoundsEnabled[param1] = Sounds_Disabled;
+            }
             ConstructPreferencePanel(param1);
         }
         if (param2 == 2)
@@ -58,11 +76,6 @@ public int PrefPanelHandler(Menu menu, MenuAction action, int param1, int param2
         if (param2 == 3)
         {
             PlayerHintEnabled[param1] = !PlayerHintEnabled[param1];
-            ConstructPreferencePanel(param1);
-        } 
-        if (param2 == 1)
-        {
-            PlayerSoundsEnabled[param1] = !PlayerSoundsEnabled[param1];
             ConstructPreferencePanel(param1);
         } 
     }
@@ -96,7 +109,7 @@ public void CB_LoadAllClientPreferences(Database db, DBResultSet results, const 
     if (results.RowCount == 0)
     {
         // We have no preferences returned. Set them to the server default.
-        PlayerSoundsEnabled[client] = g_PlaySounds.BoolValue;
+        PlayerSoundsEnabled[client] = view_as<SoundPrefSettings>(g_PlaySounds.BoolValue);
         PlayerHUDEnabled[client] = g_DisplayProgressHud.BoolValue;
         PlayerHintEnabled[client] = g_DisplayHudMessages.BoolValue;
         PlayerHelpTextEnabled[client] = true; // No server default.
@@ -118,7 +131,7 @@ public void CB_LoadAllClientPreferences(Database db, DBResultSet results, const 
         }
         if (results.FieldNameToNum(SOUNDS_DB_NAME, SoundIndex))
         {
-            PlayerSoundsEnabled[client] = view_as<bool>(results.FetchInt(SoundIndex));
+            PlayerSoundsEnabled[client] = view_as<SoundPrefSettings>(results.FetchInt(SoundIndex));
         }
         if (results.FieldNameToNum(HUD_DB_NAME, HUDIndex))
         {

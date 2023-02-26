@@ -289,7 +289,7 @@ int ContractMenuHandler(Menu menu, MenuAction action, int param1, int param2)
 				g_Menu_DirectoryDeepness[param1]++;
 				gContractMenu.Display(param1, MENU_TIME_FOREVER);
 
-				if (PlayerSoundsEnabled[param1]) PlaySoundFromConfig(param1, "ContractCompleted");
+				if (PlayerSoundsEnabled[param1] >= Sounds_Enabled) EmitGameSoundToClient(param1, SelectOptionSound);
 			}
 		}
 
@@ -350,7 +350,7 @@ void OpenContrackerForClient(int client)
 **/
 void CreateObjectiveDisplay(int client, Contract ClientContract, bool unknown)
 {
-	if (!unknown && PlayerSoundsEnabled[client]) PlaySoundFromConfig(client, "ProgressLoaded");
+	if (!unknown && PlayerSoundsEnabled[client] == Sounds_Enabled) EmitGameSoundToClient(client, ProgressLoadedSound);
 
 	// Construct our panel for the client.
 	delete gContractObjeciveDisplay[client];

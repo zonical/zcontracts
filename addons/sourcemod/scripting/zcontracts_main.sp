@@ -10,8 +10,7 @@
 #include <float>
 
 #include <zcontracts/zcontracts>
-
-KeyValues g_Config;
+#include <stocksoup/color_literals>
 
 Database g_DB = null;
 Handle g_DatabaseUpdateTimer;
@@ -55,8 +54,13 @@ ArrayList g_ObjectiveUpdateQueue;
 
 float g_NextHUDUpdate[MAXPLAYERS+1] = { -1.0, ... };
 
+char IncrementProgressSound[64];
+char ContractCompletedSound[64];
+char ProgressLoadedSound[64];
+char SelectOptionSound[64];
+
 // Major version number, feature number, patch number
-#define PLUGIN_VERSION "0.6.0-unstable"
+#define PLUGIN_VERSION "0.6.1"
 // This value should be incremented with every breaking version made to the
 // database so saves can be easily converted. For developers who fork this project and
 // wish to merge changes, do not increment this number until merge.
@@ -123,13 +127,13 @@ public void OnPluginStart()
 	PrintToServer("[ZContracts] Initalizing ZContracts %s - Contracker Version: %d", PLUGIN_VERSION, CONTRACKER_VERSION);
 
 	// CONFIG
-	g_Config = new KeyValues("ZContracts");
+	/*g_Config = new KeyValues("ZContracts");
 	char ConfigDir[PLATFORM_MAX_PATH];
 	BuildPath(Path_SM, ConfigDir, sizeof(ConfigDir), "configs/zcontracts_config.txt");
 	if (!g_Config.ImportFromFile(ConfigDir))
 	{
 		SetFailState("Failed to load config file.");
-	}
+	}*/
 
 	// Create our Hud Sync object.
 	g_HudSync = CreateHudSynchronizer();
@@ -169,29 +173,20 @@ public void OnPluginStart()
 			TF2_CreatePluginConVars();
 			TF2_CreateEventHooks();
 
-			// Load TF2 sounds.
-			if (g_Config.JumpToKey("tf") && g_Config.JumpToKey("MenuSounds"))
-			{
-				char IncrementProgress[64];
-				g_Config.GetString("IncrementProgress", IncrementProgress, sizeof(IncrementProgress), "Quest.StatusTickNovice");
-				char ContractCompleted[64];
-				g_Config.GetString("ContractCompleted", ContractCompleted, sizeof(ContractCompleted), "Quest.StatusTickNovice");
-				char ProgressLoaded[64];
-				g_Config.GetString("ProgressLoaded", ProgressLoaded, sizeof(ProgressLoaded), "CYOA.NodeActivate");
-				char SelectOption[64];
-				g_Config.GetString("SelectOption", SelectOption, sizeof(SelectOption), "CYOA.StaticFade");
-
-				PrecacheSound(IncrementProgress);
-				PrecacheSound(ContractCompleted);
-				PrecacheSound(ProgressLoaded);
-				PrecacheSound(SelectOption);
-			}
-			g_Config.Rewind();
+			IncrementProgressSound = "Quest.StatusTickNovice";
+			ContractCompletedSound = "Quest.TurnInAccepted";
+			ProgressLoadedSound = "CYOA.NodeActivate";
+			SelectOptionSound = "CYOA.StaticFade";
 			
 		}
 		// case Engine_CSGO: CSGO_CreatePluginConVars();
 	}
 
+	PrecacheSound(IncrementProgressSound);
+	PrecacheSound(ContractCompletedSound);
+	PrecacheSound(ProgressLoadedSound);
+	PrecacheSound(SelectOptionSound);
+	
 	// ================ CONTRACKER ================
 	ProcessContractsSchema();
 	CreateContractMenu();
@@ -1066,7 +1061,7 @@ void ProcessLogicForContractObjective(Contract ClientContract, int objective_id,
 	// Is our contract now complete?
 	if (ClientContract.IsContractComplete())
 	{
-		if (PlayerSoundsEnabled[client]) PlaySoundFromConfig(client, "ContractCompleted");
+		if (PlayerSoundsEnabled[client] >= Sounds_Enabled) EmitGameSoundToClient(client, ContractCompletedSound);
 		if (g_DebugProgress.BoolValue)
 		{
 			LogMessage("[ZContracts] %N PROGRESS: Contract completed [ID: %s]",
@@ -1089,6 +1084,9 @@ void ProcessLogicForContractObjective(Contract ClientContract, int objective_id,
 
 		if (!g_AutoResetContracts.BoolValue)
 		{
+			PrintColoredChat(client, "%s[ZC] %sCongratulations! You have completed the contract: %s\"%s\"",
+			COLOR_LIGHTSEAGREEN, COLOR_DEFAULT, COLOR_YELLOW, ClientContract.m_sContractName);
+
 			SaveClientContractProgress(client, ClientContract);
 			info.m_bReset = false;
 		}
@@ -1122,7 +1120,7 @@ void ProcessLogicForContractObjective(Contract ClientContract, int objective_id,
  */
 void IncrementContractProgress(int client, int value, Contract ClientContract, ContractObjective ClientContractObjective)
 {
-	if (PlayerSoundsEnabled[client]) PlaySoundFromConfig(client, "IncrementProgress");
+	if (PlayerSoundsEnabled[client] == Sounds_Enabled) EmitGameSoundToClient(client, IncrementProgressSound);
 
 	int AddValue = 0;
 
@@ -1184,7 +1182,7 @@ void IncrementContractProgress(int client, int value, Contract ClientContract, C
  */
 void IncrementObjectiveProgress(int client, int value, Contract ClientContract, ContractObjective ClientContractObjective)
 {
-	if (PlayerSoundsEnabled[client]) PlaySoundFromConfig(client, "IncrementProgress");
+	if (PlayerSoundsEnabled[client] == Sounds_Enabled) EmitGameSoundToClient(client, IncrementProgressSound);
 
 	int AddValue = 0;
 
@@ -1535,22 +1533,6 @@ public Action DebugSaveContract(int client, int args)
 }
 // ============ UTILITY FUNCTIONS ============
 
-void PlaySoundFromConfig(int client, const char[] action)
-{
-	if (!IsClientValid(client) || IsFakeClient(client)) return;
-
-	char Game[5];
-	GetGameFolderName(Game, sizeof(Game));
-
-	// Get the sound from the config.
-	if (g_Config.JumpToKey(Game) && g_Config.JumpToKey("MenuSounds"))
-	{
-		char SoundName[64];
-		g_Config.GetString(action, SoundName, sizeof(SoundName));
-		EmitGameSoundToClient(client, SoundName);
-	}
-	g_Config.Rewind();
-}
 
 public bool IsClientValid(int client)
 {
