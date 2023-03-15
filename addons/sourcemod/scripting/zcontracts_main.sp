@@ -61,7 +61,7 @@ char ProgressLoadedSound[64];
 char SelectOptionSound[64];
 
 // Major version number, feature number, patch number
-#define PLUGIN_VERSION "0.7.0"
+#define PLUGIN_VERSION "0.7.1"
 // This value should be incremented with every breaking version made to the
 // database so saves can be easily converted. For developers who fork this project and
 // wish to merge changes, do not increment this number until merge.
