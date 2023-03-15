@@ -25,7 +25,7 @@ void CreateContractMenu()
 	// This is a display for the current directory for the client. We will manipulate this
 	// in menu logic later.
 	gContractMenu.AddItem("#directory", "filler");
-	gContractMenu.AddItem("$back", "<< Back");
+	gContractMenu.AddItem("$back", "<< Previous Directory");
 	
 	// Add our directories to the menu. We'll hide options depending on what
 	// we should be able to see.
@@ -167,7 +167,7 @@ int ContractMenuHandler(Menu menu, MenuAction action, int param1, int param2)
 				int pos = strlen(FancyDirectory) - 1;
 				FancyDirectory[pos] = '\0';
 
-				Format(MenuDisplay, sizeof(MenuDisplay), "<< Back: \"%s\"", FancyDirectory);
+				Format(MenuDisplay, sizeof(MenuDisplay), "<< Previous Directory: \"%s\"", FancyDirectory);
 				return RedrawMenuItem(MenuDisplay);
 			}
 			// Is this a Contract?
@@ -176,12 +176,6 @@ int ContractMenuHandler(Menu menu, MenuAction action, int param1, int param2)
 				Contract ClientContract;
 				GetClientContract(param1, ClientContract);
 
-				// Are we doing this Contract?
-				if (StrEqual(ClientContract.m_sUUID, MenuKey))
-				{
-					Format(MenuDisplay, sizeof(MenuDisplay), "%s [ACTIVE]", MenuDisplay);
-					return RedrawMenuItem(MenuDisplay);
-				}
 				if (!CanActivateContract(param1, MenuKey))
 				{
 					Format(MenuDisplay, sizeof(MenuDisplay), "[X] %s", MenuDisplay);
@@ -189,14 +183,29 @@ int ContractMenuHandler(Menu menu, MenuAction action, int param1, int param2)
 				}
 				if (HasClientCompletedContract(param1, MenuKey))
 				{
-					Format(MenuDisplay, sizeof(MenuDisplay), "[✓] %s", MenuDisplay);
+					if (g_RepeatContracts.BoolValue && g_DisplayCompletionsInMenu.BoolValue)
+					{
+						CompletedContractInfo info;
+						CompletedContracts[param1].GetArray(MenuKey, info, sizeof(CompletedContractInfo));
+						Format(MenuDisplay, sizeof(MenuDisplay), "[✓/ %d] %s", info.m_iCompletions, MenuDisplay);
+					}
+					else
+					{
+						Format(MenuDisplay, sizeof(MenuDisplay), "[✓] %s", MenuDisplay);
+					}
+					
 					return RedrawMenuItem(MenuDisplay);
 				}
-				else
+				if (StrEqual(ClientContract.m_sUUID, MenuKey))
 				{
-					Format(MenuDisplay, sizeof(MenuDisplay), "[   ] %s", MenuDisplay);
+					Format(MenuDisplay, sizeof(MenuDisplay), "%s [ACTIVE]", MenuDisplay);
 					return RedrawMenuItem(MenuDisplay);
 				}
+
+				// None of the conditions above are valid. Just display nothing.
+				Format(MenuDisplay, sizeof(MenuDisplay), "[   ] %s", MenuDisplay);
+				return RedrawMenuItem(MenuDisplay);
+
 			}
 			// Any special options.
 			else if (MenuKey[0] == '$') return 0;
@@ -280,6 +289,8 @@ int ContractMenuHandler(Menu menu, MenuAction action, int param1, int param2)
 				g_Menu_CurrentDirectory[param1] = PreviousDirectory;
 				g_Menu_DirectoryDeepness[param1]--;
 				gContractMenu.Display(param1, MENU_TIME_FOREVER);
+
+				if (PlayerSoundsEnabled[param1] == Sounds_Enabled) EmitGameSoundToClient(param1, SelectOptionSound);
 			}
 			// This is a directory instead.
 			// Clear our current menu and populate it with new items.
@@ -289,7 +300,7 @@ int ContractMenuHandler(Menu menu, MenuAction action, int param1, int param2)
 				g_Menu_DirectoryDeepness[param1]++;
 				gContractMenu.Display(param1, MENU_TIME_FOREVER);
 
-				if (PlayerSoundsEnabled[param1] >= Sounds_Enabled) EmitGameSoundToClient(param1, SelectOptionSound);
+				if (PlayerSoundsEnabled[param1] == Sounds_Enabled) EmitGameSoundToClient(param1, SelectOptionSound);
 			}
 		}
 

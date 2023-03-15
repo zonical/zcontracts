@@ -34,6 +34,7 @@ ConVar g_PlaySounds;
 ConVar g_BotContracts;
 ConVar g_RepeatContracts;
 ConVar g_AutoResetContracts;
+ConVar g_DisplayCompletionsInMenu;
 
 ConVar g_DebugEvents;
 ConVar g_DebugProcessing;
@@ -60,7 +61,7 @@ char ProgressLoadedSound[64];
 char SelectOptionSound[64];
 
 // Major version number, feature number, patch number
-#define PLUGIN_VERSION "0.6.1"
+#define PLUGIN_VERSION "0.7.0"
 // This value should be incremented with every breaking version made to the
 // database so saves can be easily converted. For developers who fork this project and
 // wish to merge changes, do not increment this number until merge.
@@ -151,7 +152,8 @@ public void OnPluginStart()
 	g_DisplayProgressHud = CreateConVar("zc_display_hud_progress", "1", "If enabled, players will see text on the right-side of their screen displaying Contract progress.");
 	g_BotContracts = CreateConVar("zc_bot_contracts", "0", "If enabled, bots will be allowed to select Contracts. They will automatically select a new Contract after completion.");
 	g_RepeatContracts = CreateConVar("zc_repeatable_contracts", "0", "If enabled, a player can choose to select a completed Contract and reset its progress to complete it again.");
-	g_AutoResetContracts = CreateConVar("zc_autoreset_completed_contracts", "0", "If enabled, when a Contract is completed, its progress will automatically be reset so the player can complete it again.");
+	g_AutoResetContracts = CreateConVar("zc_repeatable_autoreset", "0", "If enabled, when a Contract is completed, its progress will automatically be reset so the player can complete it again.");
+	g_DisplayCompletionsInMenu = CreateConVar("zc_repeatable_displaycount", "1", "If enabled with zc_repeatable_contracts, a value displaying how many times a contract was completed will be shown in the Contracker.");
 
 	g_DebugEvents = CreateConVar("zc_debug_print_events", "0", "Logs every time an event is sent.");
 	g_DebugProcessing = CreateConVar("zc_debug_processing", "0", "Logs every time an event is processed.");

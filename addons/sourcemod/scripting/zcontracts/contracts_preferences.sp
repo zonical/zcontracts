@@ -34,9 +34,9 @@ void ConstructPreferencePanel(int client)
     PrefPanel[client].DrawText("Your settings will be saved on disconnect.");
     PrefPanel[client].DrawText(" ");
 
-    char SoundsString[64] = "Enable Sounds: %s";
-    char HudString[64] = "Enable Contract HUD: %s";
-    char HintString[64] = "Enable Progress hint text: %s";
+    char SoundsString[64] = "Use Sounds: %s";
+    char HudString[64] = "Use Contract HUD: %s";
+    char HintString[64] = "Use Progress hint text: %s";
     
     switch (PlayerSoundsEnabled[client])
     {
@@ -45,8 +45,8 @@ void ConstructPreferencePanel(int client)
         case Sounds_OnlyCompletion: Format(SoundsString, sizeof(SoundsString), SoundsString, "Completion Sound Only");
     }
     
-    Format(HudString, sizeof(HudString), HudString, (PlayerHUDEnabled[client] ? "true" : "false"));
-    Format(HintString, sizeof(HintString), HintString, (PlayerHintEnabled[client] ? "true" : "false"));
+    Format(HudString, sizeof(HudString), HudString, (PlayerHUDEnabled[client] ? "Enabled" : "Disabled"));
+    Format(HintString, sizeof(HintString), HintString, (PlayerHintEnabled[client] ? "Enabled" : "Disabled"));
     PrefPanel[client].DrawItem(SoundsString);
     PrefPanel[client].DrawItem(HudString);
     PrefPanel[client].DrawItem(HintString);
