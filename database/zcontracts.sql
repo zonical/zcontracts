@@ -64,7 +64,8 @@ CREATE TABLE `preferences` (
   `display_help_text` tinyint(1) NOT NULL DEFAULT '1',
   `use_contract_hud` tinyint(1) NOT NULL DEFAULT '1',
   `use_hint_text` tinyint(11) NOT NULL DEFAULT '1',
-  `use_sounds` tinyint(11) NOT NULL DEFAULT '1'
+  `use_sounds` tinyint(11) NOT NULL DEFAULT '1',
+  `display_hud_repeat` tinyint(11) NOT NULL DEFAULT '1'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------

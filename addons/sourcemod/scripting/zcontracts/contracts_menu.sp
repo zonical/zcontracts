@@ -284,7 +284,7 @@ int ContractMenuHandler(Menu menu, MenuAction action, int param1, int param2)
 
 				// Remove the last slash.
 				int pos = strlen(PreviousDirectory) - 1;
-				PreviousDirectory[pos] = '\0';
+				if (pos > 0) PreviousDirectory[pos] = '\0';
 
 				g_Menu_CurrentDirectory[param1] = PreviousDirectory;
 				g_Menu_DirectoryDeepness[param1]--;

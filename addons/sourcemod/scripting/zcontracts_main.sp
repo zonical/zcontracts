@@ -35,6 +35,7 @@ ConVar g_BotContracts;
 ConVar g_RepeatContracts;
 ConVar g_AutoResetContracts;
 ConVar g_DisplayCompletionsInMenu;
+ConVar g_DisplayRepeatsInHUD;
 
 ConVar g_DebugEvents;
 ConVar g_DebugProcessing;
@@ -61,7 +62,7 @@ char ProgressLoadedSound[64];
 char SelectOptionSound[64];
 
 // Major version number, feature number, patch number
-#define PLUGIN_VERSION "0.7.1"
+#define PLUGIN_VERSION "0.7.2"
 // This value should be incremented with every breaking version made to the
 // database so saves can be easily converted. For developers who fork this project and
 // wish to merge changes, do not increment this number until merge.
@@ -149,11 +150,12 @@ public void OnPluginStart()
 	g_UpdatesPerSecond = CreateConVar("zc_updates_per_second", "8", "How many objective updates to process per second.");
 	g_DisplayHudMessages = CreateConVar("zc_display_hud_messages", "1", "If enabled, players will see a hint-box in their HUD when they gain progress on their Contract or an Objective.");
 	g_PlaySounds = CreateConVar("zc_play_sounds", "1", "If enabled, sounds will play when interacting with the Contracker and when progress is made when a Contract is active.");
-	g_DisplayProgressHud = CreateConVar("zc_display_hud_progress", "1", "If enabled, players will see text on the right-side of their screen displaying Contract progress.");
+	g_DisplayProgressHud = CreateConVar("zc_display_hud_progress", "1", "If enabled, players will see text on the right side of their screen displaying Contract progress.");
 	g_BotContracts = CreateConVar("zc_bot_contracts", "0", "If enabled, bots will be allowed to select Contracts. They will automatically select a new Contract after completion.");
 	g_RepeatContracts = CreateConVar("zc_repeatable_contracts", "0", "If enabled, a player can choose to select a completed Contract and reset its progress to complete it again.");
 	g_AutoResetContracts = CreateConVar("zc_repeatable_autoreset", "0", "If enabled, when a Contract is completed, its progress will automatically be reset so the player can complete it again.");
 	g_DisplayCompletionsInMenu = CreateConVar("zc_repeatable_displaycount", "1", "If enabled with zc_repeatable_contracts, a value displaying how many times a contract was completed will be shown in the Contracker.");
+	g_DisplayRepeatsInHUD = CreateConVar("zc_display_repeats_hud", "0", "If enabled, the progress HUD on the right side of the screen will display the amount of times that Contract has been completed.");
 
 	g_DebugEvents = CreateConVar("zc_debug_print_events", "0", "Logs every time an event is sent.");
 	g_DebugProcessing = CreateConVar("zc_debug_processing", "0", "Logs every time an event is processed.");
@@ -162,6 +164,7 @@ public void OnPluginStart()
 	g_DebugSessions = CreateConVar("zc_debug_sessions", "0", "Logs every time a session is restored.");
 
 	g_DatabaseRetryTime.AddChangeHook(OnDatabaseRetryChange);
+	g_DisplayProgressHud.AddChangeHook(OnDisplayHudChange);
 	g_DatabaseUpdateTime.AddChangeHook(OnDatabaseUpdateChange);
 	g_ConfigSearchPath.AddChangeHook(OnSchemaConVarChange);
 	g_RequiredFileExt.AddChangeHook(OnSchemaConVarChange);
@@ -179,7 +182,6 @@ public void OnPluginStart()
 			ContractCompletedSound = "Quest.TurnInAccepted";
 			ProgressLoadedSound = "CYOA.NodeActivate";
 			SelectOptionSound = "CYOA.StaticFade";
-			
 		}
 		// case Engine_CSGO: CSGO_CreatePluginConVars();
 	}
@@ -231,7 +233,7 @@ public void OnPluginStart()
 public void OnMapEnd()
 {
 	// Save everything just to be safe.
-	for (int i = 1; i < MAXPLAYERS+1; i++)
+	for (int i = 0; i < MAXPLAYERS+1; i++)
 	{
 		if (!IsClientValid(i) || IsFakeClient(i)) continue;
 		SaveClientPreferences(i);
@@ -277,6 +279,8 @@ public void OnClientPostAdminCheck(int client)
 	{
 		GiveRandomContract(client);
 	}
+
+	g_NextHUDUpdate[client] = -1.0;
 }
 
 public void DelayedLoad(int client)
@@ -318,11 +322,23 @@ public void OnClientDisconnect(int client)
 	OldClientContracts[client] = Blank;
 	g_Menu_CurrentDirectory[client] = "root";
 	g_Menu_DirectoryDeepness[client] = 1;
+	
+	g_NextHUDUpdate[client] = -1.0;
 }
 
 public void OnMapStart()
 {
 	g_LastValidProgressTime = -1.0;
+}
+
+public void OnDisplayHudChange(ConVar convar, char[] oldValue, char[] newValue)
+{
+	// If the value is ever set to zero, the timer automatically kills itself
+	// (see Timer_DrawContrackerHud)
+	if (StringToInt(newValue) >= 1)
+	{
+		CreateTimer(HUD_REFRESH_RATE, Timer_DrawContrackerHud, _, TIMER_REPEAT);
+	}
 }
 
 public void OnSchemaConVarChange(ConVar convar, char[] oldValue, char[] newValue)
@@ -732,10 +748,22 @@ public Action Timer_DrawContrackerHud(Handle hTimer)
 		char DisplayText[512] = "\"%s\":\n";
 		Format(DisplayText, sizeof(DisplayText), DisplayText, ClientContract.m_sContractName);
 
+		// Add the amount of completions.
+		CompletedContractInfo info;
+		CompletedContracts[i].GetArray(ClientContract.m_sUUID, info, sizeof(CompletedContractInfo));
+
+		if (PlayerHUDRepeatEnabled[i] && g_DisplayRepeatsInHUD.BoolValue && info.m_iCompletions > 0)
+		{
+			char CompletionsText[64] = "Completions: %d\n";
+			Format(CompletionsText, sizeof(CompletionsText), CompletionsText, info.m_iCompletions);
+			StrCat(DisplayText, sizeof(DisplayText), CompletionsText);
+
+		}
+
 		// Add text if we've completed the Contract.
 		if (ClientContract.IsContractComplete())
 		{
-			char CompleteText[] = "COMPLETE - Type /c to\nselect a new Contract.";
+			char CompleteText[] = "\nCOMPLETE - Type /c to\nselect a new Contract.";
 			StrCat(DisplayText, sizeof(DisplayText), CompleteText);
 		}
 		else
@@ -1086,8 +1114,8 @@ void ProcessLogicForContractObjective(Contract ClientContract, int objective_id,
 
 		if (!g_AutoResetContracts.BoolValue)
 		{
-			PrintColoredChat(client, "%s[ZC] %sCongratulations! You have completed the contract: %s\"%s\"",
-			COLOR_LIGHTSEAGREEN, COLOR_DEFAULT, COLOR_YELLOW, ClientContract.m_sContractName);
+			PrintColoredChatAll("%s[ZC]%s %N has completed the contract: %s\"%s\"%s, congratulations!",
+			COLOR_LIGHTSEAGREEN, COLOR_DEFAULT, client, COLOR_YELLOW, ClientContract.m_sContractName, COLOR_DEFAULT);
 
 			SaveClientContractProgress(client, ClientContract);
 			info.m_bReset = false;
