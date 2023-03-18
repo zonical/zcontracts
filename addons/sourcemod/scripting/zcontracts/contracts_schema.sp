@@ -174,12 +174,12 @@ public void CreateContract(KeyValues hContractConf, Contract hContract)
 	hContract.m_iMaxProgress = hContractConf.GetNum("maximum_cp", -1);
 	hContract.m_iDifficulty = hContractConf.GetNum("difficulty", 1);
 
-	
 	if (GetEngineVersion() == Engine_TF2)
 	{
 		// Grab the classes that can do this contract.
 		TF2_ConstructClassRestrictions(hContractConf, hContract);
 		hContractConf.GetString("required_gamerules", hContract.m_sRequiredGameRulesEntity, sizeof(hContract.m_sRequiredGameRulesEntity));
+		hContract.m_iGameTypeRestriction = hContractConf.GetNum("gamemode_extension", view_as<int>(TGE_NoExtension));
 	}
 	if (GetEngineVersion() == Engine_CSGO)
 	{

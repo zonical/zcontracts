@@ -65,7 +65,7 @@
 						"type"		"increment"
 						
 						// How many times does this event need to trigger to add points?
-						"threshold"	"1"	
+						"threshold"	"20"	
 					}
 				}
 			}

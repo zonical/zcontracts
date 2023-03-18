@@ -9,7 +9,7 @@ public Plugin myinfo =
 	name = "ZContracts - TF2 Event Logic",
 	author = "ZoNiCaL",
 	description = "Hooks game events into the ZContract system.",
-	version = "alpha-1",
+	version = "0.7.3",
 	url = ""
 };
 
@@ -123,6 +123,9 @@ public Action OnPlayerDeath(Event event, const char[] name, bool dontBroadcast)
 		CallContrackerEvent(assister, "CONTRACTS_TF2_PLAYER_ASSIST", 1, true);
 		if (TF2_IsPlayerInCondition(attacker, TFCond_Ubercharged)) CallContrackerEvent(assister, "CONTRACTS_TF2_PLAYER_ASSIST_UBER_TEAMMATE", 1, true);
 		if (TF2_IsPlayerInCondition(assister, TFCond_Ubercharged)) CallContrackerEvent(assister, "CONTRACTS_TF2_PLAYER_ASSIST_WHILE_UBERED", 1, true);
+
+		if (death_flags & TF_DEATHFLAG_ASSISTERDOMINATION) CallContrackerEvent(assister, "CONTRACTS_TF2_PLAYER_DOMINATION", 1, true);
+		if (death_flags & TF_DEATHFLAG_ASSISTERREVENGE) CallContrackerEvent(assister, "CONTRACTS_TF2_PLAYER_REVENGE", 1, true);
 	}
 
 	return Plugin_Continue;

@@ -5,6 +5,19 @@ ConVar g_TF2_AllowSetupProgress;
 ConVar g_TF2_AllowRoundEndProgress;
 ConVar g_TF2_AllowWaitingProgress;
 
+TF2GameMode_Extensions g_TF2_GameModeExtension = TGE_NoExtension;
+
+// Some gamemodes which have variations might not be detectable
+// with the existance of a gamerules entity. Attack/Defend CP maps
+// are an example of this.
+enum TF2GameMode_Extensions
+{
+    TGE_NoExtension = 0,
+    TGE_RedAttacksBlu = 1, // Standard A/D
+    TGE_BluAttacksRed = 2, // Standard Payload
+    TGE_Symmetrical = 3 // 3CP like Powerhouse or 5CP like Badlands
+}
+
 // Creates TF2 specific ConVar's.
 void TF2_CreatePluginConVars()
 {
@@ -29,7 +42,7 @@ public Action TF2_OnRoundWin(Event event, const char[] name, bool dontBroadcast)
     if (!g_TF2_AllowRoundEndProgress.BoolValue)
     {
         // Block any events from being processed after this time.
-        g_LastValidProgressTime = GetGameTime();
+        g_LastValidProgressTime = GetGameTime() + 1.0; // Add an extra 
     }
     else
     {
@@ -136,4 +149,51 @@ bool TF2_ValidGameRulesEntityExists(const char[] classname)
 		return true;
 	}
 	return false;
+}
+
+// Sets the GME.
+public any Native_SetTF2GameModeExt(Handle plugin, int numParams)
+{
+    TF2GameMode_Extensions value = view_as<TF2GameMode_Extensions>(GetNativeCell(1));
+    g_TF2_GameModeExtension = value;
+    return true;
+}
+
+TF2GameMode_Extensions TF2_GetCurrentMapGME()
+{
+    // Fire a forward that asks any other plugins if they
+    // wish to set the GME themselves with SetTF2GameModeExt.
+    Call_StartForward(g_fOnGameModeExtCheck);
+    Action ShouldBlock;
+    Call_Finish(ShouldBlock);
+
+    if (ShouldBlock >= Plugin_Changed)
+    {
+        // If a plugin developer is smart and uses SetTF2GameModeExt in the forward,
+        // we can just return the global.
+        return g_TF2_GameModeExtension;
+    }
+
+    // Any map that deals with Control Points.
+    int master_ent = -1;
+    while ((master_ent = FindEntityByClassname(master_ent, "team_control_point_master")) != -1)
+    {
+        int point_ent = -1;
+
+        int RedPoints = 0;
+        int BluPoints = 0;
+
+        while ((point_ent = FindEntityByClassname(point_ent, "team_control_point")) != -1)
+        {
+            int ThisTeam = GetEntProp(point_ent, Prop_Send, "m_iTeamNum");
+            if (ThisTeam == view_as<int>(TFTeam_Red)) RedPoints++;
+            if (ThisTeam == view_as<int>(TFTeam_Blue)) BluPoints++;
+        }
+
+        if (RedPoints < BluPoints) return TGE_RedAttacksBlu;
+        if (BluPoints < RedPoints) return TGE_BluAttacksRed;
+        if (RedPoints == BluPoints) return TGE_Symmetrical;
+    }
+
+    return TGE_NoExtension;
 }

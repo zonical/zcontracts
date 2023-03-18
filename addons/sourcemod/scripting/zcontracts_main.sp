@@ -48,6 +48,7 @@ GlobalForward g_fOnObjectiveCompleted;
 GlobalForward g_fOnContractCompleted;
 GlobalForward g_fOnContractPreSave;
 GlobalForward g_fOnObjectivePreSave;
+GlobalForward g_fOnGameModeExtCheck;
 
 float g_LastValidProgressTime = -1.0;
 
@@ -62,7 +63,7 @@ char ProgressLoadedSound[64];
 char SelectOptionSound[64];
 
 // Major version number, feature number, patch number
-#define PLUGIN_VERSION "0.7.2"
+#define PLUGIN_VERSION "0.7.3"
 // This value should be incremented with every breaking version made to the
 // database so saves can be easily converted. For developers who fork this project and
 // wish to merge changes, do not increment this number until merge.
@@ -101,7 +102,12 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 	g_fOnContractCompleted = new GlobalForward("OnContractCompleted", ET_Ignore, Param_Cell, Param_String, Param_Array);
 	g_fOnContractPreSave = new GlobalForward("OnContractPreSave", ET_Event, Param_Cell, Param_String, Param_Array);
 	g_fOnObjectivePreSave = new GlobalForward("OnObjectivePreSave", ET_Event, Param_Cell, Param_String, Param_Array);
-
+	
+	switch (GetEngineVersion())
+	{
+		case Engine_TF2: g_fOnGameModeExtCheck = new GlobalForward("OnTF2GameModeExtCheck", ET_Event);
+	}
+	
 	// ================ NATIVES ================
 	CreateNative("GetContrackerVersion", Native_GetContrackerVersion);
 
@@ -120,6 +126,8 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 	
 	CreateNative("SetCompletedContractInfoDatabase", Native_SetContractCompletionInfoDatabase);
 	CreateNative("SetSessionDatabase", Native_SetSessionDatabase);
+
+	CreateNative("SetTF2GameModeExt", Native_SetTF2GameModeExt);
 
 	return APLRes_Success;
 }
@@ -329,6 +337,12 @@ public void OnClientDisconnect(int client)
 public void OnMapStart()
 {
 	g_LastValidProgressTime = -1.0;
+
+	if (GetEngineVersion() == Engine_TF2)
+	{
+		g_TF2_GameModeExtension = TF2_GetCurrentMapGME();
+		PrintToChatAll("%d", view_as<int>(g_TF2_GameModeExtension));
+	}
 }
 
 public void OnDisplayHudChange(ConVar convar, char[] oldValue, char[] newValue)
@@ -976,6 +990,8 @@ void ProcessLogicForContractObjective(Contract ClientContract, int objective_id,
 		{
 			if (!TF2_IsCorrectClass(client, ClientContract)) return;
 			if (!TF2_ValidGameRulesEntityExists(ClientContract.m_sRequiredGameRulesEntity)) return;
+			if ((ClientContract.m_iGameTypeRestriction != view_as<int>(TGE_NoExtension)) 
+			&& (ClientContract.m_iGameTypeRestriction != view_as<int>(g_TF2_GameModeExtension))) return;
 		}
 		case Engine_CSGO:
 		{

@@ -10,7 +10,7 @@ public Plugin myinfo =
 	name = "ZContracts - Event Logic",
 	author = "ZoNiCaL",
 	description = "Hooks game events into the ZContract system.",
-	version = "alpha-1",
+	version = "0.7.3",
 	url = ""
 };
 

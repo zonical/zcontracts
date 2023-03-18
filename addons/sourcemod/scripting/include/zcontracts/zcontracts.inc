@@ -187,7 +187,9 @@ enum struct Contract
 
 	char m_sRequiredGameRulesEntity[64]; // TF2
 	int m_iGameModeRestriction; // CSGO
-	int m_iGameTypeRestriction; // CSGO
+	// FOR CSGO: game_type convar.
+	// FOR TF2: gamemode extension (see contracts_tf2.sp)
+	int m_iGameTypeRestriction; 
 	int m_iSkirmishIDRestriction; // CSGO
 
 	// What type of Contract are we handling? (see ContractType)
@@ -450,6 +452,12 @@ native bool DeleteObjectiveProgressDatabase(char steamid64[64], char UUID[MAX_UU
 */
 native bool DeleteAllObjectiveProgressDatabase(char steamid64[64], char UUID[MAX_UUID_SIZE]);
 
+/**
+ * Overrides the value of the gamemode extension for TF2 logic. See contracts_tf2.sp
+ * @param value    The new value of the the gamemode extension.
+*/
+native bool SetTF2GameModeExt(int value);
+
 
 // =========================== FORWARDS ===========================
 
@@ -489,3 +497,14 @@ forward bool OnContractPreSave(int client, char UUID[MAX_UUID_SIZE], Contract hC
  * @param hObjective	Handle to the objective.
  */
 forward bool OnObjectivePreSave(int client, char UUID[MAX_UUID_SIZE], ContractObjective hObjective);
+
+/**
+ * Called at the start of every map when ZContracts checks to see what type of
+ * map is being played (e.g Control Points but it's A/D or Symmetrical). This
+ * Forward is best used alongside SetTF2GameModeExt to alter the gamemode extension.
+ * A value of Plugin_Changed or higher must be returned otherwise ZContracts will
+ * override any value set by SetTF2GameModeExt.
+ *
+ * @error This forward only exists if the plugin is running under TF2.
+ */
+forward Action OnTF2GameModeExtCheck();
