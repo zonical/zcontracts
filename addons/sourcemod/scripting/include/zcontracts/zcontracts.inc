@@ -182,7 +182,7 @@ enum struct Contract
 	char m_sWeaponNameRestriction[64];
 	char m_sWeaponItemDefRestriction[64];
 	char m_sWeaponClassnameRestriction[64];
-	char m_sMapRestriction[MAX_UUID_SIZE];
+	char m_sMapRestriction[64];
 	int m_iTeamRestriction;
 
 	char m_sRequiredGameRulesEntity[64]; // TF2
@@ -257,6 +257,67 @@ enum struct Contract
 		
 		return false;
 	}
+
+	bool IsContractCompletableForClient(int client)
+	{
+		if (!this.m_bActive || !this.m_bInitalized) return false;
+
+		// Map check.
+		char Map[256];
+		GetCurrentMap(Map, sizeof(Map));
+		if (!StrEqual(Map, "") && StrContains(Map, this.m_sMapRestriction) == -1) return false;
+
+		// Team check.
+		if (this.m_iTeamRestriction != -1 && GetClientTeam(client) != this.m_iTeamRestriction) return false;
+
+		// Weapon check.
+		if (!StrEqual("", this.m_sWeaponItemDefRestriction)
+		|| !StrEqual("", this.m_sWeaponClassnameRestriction))
+		{
+			int ClientWeapon = GetEntPropEnt(client, Prop_Send, "m_hActiveWeapon");
+			if (IsValidEntity(ClientWeapon))
+			{
+				// Item definition index check:
+				if (!StrEqual("", this.m_sWeaponItemDefRestriction))
+				{
+					int DefIndex = GetEntProp(ClientWeapon, Prop_Send, "m_iItemDefinitionIndex");
+					if (DefIndex != StringToInt(this.m_sWeaponItemDefRestriction)) return false;
+				}
+				// Classname check:
+				if (!StrEqual("", this.m_sWeaponClassnameRestriction))
+				{
+					char Classname[64];
+					GetEntityClassname(ClientWeapon, Classname, sizeof(Classname));
+					if (!StrContains(Classname, this.m_sWeaponClassnameRestriction)) return false;
+				}
+			}
+		}
+
+		// Specific game check.
+		switch (GetEngineVersion())
+		{
+			case Engine_TF2:
+			{
+				TFClassType Class = TF2_GetPlayerClass(client);
+				if (Class == TFClass_Unknown) return false;
+				if (!this.m_bClass[Class]) return false;
+
+				if (!TF2_ValidGameRulesEntityExists(this.m_sRequiredGameRulesEntity)) return false;
+				if ((this.m_iGameTypeRestriction != view_as<int>(TGE_NoExtension)) 
+				&& (this.m_iGameTypeRestriction != view_as<int>(GetTF2GameModeExt()))) return false;
+			}
+			case Engine_CSGO:
+			{
+				if (this.m_iGameTypeRestriction != -1 && !CSGO_IsCorrectGameType(this.m_iGameTypeRestriction)) return false;
+				if (this.m_iGameModeRestriction != -1 && !CSGO_IsCorrectGameMode(this.m_iGameModeRestriction)) return false;
+				if (this.m_iSkirmishIDRestriction != -1 && !CSGO_IsCorrectSkirmishID(this.m_iSkirmishIDRestriction)) return false;
+			}
+		}
+
+		// All checks passed, we're good to go!
+		return true;
+	}
+
 	/**
 	 * Wrapper to easily get a Contract objective.
 	**/
@@ -457,6 +518,12 @@ native bool DeleteAllObjectiveProgressDatabase(char steamid64[64], char UUID[MAX
  * @param value    The new value of the the gamemode extension.
 */
 native bool SetTF2GameModeExt(int value);
+
+/**
+ * Gets the gamemode extension that is used for TF2 logic. See contracts_tf2.sp
+ * @return	Value of the gamemode extension.
+*/
+native int GetTF2GameModeExt();
 
 
 // =========================== FORWARDS ===========================

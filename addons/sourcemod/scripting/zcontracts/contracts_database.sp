@@ -135,11 +135,13 @@ public any Native_SetContractProgressDatabase(Handle plugin, int numParams)
     char query[1024];
     g_DB.Format(query, sizeof(query),
         "INSERT INTO contract_progress (steamid64, contract_uuid, progress, version) VALUES ('%s', '%s', %d, %d)"
-    ... " ON DUPLICATE KEY UPDATE progress = %d, version = %d", steamid64, UUID, progress, CONTRACKER_VERSION, progress, CONTRACKER_VERSION);
+    ... " ON DUPLICATE KEY UPDATE progress = %d, version = %d", steamid64, UUID, progress, CONTRACKER_VERSION,
+    progress, CONTRACKER_VERSION);
 
-    // This is stupid.
     DataPack dp = new DataPack();
     dp.WriteString(steamid64);
+    dp.WriteString(UUID);
+    dp.WriteCell(progress);
     dp.Reset();
 
     g_DB.Query(CB_SetContractProgressDatabase, query, dp, DBPrio_High);
@@ -150,19 +152,33 @@ public any Native_SetContractProgressDatabase(Handle plugin, int numParams)
 void CB_SetContractProgressDatabase(Database db, DBResultSet results, const char[] error, DataPack dp)
 {
     char steamid64[64];
+    char contract_uuid[MAX_UUID_SIZE];
+    int progress;
     dp.ReadString(steamid64, sizeof(steamid64));
-    delete dp;
+    dp.ReadString(contract_uuid, sizeof(contract_uuid));
+    progress = dp.ReadCell();
+    
+    // Error handling code.
+    if (results == null)
+    {
+        LogError("[ZContracts] Failed to insert Contract progress: [SQL ERR: %s] [STEAMID64: %s, UUID: %s, PROGRESS: %d]", error, steamid64, contract_uuid, progress);
+        
+        // Reattempt save.
+        SetContractProgressDatabase(steamid64, contract_uuid, progress);
+    }
+    else
+    {
+        if (results.AffectedRows < 1 && g_DebugQuery.BoolValue)
+        {
+            LogMessage("[ZContracts] %s SAVE: No progress inserted for contract [SQL ERR: %s]", steamid64, error);
+        }
+        else if (results.AffectedRows == 1 && g_DebugQuery.BoolValue)
+        {
+            LogMessage("[ZContracts] %s SAVE: Sucessfully saved progress for contract.", steamid64);
+        }
+    }
 
-    if (results == INVALID_HANDLE) return;
-    if (results.AffectedRows < 1 && g_DebugQuery.BoolValue)
-    {
-        LogMessage("[ZContracts] %s SAVE: No progress inserted for contract [SQL ERR: %s]", steamid64, error);
-        return;
-    }
-    if (g_DebugQuery.BoolValue)
-    {
-        LogMessage("[ZContracts] %s SAVE: Sucessfully saved progress for contract.", steamid64);
-    }
+    delete dp;
 }
 
 /**
@@ -188,9 +204,11 @@ public any Native_SetObjectiveProgressDatabase(Handle plugin, int numParams)
         ThrowNativeError(SP_ERROR_NATIVE, "Invalid UUID passed. (%s)", UUID);
     }
 
-    // This is stupid.
     DataPack dp = new DataPack();
     dp.WriteString(steamid64);
+    dp.WriteString(UUID);
+    dp.WriteCell(progress);
+    dp.WriteCell(objective_id);
     dp.Reset();
 
     char query[1024];
@@ -206,19 +224,36 @@ public any Native_SetObjectiveProgressDatabase(Handle plugin, int numParams)
 public void CB_SetObjectiveProgressDatabase(Database db, DBResultSet results, const char[] error, DataPack dp)
 {
     char steamid64[64];
+    char contract_uuid[MAX_UUID_SIZE];
+    int progress;
+    int objective_id;
     dp.ReadString(steamid64, sizeof(steamid64));
-    delete dp;
+    dp.ReadString(contract_uuid, sizeof(contract_uuid));
+    progress = dp.ReadCell();
+    objective_id = dp.ReadCell();
+    
+    // Error handling code.
+    if (results == null)
+    {
+        LogError("[ZContracts] Failed to insert Contract progress for Objective %d: [SQL ERR: %s] [STEAMID64: %s, UUID: %s, PROGRESS: %d]",
+        objective_id, error, steamid64, contract_uuid, progress);
+        
+        // Reattempt save.
+        SetObjectiveProgressDatabase(steamid64, contract_uuid, objective_id, progress);
+    }
+    else
+    {
+        if (results.AffectedRows < 1 && g_DebugQuery.BoolValue)
+        {
+            LogMessage("[ZContracts] %s SAVE: No progress inserted for Contract Objective %d [SQL ERR: %s]", steamid64, error);
+        }
+        else if (results.AffectedRows == 1 && g_DebugQuery.BoolValue)
+        {
+            LogMessage("[ZContracts] %s SAVE: Sucessfully saved progress for Contract Objective %d.", steamid64, objective_id);
+        }
+    }
 
-    if (results == INVALID_HANDLE) return;
-    if (results.AffectedRows < 1 && g_DebugQuery.BoolValue)
-    {
-        LogMessage("[ZContracts] %s SAVE: No progress inserted for contract objective [SQL ERR: %s]", steamid64, error);
-        return;
-    }
-    if (g_DebugQuery.BoolValue)
-    {
-        LogMessage("[ZContracts] %s SAVE: Sucessfully saved progress for objective.", steamid64);
-    }
+    delete dp;
 }
 
 /**
@@ -258,21 +293,20 @@ public any Native_SaveClientContractProgress(Handle plugin, int numParams)
     // If noone responded or we got a positive response, save to database.
     if (GetForwardFunctionCount(g_fOnContractPreSave) == 0 || !ShouldBlock)
     {
-        if (g_DebugQuery.BoolValue)
-        {
-            LogMessage("[ZContracts] %N SAVE: Contract progress save attempt not interrupted.", client);
-        }
         if (ClientContract.m_iProgress > 0)
         {
             SetContractProgressDatabase(steamid64, ClientContract.m_sUUID, ClientContract.m_iProgress);
         }
         return true;
     }
-
-    if (g_DebugQuery.BoolValue)
+    else if (ShouldBlock)
     {
-        LogMessage("[ZContracts] %N SAVE: Contract progress save attempt interrupted.", client);
+        if (g_DebugQuery.BoolValue)
+        {
+            LogMessage("[ZContracts] %N SAVE: Contract progress save attempt interrupted.", client);
+        }       
     }
+
     return false;
 }
 
@@ -348,7 +382,7 @@ public void CB_SetClientContract_Contract(Database db, DBResultSet results, cons
         int VersionField = 0;
         if (!results.FieldNameToNum("version", VersionField))
         {
-            ThrowError("Cannot find \"version\" field while fetching contract data. Client index: %d", client);
+            ThrowError("Missing required database key: \"version\" while fetching client %d contract data.", client);
         }
         int DataVersion = results.FetchInt(VersionField);
         if (DataVersion < MinimumRequiredVersion)
@@ -385,7 +419,7 @@ public void CB_SetClientContract_Objective(Database db, DBResultSet results, con
         int VersionField = 0;
         if (!results.FieldNameToNum("version", VersionField))
         {
-            ThrowError("Cannot find \"version\" field while fetching contract objective data. Client index: %d", client);
+            ThrowError("Missing required database key: \"version\" while fetching client %d contract data.", client);
         }
         int DataVersion = results.FetchInt(VersionField);
         if (DataVersion < MinimumRequiredVersion)
@@ -430,9 +464,11 @@ public any Native_SetContractCompletionInfoDatabase(Handle plugin, int numParams
         ThrowError("Invalid UUID passed. (%s)", UUID);
     }
 
-    // This is stupid.
     DataPack dp = new DataPack();
     dp.WriteString(steamid64);
+    dp.WriteString(UUID);
+    dp.WriteCell(info.m_iCompletions);
+    dp.WriteCell(info.m_bReset);
     dp.Reset();
 
     char query[1024];
@@ -447,14 +483,39 @@ public any Native_SetContractCompletionInfoDatabase(Handle plugin, int numParams
 public void CB_SaveCompletedContract(Database db, DBResultSet results, const char[] error, DataPack dp)
 {
     char steamid64[64];
+    char contract_uuid[MAX_UUID_SIZE];
+    int completions;
+    bool reset;
     dp.ReadString(steamid64, sizeof(steamid64));
-    delete dp;
-
-    if (results == INVALID_HANDLE) return;
-    if (g_DebugQuery.BoolValue && results.AffectedRows == 1)
+    dp.ReadString(contract_uuid, sizeof(contract_uuid));
+    completions = dp.ReadCell();
+    reset = dp.ReadCell();
+    
+    // Error handling code.
+    if (results == null)
     {
-        LogMessage("[ZContracts] %s COMPLETE: Successfully saved Contract completion status.", steamid64);
+        LogError("[ZContracts] Failed to insert Contract completion progress: [SQL ERR: %s] [STEAMID64: %s, UUID: %s, COMPLETIONS: %d, RESET: %d]",
+        error, steamid64, contract_uuid, completions, reset);
+        
+        // Reattempt save.
+        CompletedContractInfo info;
+        info.m_iCompletions = completions;
+        info.m_bReset = reset;
+        SetCompletedContractInfoDatabase(steamid64, contract_uuid, info);
     }
+    else
+    {
+        if (results.AffectedRows < 1 && g_DebugQuery.BoolValue)
+        {
+            LogMessage("[ZContracts] %s SAVE: No completed data was updated for Contract [SQL ERR: %s]", steamid64, error);
+        }
+        else if (results.AffectedRows == 1 && g_DebugQuery.BoolValue)
+        {
+            LogMessage("[ZContracts] %s SAVE: Sucessfully saved progress Contract completion data", steamid64);
+        }
+    }
+
+    delete dp;
 }
 
 void DB_LoadCompletedContracts(int client)
@@ -481,6 +542,14 @@ void DB_LoadCompletedContracts(int client)
 
 public void CB_LoadCompletedContracts(Database db, DBResultSet results, const char[] error, int client)
 {
+    // Error handling.
+    if (results == null)
+    {
+        LogError("[ZContracts] Failed to load Contract completion data: [SQL ERR: %s] [CLIENT: %N]", client);
+        DB_LoadCompletedContracts(client);
+        return;
+    }
+
     while (results.FetchRow())
     {
         char UUID[MAX_UUID_SIZE];
@@ -509,14 +578,9 @@ public any Native_SetSessionDatabase(Handle plugin, int numParams)
         ThrowError("Invalid UUID passed. (%s)", UUID);
     }
 
-    if (g_DebugSessions.BoolValue)
-    {
-        LogMessage("[ZContracts] %s SESSION: Attempting to save Contract session.", steamid64);
-    }
-
-    // This is stupid.
     DataPack dp = new DataPack();
     dp.WriteString(steamid64);
+    dp.WriteString(UUID);
     dp.Reset();
 
     char query[1024];
@@ -531,17 +595,31 @@ public any Native_SetSessionDatabase(Handle plugin, int numParams)
 public void CB_SetSession(Database db, DBResultSet results, const char[] error, DataPack dp)
 {
     char steamid64[64];
+    char contract_uuid[MAX_UUID_SIZE];
     dp.ReadString(steamid64, sizeof(steamid64));
+    dp.ReadString(contract_uuid, sizeof(contract_uuid));
+
+    // Error handling code.
+    if (results == null)
+    {
+        LogError("[ZContracts] Failed to set client session: [SQL ERR: %s] [STEAMID64: %s, SESSION UUID: %s]",
+        error, steamid64, contract_uuid);
+        
+        SetSessionDatabase(steamid64, contract_uuid);
+    }
+    else
+    {
+        if (results.AffectedRows < 1 && g_DebugQuery.BoolValue)
+        {
+            LogMessage("[ZContracts] %s SAVE: No update to client session. [SQL ERR: %s]", steamid64, error);
+        }
+        else if (results.AffectedRows == 1 && g_DebugQuery.BoolValue)
+        {
+            LogMessage("[ZContracts] %s SAVE: Sucessfully updated client session.", steamid64);
+        }
+    }
+
     delete dp;
-    if (results.AffectedRows < 1 && g_DebugQuery.BoolValue)
-    {
-        LogMessage("[ZContracts] %s SESSION: No change made to Contract session. [SQL ERR: %s]", steamid64, error);
-        return;
-    }
-    if (g_DebugQuery.BoolValue)
-    {
-        LogMessage("[ZContracts] %s SESSION: Successfuly saved Contract session.", steamid64);
-    }
 }
 
 /**
@@ -561,9 +639,9 @@ public any Native_DeleteContractProgressDatabase(Handle plugin, int numParams)
         ThrowNativeError(SP_ERROR_NATIVE, "Invalid UUID passed. (%s)", UUID);
     }
 
-    // This is stupid.
     DataPack dp = new DataPack();
     dp.WriteString(steamid64);
+    dp.WriteString(UUID);
     dp.Reset();
 
     char query[1024];
@@ -592,9 +670,10 @@ public any Native_DeleteObjectiveProgressDatabase(Handle plugin, int numParams)
         ThrowNativeError(SP_ERROR_NATIVE, "Invalid UUID passed. (%s)", UUID);
     }
 
-    // This is stupid.
     DataPack dp = new DataPack();
     dp.WriteString(steamid64);
+    dp.WriteString(UUID);
+    dp.WriteCell(objective_id);
     dp.Reset();
 
     char query[1024];
@@ -617,9 +696,10 @@ public any Native_DeleteAllObjectiveProgressDatabase(Handle plugin, int numParam
         ThrowNativeError(SP_ERROR_NATIVE, "Invalid UUID passed. (%s)", UUID);
     }
 
-    // This is stupid.
     DataPack dp = new DataPack();
     dp.WriteString(steamid64);
+    dp.WriteString(UUID);
+    dp.WriteCell(-1);
     dp.Reset();
 
     char query[1024];
@@ -633,25 +713,60 @@ public any Native_DeleteAllObjectiveProgressDatabase(Handle plugin, int numParam
 public void CB_DeleteContractProgress(Database db, DBResultSet results, const char[] error, DataPack dp)
 {
     char steamid64[64];
+    char contract_uuid[MAX_UUID_SIZE];
     dp.ReadString(steamid64, sizeof(steamid64));
-    delete dp;
+    dp.ReadString(contract_uuid, sizeof(contract_uuid));
 
-    if (results == INVALID_HANDLE) return;
-    if (g_DebugQuery.BoolValue && results.AffectedRows == 1)
+    // Error handling code.
+    if (results == null)
     {
-        LogMessage("[ZContracts] %s DELETE: Successfully deleted Contract progress.", steamid64);
+        LogError("[ZContracts] Failed to delete Contract progress: [SQL ERR: %s] [STEAMID64: %s, UUID: %s]",
+        error, steamid64, contract_uuid);
+        
+        DeleteContractProgressDatabase(steamid64, contract_uuid);
     }
+    else
+    {
+        if (results.AffectedRows < 1 && g_DebugQuery.BoolValue)
+        {
+            LogMessage("[ZContracts] %s DELETE: No deletion required for Contract progress. [SQL ERR: %s]", steamid64, error);
+        }
+        else if (results.AffectedRows == 1 && g_DebugQuery.BoolValue)
+        {
+            LogMessage("[ZContracts] %s DELETE: Sucessfully deleted Contract progress.", steamid64);
+        }
+    }
+
+    delete dp;
 }
 
 public void CB_DeleteObjectiveProgress(Database db, DBResultSet results, const char[] error, DataPack dp)
 {
     char steamid64[64];
+    char contract_uuid[MAX_UUID_SIZE];
+    int objective_id;
     dp.ReadString(steamid64, sizeof(steamid64));
-    delete dp;
+    dp.ReadString(contract_uuid, sizeof(contract_uuid));
+    objective_id = dp.ReadCell();
 
-    if (results == INVALID_HANDLE) return;
-    if (g_DebugQuery.BoolValue && results.AffectedRows == 1)
+    // Error handling code.
+    if (results == null)
     {
-        LogMessage("[ZContracts] %s DELETE: Successfully deleted Objective progress.", steamid64);
+        LogError("[ZContracts] Failed to delete Contract Objective %d progress: [SQL ERR: %s] [STEAMID64: %s, UUID: %s]",
+        error, objective_id, steamid64, contract_uuid);
+        
+        if (objective_id == -1) DeleteAllObjectiveProgressDatabase(steamid64, contract_uuid);
+        else DeleteObjectiveProgressDatabase(steamid64, contract_uuid, objective_id);
+    }
+    else
+    {
+        if (results.AffectedRows < 1 && g_DebugQuery.BoolValue)
+        {
+            LogMessage("[ZContracts] %s DELETE: No deletion required for Contract Objective progress. [SQL ERR: %s]", steamid64, error);
+        }
+        else if (results.AffectedRows == 1 && g_DebugQuery.BoolValue)
+        {
+            LogMessage("[ZContracts] %s DELETE: Sucessfully deleted Contract Objective progress.", steamid64);
+        }
     }
 }

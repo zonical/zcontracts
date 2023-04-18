@@ -42,6 +42,7 @@ ConVar g_DebugProcessing;
 ConVar g_DebugQuery;
 ConVar g_DebugProgress;
 ConVar g_DebugSessions;
+ConVar g_DebugUnlockContracts;
 
 // Forwards
 GlobalForward g_fOnObjectiveCompleted;
@@ -63,7 +64,7 @@ char ProgressLoadedSound[64];
 char SelectOptionSound[64];
 
 // Major version number, feature number, patch number
-#define PLUGIN_VERSION "0.7.3"
+#define PLUGIN_VERSION "0.8.0"
 // This value should be incremented with every breaking version made to the
 // database so saves can be easily converted. For developers who fork this project and
 // wish to merge changes, do not increment this number until merge.
@@ -79,6 +80,7 @@ char SelectOptionSound[64];
 // Any custom engine plugins must be included before contracts_schema so
 // custom values can be loaded from the schema.
 #include "zcontracts/contracts_schema.sp"
+#include "zcontracts/contracts_utils.sp"
 #include "zcontracts/contracts_timers.sp"
 #include "zcontracts/contracts_database.sp"
 #include "zcontracts/contracts_preferences.sp"
@@ -123,11 +125,11 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 	CreateNative("DeleteContractProgressDatabase", Native_DeleteContractProgressDatabase);
 	CreateNative("DeleteObjectiveProgressDatabase", Native_DeleteObjectiveProgressDatabase);
 	CreateNative("DeleteAllObjectiveProgressDatabase", Native_DeleteAllObjectiveProgressDatabase);
-	
 	CreateNative("SetCompletedContractInfoDatabase", Native_SetContractCompletionInfoDatabase);
 	CreateNative("SetSessionDatabase", Native_SetSessionDatabase);
 
 	CreateNative("SetTF2GameModeExt", Native_SetTF2GameModeExt);
+	CreateNative("GetTF2GameModeExt", Native_GetTF2GameModeExt);
 
 	return APLRes_Success;
 }
@@ -170,6 +172,7 @@ public void OnPluginStart()
 	g_DebugQuery = CreateConVar("zc_debug_queries", "0", "Logs every time a query is sent to the database.");
 	g_DebugProgress = CreateConVar("zc_debug_progress", "0", "Logs every time player progress is incremented internally.");
 	g_DebugSessions = CreateConVar("zc_debug_sessions", "0", "Logs every time a session is restored.");
+	g_DebugUnlockContracts = CreateConVar("zc_debug_unlock_contracts", "0", "Allows any contract to be selected.");
 
 	g_DatabaseRetryTime.AddChangeHook(OnDatabaseRetryChange);
 	g_DisplayProgressHud.AddChangeHook(OnDisplayHudChange);
@@ -338,10 +341,42 @@ public void OnMapStart()
 {
 	g_LastValidProgressTime = -1.0;
 
+	// Determine the new gamemode extension.
 	if (GetEngineVersion() == Engine_TF2)
 	{
-		g_TF2_GameModeExtension = TF2_GetCurrentMapGME();
-		PrintToChatAll("%d", view_as<int>(g_TF2_GameModeExtension));
+		// Fire a forward that asks any other plugins if they
+		// wish to set the GME themselves with SetTF2GameModeExt.
+		Call_StartForward(g_fOnGameModeExtCheck);
+		Action ShouldBlock;
+		Call_Finish(ShouldBlock);
+
+		// If a plugin developer overrides the gamemode extension in
+		// the forward, don't worry about finding it ourselves.
+		if (ShouldBlock < Plugin_Changed)
+		{
+			// Any map that deals with Control Points.
+			int master_ent = -1;
+			while ((master_ent = FindEntityByClassname(master_ent, "team_control_point_master")) != -1)
+			{
+				int point_ent = -1;
+
+				int RedPoints = 0;
+				int BluPoints = 0;
+
+				while ((point_ent = FindEntityByClassname(point_ent, "team_control_point")) != -1)
+				{
+					int ThisTeam = GetEntProp(point_ent, Prop_Send, "m_iTeamNum");
+					if (ThisTeam == view_as<int>(TFTeam_Red)) RedPoints++;
+					if (ThisTeam == view_as<int>(TFTeam_Blue)) BluPoints++;
+				}
+
+				if (RedPoints < BluPoints) g_TF2_GameModeExtension = TGE_RedAttacksBlu;
+				if (BluPoints < RedPoints) g_TF2_GameModeExtension = TGE_BluAttacksRed;
+				if (RedPoints == BluPoints) g_TF2_GameModeExtension = TGE_Symmetrical;
+			}
+		}
+		// Nothing was found.
+		g_TF2_GameModeExtension = TGE_NoExtension;
 	}
 }
 
@@ -777,8 +812,13 @@ public Action Timer_DrawContrackerHud(Handle hTimer)
 		// Add text if we've completed the Contract.
 		if (ClientContract.IsContractComplete())
 		{
-			char CompleteText[] = "\nCOMPLETE - Type /c to\nselect a new Contract.";
+			char CompleteText[] = "CONTRACT COMPLETE - Type /c to\nselect a new Contract.";
 			StrCat(DisplayText, sizeof(DisplayText), CompleteText);
+		}
+		else if (!ClientContract.IsContractCompletableForClient(i))
+		{
+			char WarningText[] = "This Contract cannot be completed.\nType /c to select a new Contract.";
+			StrCat(DisplayText, sizeof(DisplayText), WarningText);
 		}
 		else
 		{
@@ -841,7 +881,6 @@ public Action Timer_DrawContrackerHud(Handle hTimer)
 				
 				char TimerText[16] = " [TIME: %ds]";
 				// Display a timer if we have one active.
-				// NOTE: This will only display the first timer found!
 				for (int k = 0; k < ClientContractObjective.m_hEvents.Length; k++)
 				{
 					ContractObjectiveEvent ObjEvent;
@@ -965,41 +1004,19 @@ public Action Timer_ProcessEvents(Handle hTimer)
 void ProcessLogicForContractObjective(Contract ClientContract, int objective_id, int client, const char[] event, int value)
 {
 	if (!ClientContract.IsContractInitalized()) return;
-	if (ClientContract.IsContractComplete()) return;
 
 	if (g_DebugProcessing.BoolValue)
 	{
 		LogMessage("[ZContracts] Processing event [%s, %d] for %N", event, value, client);
 	}
 
-	// Get our objective.
 	ContractObjective Objective;
 	ClientContract.GetObjective(objective_id, Objective);
+
+	// Is this contract completed or able to be completed right now?
+	if (ClientContract.IsContractComplete()) return;
 	if (Objective.IsObjectiveComplete()) return;
-
-	// Restriction checks.
-	char Map[256];
-	GetCurrentMap(Map, sizeof(Map));
-	if (!StrEqual(Map, "") && StrContains(Map, ClientContract.m_sMapRestriction) == -1) return;
-	if (!PerformWeaponCheck(ClientContract, client)) return;
-	if (ClientContract.m_iTeamRestriction != -1 && GetClientTeam(client) != ClientContract.m_iTeamRestriction) return;
-
-	switch (GetEngineVersion())
-	{
-		case Engine_TF2:
-		{
-			if (!TF2_IsCorrectClass(client, ClientContract)) return;
-			if (!TF2_ValidGameRulesEntityExists(ClientContract.m_sRequiredGameRulesEntity)) return;
-			if ((ClientContract.m_iGameTypeRestriction != view_as<int>(TGE_NoExtension)) 
-			&& (ClientContract.m_iGameTypeRestriction != view_as<int>(g_TF2_GameModeExtension))) return;
-		}
-		case Engine_CSGO:
-		{
-			if (ClientContract.m_iGameTypeRestriction != -1 && !CSGO_IsCorrectGameType(ClientContract.m_iGameTypeRestriction)) return;
-			if (ClientContract.m_iGameModeRestriction != -1 && !CSGO_IsCorrectGameMode(ClientContract.m_iGameModeRestriction)) return;
-			if (ClientContract.m_iSkirmishIDRestriction != -1 && !CSGO_IsCorrectSkirmishID(ClientContract.m_iSkirmishIDRestriction)) return;
-		}
-	}
+	if (!ClientContract.IsContractCompletableForClient(client)) return;
 
 	// Loop over all of our objectives and see if this event matches.
 	for (int i = 0; i < Objective.m_hEvents.Length; i++)
@@ -1280,33 +1297,6 @@ void IncrementObjectiveProgress(int client, int value, Contract ClientContract, 
 	ClientContractObjective.m_bNeedsDBSave = true;
 }
 
-bool PerformWeaponCheck(Contract ClientContract, int client)
-{
-	// TODO: Weapon check
-	if (!StrEqual("", ClientContract.m_sWeaponItemDefRestriction)
-	|| !StrEqual("", ClientContract.m_sWeaponClassnameRestriction))
-	{
-		int ClientWeapon = GetEntPropEnt(client, Prop_Send, "m_hActiveWeapon");
-		if (IsValidEntity(ClientWeapon))
-		{
-			// Item definition index check:
-			if (!StrEqual("", ClientContract.m_sWeaponItemDefRestriction))
-			{
-				int DefIndex = GetEntProp(ClientWeapon, Prop_Send, "m_iItemDefinitionIndex");
-				if (DefIndex != StringToInt(ClientContract.m_sWeaponItemDefRestriction)) return false;
-			}
-			// Classname check:
-			if (!StrEqual("", ClientContract.m_sWeaponClassnameRestriction))
-			{
-				char Classname[64];
-				GetEntityClassname(ClientWeapon, Classname, sizeof(Classname));
-				if (!StrContains(Classname, ClientContract.m_sWeaponClassnameRestriction)) return false;
-			}
-		}
-	}
-	return true;
-}
-
 // ============ DEBUG FUNCTIONS ============
 
 /**
@@ -1576,111 +1566,4 @@ public Action DebugSaveContract(int client, int args)
 	}
 
 	return Plugin_Handled;
-}
-// ============ UTILITY FUNCTIONS ============
-
-
-public bool IsClientValid(int client)
-{
-	if (client <= 0 || client > MaxClients)return false;
-	if (!IsClientInGame(client))return false;
-	if (!IsClientAuthorized(client))return false;
-	return true;
-}
-
-bool HasClientCompletedContract(int client, char UUID[MAX_UUID_SIZE])
-{
-	// Could this be made any faster? I'm not a real programmer.
-	// The answer is, yes it can.
-	if (!IsClientValid(client)) return false;
-	if (IsFakeClient(client) && !g_BotContracts.BoolValue) return false;
-	return CompletedContracts[client].ContainsKey(UUID);
-}
-
-bool CanActivateContract(int client, char UUID[MAX_UUID_SIZE])
-{
-	if (IsFakeClient(client) && !g_BotContracts.BoolValue) return false;
-	if (!IsClientValid(client))
-	{
-		ThrowError("Invalid client index. (%d)", client);
-	}
-
-	// Grab the Contract from the schema.
-	if (g_ContractSchema.JumpToKey(UUID))
-	{
-		// Construct the required contracts.
-		if (g_ContractSchema.JumpToKey("required_contracts", false))
-		{
-			int Value = 0;
-			for (;;)
-			{
-				char ContractUUID[MAX_UUID_SIZE];
-				char ValueStr[4];
-				IntToString(Value, ValueStr, sizeof(ValueStr));
-
-				g_ContractSchema.GetString(ValueStr, ContractUUID, sizeof(ContractUUID), "{}");
-				// If we reach a blank UUID, we're at the end of the list.
-				if (StrEqual("{}", ContractUUID)) break;
-				if (CompletedContracts[client].ContainsKey(ContractUUID))
-				{
-					g_ContractSchema.Rewind();
-					return true;
-				}
-				Value++;
-			}
-			g_ContractSchema.GoBack();
-		}
-		else
-		{
-			g_ContractSchema.Rewind();
-			return true;	
-		}
-	}
-	g_ContractSchema.Rewind();
-	return false;
-}
-
-// TODO: Can this be made faster?
-void GiveRandomContract(int client)
-{
-	if (IsFakeClient(client) && !g_BotContracts.BoolValue) return;
-	if (!IsClientValid(client))
-	{
-		ThrowError("Invalid client index. (%d)", client);
-	}
-	int RandomContractID = GetRandomInt(0, g_ContractsLoaded-1);
-	char RandomUUID[MAX_UUID_SIZE];
-	int i = 0;
-
-	g_ContractSchema.GotoFirstSubKey();
-	do
-	{
-		if (i == RandomContractID)
-		{
-			g_ContractSchema.GetSectionName(RandomUUID, sizeof(RandomUUID));
-			break;
-		}
-		i++;
-	}
-	while(g_ContractSchema.GotoNextKey());
-	g_ContractSchema.Rewind();
-
-	// See if we can activate.
-	if (!CanActivateContract(client, RandomUUID) || HasClientCompletedContract(client, RandomUUID))
-	{
-		// Try again.
-		GiveRandomContract(client);
-		return;
-	}
-
-	// Grant Contract.
-	if (IsFakeClient(client) && !g_BotContracts.BoolValue)
-	{
-		SetClientContract(client, RandomUUID, false, false);
-	}
-	else
-	{
-		SetClientContract(client, RandomUUID, true, true);
-	}
-	
 }

@@ -19,7 +19,9 @@ void CreateContractMenu()
 	delete gContractMenu;
 	
 	gContractMenu = new Menu(ContractMenuHandler, MENU_ACTIONS_ALL);
-	gContractMenu.SetTitle("ZContracts - Contract Selector");
+	char MenuTitle[128] = "ZContracts %s - Contract Selector";
+	Format(MenuTitle, sizeof(MenuTitle), MenuTitle, PLUGIN_VERSION);
+	gContractMenu.SetTitle(MenuTitle);
 	gContractMenu.OptionFlags = MENUFLAG_NO_SOUND | MENUFLAG_BUTTON_EXIT;
 	
 	// This is a display for the current directory for the client. We will manipulate this
@@ -176,11 +178,12 @@ int ContractMenuHandler(Menu menu, MenuAction action, int param1, int param2)
 				Contract ClientContract;
 				GetClientContract(param1, ClientContract);
 
-				if (!CanActivateContract(param1, MenuKey))
+				if (IsContractLockedForClient(param1, MenuKey))
 				{
 					Format(MenuDisplay, sizeof(MenuDisplay), "[X] %s", MenuDisplay);
 					return RedrawMenuItem(MenuDisplay);		
 				}
+
 				if (HasClientCompletedContract(param1, MenuKey))
 				{
 					if (g_RepeatContracts.BoolValue && g_DisplayCompletionsInMenu.BoolValue)
@@ -196,6 +199,7 @@ int ContractMenuHandler(Menu menu, MenuAction action, int param1, int param2)
 					
 					return RedrawMenuItem(MenuDisplay);
 				}
+
 				if (StrEqual(ClientContract.m_sUUID, MenuKey))
 				{
 					Format(MenuDisplay, sizeof(MenuDisplay), "%s [ACTIVE]", MenuDisplay);
@@ -234,10 +238,11 @@ int ContractMenuHandler(Menu menu, MenuAction action, int param1, int param2)
 			if (MenuKey[0] == '{')
 			{
 				// Can we activate this contract?
-				if (!CanActivateContract(param1, MenuKey))
+				if (IsContractLockedForClient(param1, MenuKey))
 				{
 					CreateLockedContractMenu(param1, MenuKey);
 				}
+
 				// If we're allowed to repeat Contracts, allow us to repeat
 				// our currently selected contract if it's completed.
 				else if (g_RepeatContracts.BoolValue && 
@@ -472,7 +477,7 @@ void CreateObjectiveDisplay(int client, Contract ClientContract, bool unknown)
 	gContractObjeciveDisplay[client].DrawText(" ");
 
 	// Send this to our client.
-	gContractObjeciveDisplay[client].DrawItem("Return to Contracker");
+	gContractObjeciveDisplay[client].DrawItem("Open Contracker");
 	gContractObjeciveDisplay[client].DrawItem("Close");
 	gContractObjeciveDisplay[client].Send(client, ObjectiveDisplayHandler, 20);
 }
@@ -636,7 +641,7 @@ int LockedContractMenuHandler(Menu menu, MenuAction action, int param1, int para
 					Format(MenuDisplay, sizeof(MenuDisplay), "%s [ACTIVE]", MenuDisplay);
 					return RedrawMenuItem(MenuDisplay);
 				}
-				if (!CanActivateContract(param1, MenuKey))
+				if (IsContractLockedForClient(param1, MenuKey))
 				{
 					Format(MenuDisplay, sizeof(MenuDisplay), "[X] %s", MenuDisplay);
 					return RedrawMenuItem(MenuDisplay);		
@@ -664,7 +669,7 @@ int LockedContractMenuHandler(Menu menu, MenuAction action, int param1, int para
 			if (MenuKey[0] == '{')
 			{
 				// Can we activate this contract?
-				if (!CanActivateContract(param1, MenuKey))
+				if (IsContractLockedForClient(param1, MenuKey))
 				{
 					CreateLockedContractMenu(param1, MenuKey);
 					delete menu;

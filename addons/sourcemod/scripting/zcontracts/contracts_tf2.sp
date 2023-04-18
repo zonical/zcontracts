@@ -124,14 +124,6 @@ int TF2_GetTeamIndexFromString(const char[] team)
     return -1;
 }
 
-// Checks to see if the client's class matches.
-bool TF2_IsCorrectClass(int client, Contract ClientContract)
-{
-    TFClassType Class = TF2_GetPlayerClass(client);
-    if (Class == TFClass_Unknown) return false;
-    return ClientContract.m_bClass[Class] == true;
-}
-
 // Checks to see if a GameRules entity exists on the current map.
 bool TF2_ValidGameRulesEntityExists(const char[] classname)
 {
@@ -151,7 +143,6 @@ bool TF2_ValidGameRulesEntityExists(const char[] classname)
 	return false;
 }
 
-// Sets the GME.
 public any Native_SetTF2GameModeExt(Handle plugin, int numParams)
 {
     TF2GameMode_Extensions value = view_as<TF2GameMode_Extensions>(GetNativeCell(1));
@@ -159,41 +150,7 @@ public any Native_SetTF2GameModeExt(Handle plugin, int numParams)
     return true;
 }
 
-TF2GameMode_Extensions TF2_GetCurrentMapGME()
+public any Native_GetTF2GameModeExt(Handle plugin, int numParams)
 {
-    // Fire a forward that asks any other plugins if they
-    // wish to set the GME themselves with SetTF2GameModeExt.
-    Call_StartForward(g_fOnGameModeExtCheck);
-    Action ShouldBlock;
-    Call_Finish(ShouldBlock);
-
-    if (ShouldBlock >= Plugin_Changed)
-    {
-        // If a plugin developer is smart and uses SetTF2GameModeExt in the forward,
-        // we can just return the global.
-        return g_TF2_GameModeExtension;
-    }
-
-    // Any map that deals with Control Points.
-    int master_ent = -1;
-    while ((master_ent = FindEntityByClassname(master_ent, "team_control_point_master")) != -1)
-    {
-        int point_ent = -1;
-
-        int RedPoints = 0;
-        int BluPoints = 0;
-
-        while ((point_ent = FindEntityByClassname(point_ent, "team_control_point")) != -1)
-        {
-            int ThisTeam = GetEntProp(point_ent, Prop_Send, "m_iTeamNum");
-            if (ThisTeam == view_as<int>(TFTeam_Red)) RedPoints++;
-            if (ThisTeam == view_as<int>(TFTeam_Blue)) BluPoints++;
-        }
-
-        if (RedPoints < BluPoints) return TGE_RedAttacksBlu;
-        if (BluPoints < RedPoints) return TGE_BluAttacksRed;
-        if (RedPoints == BluPoints) return TGE_Symmetrical;
-    }
-
-    return TGE_NoExtension;
+    return g_TF2_GameModeExtension;
 }
