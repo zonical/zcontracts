@@ -1,12 +1,3 @@
-
-public bool IsClientValid(int client)
-{
-	if (client <= 0 || client > MaxClients)return false;
-	if (!IsClientInGame(client))return false;
-	if (!IsClientAuthorized(client))return false;
-	return true;
-}
-
 bool HasClientCompletedContract(int client, char UUID[MAX_UUID_SIZE])
 {
 	// Could this be made any faster? I'm not a real programmer.

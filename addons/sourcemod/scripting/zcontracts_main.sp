@@ -49,9 +49,7 @@ GlobalForward g_fOnObjectiveCompleted;
 GlobalForward g_fOnContractCompleted;
 GlobalForward g_fOnContractPreSave;
 GlobalForward g_fOnObjectivePreSave;
-GlobalForward g_fOnGameModeExtCheck;
-
-float g_LastValidProgressTime = -1.0;
+GlobalForward g_fOnProcessContractLogic;
 
 // This arraylist contains a list of objectives that we need to update.
 ArrayList g_ObjectiveUpdateQueue;
@@ -74,11 +72,6 @@ char SelectOptionSound[64];
 // How often the HUD will refresh itself.
 #define HUD_REFRESH_RATE 0.5
 
-// Subplugins.
-#include "zcontracts/contracts_tf2.sp"
-#include "zcontracts/contracts_csgo.sp"
-// Any custom engine plugins must be included before contracts_schema so
-// custom values can be loaded from the schema.
 #include "zcontracts/contracts_schema.sp"
 #include "zcontracts/contracts_utils.sp"
 #include "zcontracts/contracts_timers.sp"
@@ -104,11 +97,7 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 	g_fOnContractCompleted = new GlobalForward("OnContractCompleted", ET_Ignore, Param_Cell, Param_String, Param_Array);
 	g_fOnContractPreSave = new GlobalForward("OnContractPreSave", ET_Event, Param_Cell, Param_String, Param_Array);
 	g_fOnObjectivePreSave = new GlobalForward("OnObjectivePreSave", ET_Event, Param_Cell, Param_String, Param_Array);
-	
-	switch (GetEngineVersion())
-	{
-		case Engine_TF2: g_fOnGameModeExtCheck = new GlobalForward("OnTF2GameModeExtCheck", ET_Event);
-	}
+	g_fOnProcessContractLogic = new GlobalForward("OnProcessContractLogic", ET_Event, Param_Cell, Param_String, Param_String, Param_Cell, Param_Array, Param_Array);
 	
 	// ================ NATIVES ================
 	CreateNative("GetContrackerVersion", Native_GetContrackerVersion);
@@ -128,24 +117,12 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 	CreateNative("SetCompletedContractInfoDatabase", Native_SetContractCompletionInfoDatabase);
 	CreateNative("SetSessionDatabase", Native_SetSessionDatabase);
 
-	CreateNative("SetTF2GameModeExt", Native_SetTF2GameModeExt);
-	CreateNative("GetTF2GameModeExt", Native_GetTF2GameModeExt);
-
 	return APLRes_Success;
 }
 
 public void OnPluginStart()
 {
 	PrintToServer("[ZContracts] Initalizing ZContracts %s - Contracker Version: %d", PLUGIN_VERSION, CONTRACKER_VERSION);
-
-	// CONFIG
-	/*g_Config = new KeyValues("ZContracts");
-	char ConfigDir[PLATFORM_MAX_PATH];
-	BuildPath(Path_SM, ConfigDir, sizeof(ConfigDir), "configs/zcontracts_config.txt");
-	if (!g_Config.ImportFromFile(ConfigDir))
-	{
-		SetFailState("Failed to load config file.");
-	}*/
 
 	// Create our Hud Sync object.
 	g_HudSync = CreateHudSynchronizer();
@@ -186,15 +163,11 @@ public void OnPluginStart()
 	{
 		case Engine_TF2:
 		{
-			TF2_CreatePluginConVars();
-			TF2_CreateEventHooks();
-
 			IncrementProgressSound = "Quest.StatusTickNovice";
 			ContractCompletedSound = "Quest.TurnInAccepted";
 			ProgressLoadedSound = "CYOA.NodeActivate";
 			SelectOptionSound = "CYOA.StaticFade";
 		}
-		// case Engine_CSGO: CSGO_CreatePluginConVars();
 	}
 
 	PrecacheSound(IncrementProgressSound);
@@ -337,49 +310,6 @@ public void OnClientDisconnect(int client)
 	g_NextHUDUpdate[client] = -1.0;
 }
 
-public void OnMapStart()
-{
-	g_LastValidProgressTime = -1.0;
-
-	// Determine the new gamemode extension.
-	if (GetEngineVersion() == Engine_TF2)
-	{
-		// Fire a forward that asks any other plugins if they
-		// wish to set the GME themselves with SetTF2GameModeExt.
-		Call_StartForward(g_fOnGameModeExtCheck);
-		Action ShouldBlock;
-		Call_Finish(ShouldBlock);
-
-		// If a plugin developer overrides the gamemode extension in
-		// the forward, don't worry about finding it ourselves.
-		if (ShouldBlock < Plugin_Changed)
-		{
-			// Any map that deals with Control Points.
-			int master_ent = -1;
-			while ((master_ent = FindEntityByClassname(master_ent, "team_control_point_master")) != -1)
-			{
-				int point_ent = -1;
-
-				int RedPoints = 0;
-				int BluPoints = 0;
-
-				while ((point_ent = FindEntityByClassname(point_ent, "team_control_point")) != -1)
-				{
-					int ThisTeam = GetEntProp(point_ent, Prop_Send, "m_iTeamNum");
-					if (ThisTeam == view_as<int>(TFTeam_Red)) RedPoints++;
-					if (ThisTeam == view_as<int>(TFTeam_Blue)) BluPoints++;
-				}
-
-				if (RedPoints < BluPoints) g_TF2_GameModeExtension = TGE_RedAttacksBlu;
-				if (BluPoints < RedPoints) g_TF2_GameModeExtension = TGE_BluAttacksRed;
-				if (RedPoints == BluPoints) g_TF2_GameModeExtension = TGE_Symmetrical;
-			}
-		}
-		// Nothing was found.
-		g_TF2_GameModeExtension = TGE_NoExtension;
-	}
-}
-
 public void OnDisplayHudChange(ConVar convar, char[] oldValue, char[] newValue)
 {
 	// If the value is ever set to zero, the timer automatically kills itself
@@ -457,7 +387,6 @@ public any Native_CallContrackerEvent(Handle plugin, int numParams)
 	}
 
 	if (IsFakeClient(client) && !g_BotContracts.BoolValue) return false;
-	if (GetGameTime() >= g_LastValidProgressTime && g_LastValidProgressTime != -1.0) return false;
 
 	Contract ClientContract;
 	GetClientContract(client, ClientContract);
@@ -1005,11 +934,6 @@ void ProcessLogicForContractObjective(Contract ClientContract, int objective_id,
 {
 	if (!ClientContract.IsContractInitalized()) return;
 
-	if (g_DebugProcessing.BoolValue)
-	{
-		LogMessage("[ZContracts] Processing event [%s, %d] for %N", event, value, client);
-	}
-
 	ContractObjective Objective;
 	ClientContract.GetObjective(objective_id, Objective);
 
@@ -1017,6 +941,31 @@ void ProcessLogicForContractObjective(Contract ClientContract, int objective_id,
 	if (ClientContract.IsContractComplete()) return;
 	if (Objective.IsObjectiveComplete()) return;
 	if (!ClientContract.IsContractCompletableForClient(client)) return;
+
+	// Call forward to see if any plugins want to block this function.
+	Call_StartForward(g_fOnProcessContractLogic);
+	Call_PushCell(client);
+	Call_PushString(ClientContract.m_sUUID);
+	Call_PushString(event);
+	Call_PushCell(value);
+	Call_PushArray(ClientContract, sizeof(Contract));
+	Call_PushArray(Objective, sizeof(ContractObjective));
+	bool ShouldBlock = false;
+	Call_Finish(ShouldBlock);
+
+	if (ShouldBlock)
+	{
+		if (g_DebugProcessing.BoolValue)
+		{
+			LogMessage("[ZContracts] Event [%s, %d] for %N was blocked.", event, value, client);
+		}
+		return;
+	}
+
+	if (g_DebugProcessing.BoolValue)
+	{
+		LogMessage("[ZContracts] Processing event [%s, %d] for %N", event, value, client);
+	}
 
 	// Loop over all of our objectives and see if this event matches.
 	for (int i = 0; i < Objective.m_hEvents.Length; i++)

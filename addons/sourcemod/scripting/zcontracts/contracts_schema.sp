@@ -1,7 +1,8 @@
 
 
 #include <stocksoup/files>
-#include <zcontracts/zcontracts>
+#include <zcontracts/zcontracts_tf2>
+#include <zcontracts/zcontracts_csgo>
 
 KeyValues g_ContractSchema;
 ArrayList g_Directories;

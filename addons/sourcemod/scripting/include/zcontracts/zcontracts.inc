@@ -12,6 +12,14 @@
 
 stock int Int_Min(int a, int b) { return a < b ? a : b; }
 
+stock bool IsClientValid(int client)
+{
+	if (client <= 0 || client > MaxClients)return false;
+	if (!IsClientInGame(client))return false;
+	if (!IsClientAuthorized(client))return false;
+	return true;
+}
+
 enum ContractType
 {
 	// Each objective has it's own progress bar. All objectives must be completed
@@ -294,17 +302,13 @@ enum struct Contract
 		}
 
 		// Specific game check.
+		// TODO: Remove me!
+		/*
 		switch (GetEngineVersion())
 		{
 			case Engine_TF2:
 			{
-				TFClassType Class = TF2_GetPlayerClass(client);
-				if (Class == TFClass_Unknown) return false;
-				if (!this.m_bClass[Class]) return false;
-
-				if (!TF2_ValidGameRulesEntityExists(this.m_sRequiredGameRulesEntity)) return false;
-				if ((this.m_iGameTypeRestriction != view_as<int>(TGE_NoExtension)) 
-				&& (this.m_iGameTypeRestriction != view_as<int>(GetTF2GameModeExt()))) return false;
+				
 			}
 			case Engine_CSGO:
 			{
@@ -312,7 +316,7 @@ enum struct Contract
 				if (this.m_iGameModeRestriction != -1 && !CSGO_IsCorrectGameMode(this.m_iGameModeRestriction)) return false;
 				if (this.m_iSkirmishIDRestriction != -1 && !CSGO_IsCorrectSkirmishID(this.m_iSkirmishIDRestriction)) return false;
 			}
-		}
+		}*/
 
 		// All checks passed, we're good to go!
 		return true;
@@ -513,19 +517,6 @@ native bool DeleteObjectiveProgressDatabase(char steamid64[64], char UUID[MAX_UU
 */
 native bool DeleteAllObjectiveProgressDatabase(char steamid64[64], char UUID[MAX_UUID_SIZE]);
 
-/**
- * Overrides the value of the gamemode extension for TF2 logic. See contracts_tf2.sp
- * @param value    The new value of the the gamemode extension.
-*/
-native bool SetTF2GameModeExt(int value);
-
-/**
- * Gets the gamemode extension that is used for TF2 logic. See contracts_tf2.sp
- * @return	Value of the gamemode extension.
-*/
-native int GetTF2GameModeExt();
-
-
 // =========================== FORWARDS ===========================
 
 /**
@@ -566,12 +557,15 @@ forward bool OnContractPreSave(int client, char UUID[MAX_UUID_SIZE], Contract hC
 forward bool OnObjectivePreSave(int client, char UUID[MAX_UUID_SIZE], ContractObjective hObjective);
 
 /**
- * Called at the start of every map when ZContracts checks to see what type of
- * map is being played (e.g Control Points but it's A/D or Symmetrical). This
- * Forward is best used alongside SetTF2GameModeExt to alter the gamemode extension.
- * A value of Plugin_Changed or higher must be returned otherwise ZContracts will
- * override any value set by SetTF2GameModeExt.
- *
- * @error This forward only exists if the plugin is running under TF2.
+ * Called when an event is about to potentially add progress to a Contract.
+ * 
+ * @param client	Client index.
+ * @param UUID		UUID of the Contract.
+ * @param event		Name of the event being processed.
+ * @param value		Value passed by the event.
+ * @param hContract	Enum struct of the Contract.
+ * @param hObjective	Enum struct of the Objective.
+ * @return A value higher than Plugin_Continue will prevent potential progress being added to the Contract.
  */
-forward Action OnTF2GameModeExtCheck();
+forward Action OnProcessContractLogic(int client, char UUID[MAX_UUID_SIZE], char event[MAX_EVENT_SIZE],
+int value, Contract hContract, ContractObjective hObjective);

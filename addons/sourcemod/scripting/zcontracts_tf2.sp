@@ -1,21 +1,43 @@
 #include <sourcemod>
 #include <sdkhooks>
-#include <zcontracts/zcontracts>
 #include <tf2>
 #include <tf2_stocks>
+#include <zcontracts/zcontracts>
+#include <zcontracts/zcontracts_tf2>
+
+float g_LastValidProgressTime = -1.0;
+
+ConVar g_TF2_AllowSetupProgress;
+ConVar g_TF2_AllowRoundEndProgress;
+ConVar g_TF2_AllowWaitingProgress;
+
+TF2GameMode_Extensions g_TF2_GameModeExtension = TGE_NoExtension;
+
+GlobalForward g_fOnGameModeExtCheck;
 
 public Plugin myinfo =
 {
-	name = "ZContracts - TF2 Event Logic",
+	name = "ZContracts - TF2 Logic",
 	author = "ZoNiCaL",
-	description = "Hooks game events into the ZContract system.",
-	version = "0.7.3",
+	description = "Creates TF2-specific events for the ZContract system and handles special TF2 logic.",
+	version = "0.8.0",
 	url = ""
 };
+
+public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max)
+{
+	g_fOnGameModeExtCheck = new GlobalForward("OnTF2GameModeExtCheck", ET_Event);
+	return APLRes_Success;
+}
 
 // Hook all of our game events.
 public void OnPluginStart()
 {
+	if (GetEngineVersion() != Engine_TF2)
+	{
+		SetFailState("This plugin is designed for TF2 only.");
+	}
+
 	// Hook player events.
 	HookEvent("player_death", OnPlayerDeath);
 	HookEvent("player_hurt", OnPlayerHurt);
@@ -27,7 +49,7 @@ public void OnPluginStart()
 	HookEvent("player_builtobject", OnObjectBuilt);
 	HookEvent("player_upgradedobject", OnObjectUpgraded);
 	HookEvent("object_destroyed", OnObjectDestroyed);
-	
+
 	HookEvent("payload_pushed", OnPayloadPushed);
 
 	HookEvent("pass_get", OnPassGet);
@@ -40,6 +62,19 @@ public void OnPluginStart()
 	HookEvent("teamplay_point_captured", OnPointCaptured);
 	HookEvent("teamplay_win_panel", OnWinPanel);
 	HookEvent("teamplay_flag_event", OnFlagEvent);
+
+	HookEvent("teamplay_round_win", TF2_OnRoundWin);
+	HookEvent("teamplay_round_start", TF2_OnRoundStart);
+	HookEvent("teamplay_waiting_begins", TF2_OnWaitingStart);
+	HookEvent("teamplay_waiting_ends", TF2_OnWaitingEnd);
+	HookEvent("teamplay_setup_finished", TF2_OnSetupEnd);
+
+	CreateNative("SetTF2GameModeExt", Native_SetTF2GameModeExt);
+	CreateNative("GetTF2GameModeExt", Native_GetTF2GameModeExt);
+
+	g_TF2_AllowSetupProgress = CreateConVar("zctf2_allow_setup_trigger", "1", "If disabled, Objective progress will not be counted during setup time.");
+	g_TF2_AllowRoundEndProgress = CreateConVar("zctf2_allow_roundend_trigger", "0", "If disabled, Objective progress will not be counted after a winner is declared and the next round starts.");
+	g_TF2_AllowWaitingProgress = CreateConVar("zctf2_allow_waitingforplayers_trigger", "0", "If disabled, Objective progress will not be counted during the \"waiting for players\" period before a game starts.");
 }
 
 public void OnAllPluginsLoaded()
@@ -50,6 +85,137 @@ public void OnAllPluginsLoaded()
 		SetFailState("This plugin requires the main ZContracts plugin to function.");
 	}
 }
+
+// ============================= GAMEMODE EXTENSIONS =============================
+
+public void OnMapStart()
+{
+	g_LastValidProgressTime = -1.0;
+
+	// Fire a forward that asks any other plugins if they
+	// wish to set the GME themselves with SetTF2GameModeExt.
+	Call_StartForward(g_fOnGameModeExtCheck);
+	Action ShouldBlock;
+	Call_Finish(ShouldBlock);
+
+	// If a plugin developer overrides the gamemode extension in
+	// the forward, don't worry about finding it ourselves.
+	if (ShouldBlock < Plugin_Changed)
+	{
+		// Any map that deals with Control Points.
+		int master_ent = -1;
+		while ((master_ent = FindEntityByClassname(master_ent, "team_control_point_master")) != -1)
+		{
+			int point_ent = -1;
+
+			int RedPoints = 0;
+			int BluPoints = 0;
+
+			while ((point_ent = FindEntityByClassname(point_ent, "team_control_point")) != -1)
+			{
+				int ThisTeam = GetEntProp(point_ent, Prop_Send, "m_iTeamNum");
+				if (ThisTeam == view_as<int>(TFTeam_Red)) RedPoints++;
+				if (ThisTeam == view_as<int>(TFTeam_Blue)) BluPoints++;
+			}
+
+			if (RedPoints < BluPoints) g_TF2_GameModeExtension = TGE_RedAttacksBlu;
+			if (BluPoints < RedPoints) g_TF2_GameModeExtension = TGE_BluAttacksRed;
+			if (RedPoints == BluPoints) g_TF2_GameModeExtension = TGE_Symmetrical;
+		}
+	}
+	// Nothing was found.
+	g_TF2_GameModeExtension = TGE_NoExtension;
+}
+
+public any Native_SetTF2GameModeExt(Handle plugin, int numParams)
+{
+    TF2GameMode_Extensions value = view_as<TF2GameMode_Extensions>(GetNativeCell(1));
+    g_TF2_GameModeExtension = value;
+    return true;
+}
+
+public any Native_GetTF2GameModeExt(Handle plugin, int numParams)
+{
+    return g_TF2_GameModeExtension;
+}
+
+// ============================= LOGIC =============================
+
+public Action OnProcessContractLogic(int client, char UUID[MAX_UUID_SIZE], char event[MAX_EVENT_SIZE],
+int value, Contract ClientContract, ContractObjective ClientContractObjective)
+{
+	if (GetGameTime() >= g_LastValidProgressTime && g_LastValidProgressTime != -1.0) return Plugin_Stop;
+	
+	// Class check.
+	TFClassType Class = TF2_GetPlayerClass(client);
+	if (Class == TFClass_Unknown) return Plugin_Stop;
+	if (!ClientContract.m_bClass[Class]) return Plugin_Stop;
+
+	// Gamemode extension check.
+	if (!TF2_ValidGameRulesEntityExists(ClientContract.m_sRequiredGameRulesEntity)) return Plugin_Stop;
+	if ((ClientContract.m_iGameTypeRestriction != view_as<int>(TGE_NoExtension)) 
+	&& (ClientContract.m_iGameTypeRestriction != view_as<int>(g_TF2_GameModeExtension))) return Plugin_Stop;
+
+	// All good! :)
+	return Plugin_Continue;
+}
+
+public Action TF2_OnRoundWin(Event event, const char[] name, bool dontBroadcast)
+{
+    if (!g_TF2_AllowRoundEndProgress.BoolValue)
+    {
+        // Block any events from being processed after this time.
+        g_LastValidProgressTime = GetGameTime() + 1.0; // Add an extra second to let events catch up.
+    }
+    else
+    {
+        g_LastValidProgressTime = -1.0;
+    }
+    return Plugin_Continue;
+}
+
+public Action TF2_OnRoundStart(Event event, const char[] name, bool dontBroadcast)
+{
+    if (view_as<bool>(GameRules_GetProp("m_bInSetup")) && !g_TF2_AllowSetupProgress.BoolValue)
+    {
+        // Block any events from being processed after this time.
+        g_LastValidProgressTime = GetGameTime();
+    }
+    else
+    {
+        g_LastValidProgressTime = -1.0;
+    }
+    return Plugin_Continue;
+}
+
+public Action TF2_OnWaitingStart(Event event, const char[] name, bool dontBroadcast)
+{
+    if (!g_TF2_AllowWaitingProgress.BoolValue)
+    {
+        // Block any events from being processed after this time.
+        g_LastValidProgressTime = GetGameTime();
+    }
+    else
+    {
+        g_LastValidProgressTime = -1.0;
+    }
+    return Plugin_Continue;
+}
+
+public Action TF2_OnWaitingEnd(Event event, const char[] name, bool dontBroadcast)
+{
+    g_LastValidProgressTime = -1.0;
+    return Plugin_Continue;
+}
+
+public Action TF2_OnSetupEnd(Event event, const char[] name, bool dontBroadcast)
+{
+    g_LastValidProgressTime = -1.0;
+    return Plugin_Continue;
+}
+
+
+// ============================= TF2 SPECIFIC EVENTS =============================
 
 // Events relating to the attacker killing a victim.
 public Action OnPlayerDeath(Event event, const char[] name, bool dontBroadcast)
@@ -387,25 +553,4 @@ public Action OnWorldDeath(Event event, const char[] name, bool dontBroadcast)
 	if (!IsClientValid(killer)) return Plugin_Continue;
 	CallContrackerEvent(killer, "CONTRACTS_TF2_PLAYER_KILL_WORLD", 1);
 	return Plugin_Continue;
-}
-
-
-public bool IsClientValid(int client)
-{
-	if (client <= 0 || client > MaxClients)return false;
-	if (!IsClientInGame(client))return false;
-	if (!IsClientAuthorized(client))return false;
-	return true;
-}
-
-
-// don't ask.
-stock float fmodf(float num, float denom)
-{
-    return num - denom * RoundToFloor(num / denom);
-}
-
-stock float operator%(float oper1, float oper2)
-{
-    return fmodf(oper1, oper2);
 }

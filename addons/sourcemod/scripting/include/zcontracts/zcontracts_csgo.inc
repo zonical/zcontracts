@@ -1,7 +1,14 @@
+#if defined __zcontracts_csgo_included
+	#endinput
+#endif
+
+#define __zcontracts_csgo_included
+
 #include <cstrike>
 
-// Intended for contracts_schema.
-int CSGO_GetTeamIndexFromString(const char[] team)
+// ============================= SCHEMA FUNCTIONS =============================
+
+stock int CSGO_GetTeamIndexFromString(const char[] team)
 {
     if (StrEqual(team, "t") || StrEqual(team, "terrorists")) 
     {
@@ -16,9 +23,8 @@ int CSGO_GetTeamIndexFromString(const char[] team)
     return -1;
 }
 
-// Intended for contracts_schema. Returns -1 if no int value can be
-// assigned to gametype!
-int CSGO_GetGameTypeIndexFromString(const char[] gametype)
+// Returns -1 if no int value can be assigned to gametype!
+stock int CSGO_GetGameTypeIndexFromString(const char[] gametype)
 {
     if (StrEqual(gametype, "casual")) return 0;
     if (StrEqual(gametype, "competitive")) return 0;
@@ -37,8 +43,7 @@ int CSGO_GetGameTypeIndexFromString(const char[] gametype)
     return -1;
 }
 
-// Intended for contracts_schema. Returns -1 if no int value can be
-// assigned to gamemode!
+// Returns -1 if no int value can be assigned to gamemode!
 int CSGO_GetGameModeIndexFromString(const char[] gamemode)
 {
     if (StrEqual(gamemode, "casual")) return 0;
@@ -58,8 +63,7 @@ int CSGO_GetGameModeIndexFromString(const char[] gamemode)
     return -1;
 }
 
-// Intended for contracts_schema. Returns -1 if no int value can be
-// assigned to gamemode!
+// Returns -1 if no int value can be assigned to gamemode!
 int CSGO_GetSkirmishIndexFromString(const char[] name)
 {
     if (StrEqual(name, "stabstabzap")) return 1;
@@ -82,7 +86,9 @@ int CSGO_GetSkirmishIndexFromString(const char[] name)
     return -1;
 }
 
-int CSGO_GetGameTypeRestriction(KeyValues ContractConf)
+// ============================= MISC FUNCTIONS =============================
+
+stock int CSGO_GetGameTypeRestriction(KeyValues ContractConf)
 {
     char gametype_id[16];
     ContractConf.GetString("game_type", gametype_id, sizeof(gametype_id), "-1");
@@ -94,7 +100,7 @@ int CSGO_GetGameTypeRestriction(KeyValues ContractConf)
     return CSGO_GetGameTypeIndexFromString(gametype_id);
 }
 
-int CSGO_GetGameModeRestriction(KeyValues ContractConf)
+stock int CSGO_GetGameModeRestriction(KeyValues ContractConf)
 {
     char gamemode_id[16];
     ContractConf.GetString("game_mode", gamemode_id, sizeof(gamemode_id), "-1");
@@ -106,7 +112,7 @@ int CSGO_GetGameModeRestriction(KeyValues ContractConf)
     return CSGO_GetGameModeIndexFromString(gamemode_id);
 }
 
-int CSGO_GetSkirmishRestriction(KeyValues ContractConf)
+stock int CSGO_GetSkirmishRestriction(KeyValues ContractConf)
 {
     char skirmish_id[16];
     ContractConf.GetString("skirmish_id", skirmish_id, sizeof(skirmish_id), "-1");
@@ -118,21 +124,21 @@ int CSGO_GetSkirmishRestriction(KeyValues ContractConf)
     return CSGO_GetSkirmishIndexFromString(skirmish_id);
 }
 
-bool CSGO_IsCorrectGameType(int game_type)
+stock bool CSGO_IsCorrectGameType(int game_type)
 {
     ConVar GameType = FindConVar("game_type");
     if (GameType == null) return false;
     return GameType.IntValue == game_type;
 }
 
-bool CSGO_IsCorrectGameMode(int game_mode)
+stock bool CSGO_IsCorrectGameMode(int game_mode)
 {
     ConVar GameMode = FindConVar("game_mode");
     if (GameMode == null) return false;
     return GameMode.IntValue == game_mode;
 }
 
-bool CSGO_IsCorrectSkirmishID(int skirmish_id)
+stock bool CSGO_IsCorrectSkirmishID(int skirmish_id)
 {
     ConVar SkirmishID = FindConVar("sv_skirmish_id");
     if (SkirmishID == null) return false;

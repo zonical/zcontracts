@@ -10,7 +10,7 @@ public Plugin myinfo =
 	name = "ZContracts - Event Logic",
 	author = "ZoNiCaL",
 	description = "Hooks game events into the ZContract system.",
-	version = "0.7.3",
+	version = "0.8.0",
 	url = ""
 };
 
@@ -131,12 +131,4 @@ public Action OnRoundWin(Event event, const char[] name, bool dontBroadcast)
 		}
 	}
 	return Plugin_Continue;
-}
-
-public bool IsClientValid(int client)
-{
-	if (client <= 0 || client > MaxClients)return false;
-	if (!IsClientInGame(client))return false;
-	if (!IsClientAuthorized(client))return false;
-	return true;
 }
