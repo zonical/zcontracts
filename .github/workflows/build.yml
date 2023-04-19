@@ -31,4 +31,4 @@ jobs:
         cd ./addons/sourcemod/scripting
         spcomp -i ./include/ zcontracts_main.sp -O2 -v2
         spcomp -i ./include/ zcontracts_events.sp -O2 -v2
-        spcomp -i ./include/ zcontracts_tf2events.sp -O2 -v2
+        spcomp -i ./include/ zcontracts_tf2.sp -O2 -v2
