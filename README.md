@@ -5,9 +5,16 @@ ZContracts (Beta) - Custom Contracker for SourceMod
 
 ZContracts is a plugin designed to emulate the Contracker progression system seen in Team Fortress 2. This project was heavily inspired by and started development during Creators.TF. The goal of this project is to provide an easy way for server developers to create a new gameplay experience for their players by completing as many Contracts as they can.
 
-The plugin is officially supported for Team Fortress 2 and work is being done to support CSGO.
+The plugin is officially supported for Team Fortress 2. Work has been started for CSGO but with the imminent release of CS2 and the uncertainty of SourceMod working on Source 2, I'm putting my focus towards supporting TF2.
 
 **DISCLAIMER:** This is a beta version! Documentation on existing features will be incomplete. Things are subject to change and there might be breaking changes!
+
+## TODO LIST for 1.0 release
+- [ ] Better weapon checking.
+- [ ] Weapon slot restrictions.
+- [ ] Subtract progress from a Contract.
+- [ ] Better Native API for other plugins.
+- [ ] Time limited Contracts.
 
 ## Installation
 
