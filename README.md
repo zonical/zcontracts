@@ -13,7 +13,7 @@ The plugin is officially supported for Team Fortress 2. Work has been started fo
 - [ ] Better weapon checking.
 - [ ] Weapon slot restrictions.
 - [ ] Subtract progress from a Contract.
-- [ ] Better Native API for other plugins.
+- [ ] Safer Native API for other plugins.
 - [ ] Time limited Contracts.
 
 ## Installation
@@ -27,11 +27,10 @@ The plugin is officially supported for Team Fortress 2. Work has been started fo
 2) Update `databases.cfg` to include an entry for `"zcontracts"`. An example can be found [here](https://github.com/zonical/zcontracts/blob/master/addons/sourcemod/configs/databases_example.cfg).
 3) Import the [SQL structure](https://github.com/zonical/zcontracts/blob/master/database/zcontracts.sql) into your database. 
 4) Turn on your server. There should be console output that starts with `[ZContracts]` when SourceMod is initalised. It will report how many Contracts are loaded and if a connection is established with the database.
+5) Double check that all the version numbers of all ZContracts plugins are synchronized. You can check this by typing `sm plugins list` in your server console. If the version are not synchronized, update your ZContracts install immediately.
 
 ## Building
-You will need the latest release of nosoop's stocksoup if you wish to build the plugin yourself. This is already included as a submodule inside the repository. When cloning the repository, make sure you grab the submodules as well: `git clone --recurse-submodules` and update the submodule when required: `git submodule update --remote --checkout`. Before compiling `zcontracts_main`, make sure there is a `scripting/zcontracts` folder with the required sub-plugins inside.
-
-`zcontracts_events` and `zcontracts_tf2events` are separate plugins that handle calling Contracker events based on events called by the game and engine. They can be removed for custom implentations of events.
+You will need the latest release of nosoop's stocksoup if you wish to build the plugin yourself. This is already included as a submodule inside the repository. When cloning the repository, make sure you grab the submodules as well: `git clone --recurse-submodules` and update the submodule when required: `git submodule update --remote --checkout`. Before compiling `zcontracts_main`, make sure there is a `scripting/zcontracts` folder with the required sub-plugins inside. If you make any edits to any of the enum structs, make sure you recompile all plugins that use ZContracts.
 
 ## Features
 - All Contract selection handled in-game. No third party website or API.
@@ -45,7 +44,7 @@ You will need the latest release of nosoop's stocksoup if you wish to build the 
 - [Lots of customisation (e.g Contracts can be repeated infinitely), all controllable with ConVars](https://github.com/zonical/zcontracts/wiki/ConVar's-and-Console-Commands).
 
 ## Usage
-This plugin, like any other SourceMod plugin, falls under the [SourceMod License](https://www.sourcemod.net/license.php) (specifically GPLv3). You are free to use this plugin on your server and modify the plugin source code to suit your own needs. Although not required, I would appreciate a mention in your server credits for the development/time that went into this plugin. The sample Contracts provided in this repositiory are free to be used, modified, or deleted.
+This plugin, like any other SourceMod plugin, falls under the [SourceMod License](https://www.sourcemod.net/license.php) (specifically GPLv3). You are free to use this plugin on your server and modify the plugin source code to suit your own needs. The sample Contracts provided in this repositiory are free to be used, modified, or deleted.
 
 ## Questions, Issues, PR's
 Feel free to contact me at `ZoNiCaL#9740` on Discord if you have any questions.
