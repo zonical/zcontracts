@@ -112,6 +112,12 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 	CreateNative("SetActiveContractProgress", Native_SetActiveContractProgress);
 	CreateNative("SetActiveObjectiveProgress", Native_SetActiveObjectiveProgress);
 
+	CreateNative("GetClientCompletedContracts", Native_GetClientCompletedContracts);
+	CreateNative("CanClientActivateContract", Native_CanClientActivateContract);
+	CreateNative("CanClientCompleteContract", Native_CanClientCompleteContract);
+	CreateNative("IsActiveContractComplete", Native_IsActiveContractComplete);
+	CreateNative("HasClientCompletedContract", Native_HasClientCompletedContract);
+
 	CreateNative("SaveClientContractProgress", Native_SaveClientContractProgress);
 	CreateNative("SaveClientObjectiveProgress", Native_SaveClientObjectiveProgress);
 	CreateNative("SetContractProgressDatabase", Native_SetContractProgressDatabase);
@@ -811,6 +817,185 @@ public any Native_SetActiveObjectiveProgress(Handle plugin, int numParams)
 	}
 
 	return 0;
+}
+
+/**
+ * Returns a list of all completed contracts.
+ *
+ * @param client    Client index.
+ * @return      StringMap sorted by UUID as key and completion data as the info.
+ * @note        This function is partially unsafe as enum structs are still used inside.
+ * @error       Invalid client index.
+ */
+public any Native_GetClientCompletedContracts(Handle plugin, int numParams)
+{
+	int client = GetNativeCell(1);
+	if (!IsClientValid(client))
+	{
+		ThrowNativeError(SP_ERROR_NATIVE, "Invalid client index (%d).", client);
+	}
+
+	return CompletedContracts[client].Clone();
+}
+
+/**
+ * Checks to see if the client can activate a Contract.
+ *
+ * @param client    Client index.
+ * @param UUID      UUID of Contract to check.
+ * @return      True if the client can activate a contract, false otherwise.
+ * @error       Invalid client index or invalid UUID.
+ */
+public any Native_CanClientActivateContract(Handle plugin, int numParams)
+{
+	int client = GetNativeCell(1);
+	if (!IsClientValid(client))
+	{
+		ThrowNativeError(SP_ERROR_NATIVE, "Invalid client index (%d).", client);
+	}
+
+	char UUID[MAX_UUID_SIZE];
+	GetNativeString(2, UUID, sizeof(UUID));
+	
+	if (g_DebugUnlockContracts.BoolValue) return true;
+
+	// Grab the Contract from the schema.
+	if (g_ContractSchema.JumpToKey(UUID))
+	{
+		// Construct the required contracts.
+		if (g_ContractSchema.JumpToKey("required_contracts", false))
+		{
+			int Value = 0;
+			for (;;)
+			{
+				char ContractUUID[MAX_UUID_SIZE];
+				char ValueStr[4];
+				IntToString(Value, ValueStr, sizeof(ValueStr));
+
+				g_ContractSchema.GetString(ValueStr, ContractUUID, sizeof(ContractUUID), "{}");
+				// If we reach a blank UUID, we're at the end of the list.
+				if (StrEqual("{}", ContractUUID)) break;
+				if (CompletedContracts[client].ContainsKey(ContractUUID))
+				{
+					g_ContractSchema.Rewind();
+					return true;
+				}
+				Value++;
+			}
+			g_ContractSchema.GoBack();
+		}
+		else
+		{
+			g_ContractSchema.Rewind();
+			return true;	
+		}
+	}
+	g_ContractSchema.Rewind();
+	return false;
+}
+
+/**
+ * Checks to see if the client can complete a Contract at the current time.
+ *
+ * @param client    Client index.
+ * @param UUID      UUID of Contract to check.
+ * @return      True if the client can complete the contract, false otherwise.
+ * @error       Invalid client index or invalid UUID.
+ */
+public any Native_CanClientCompleteContract(Handle plugin, int numParams)
+{
+	int client = GetNativeCell(1);
+	if (!IsClientValid(client))
+	{
+		ThrowNativeError(SP_ERROR_NATIVE, "Invalid client index (%d).", client);
+	}
+
+	char UUID[MAX_UUID_SIZE];
+	GetNativeString(2, UUID, sizeof(UUID));
+	if (UUID[0] != '{')
+	{
+		ThrowNativeError(SP_ERROR_NATIVE, "Invalid UUID structure (%s).", UUID);
+	}
+	
+	KeyValues Schema = GetContractSchema(UUID);
+
+	// Map check.
+	char Map[256];
+	GetCurrentMap(Map, sizeof(Map));
+	char MapRestriction[256];
+	Schema.GetString("map_restriction", MapRestriction, sizeof(MapRestriction));
+	if (!StrEqual(Map, "") && StrContains(Map, MapRestriction) == -1) return false;
+
+	// Team check.
+	char TeamString[64];
+	Schema.GetString("team_restriction", TeamString, sizeof(TeamString));
+	int TeamRestriction = GetTeamFromSchema(TeamString);
+	if (TeamRestriction != -1 && GetClientTeam(client) != TeamRestriction) return false;
+
+	// Weapon check.
+	char WeaponClassnameRestriction[64];
+	Schema.GetString("weapon_classname_restriction", WeaponClassnameRestriction, sizeof(WeaponClassnameRestriction));
+	if (/*!StrEqual("", this.m_sWeaponItemDefRestriction)
+	|| */!StrEqual("", WeaponClassnameRestriction))
+	{
+		int ClientWeapon = GetEntPropEnt(client, Prop_Send, "m_hActiveWeapon");
+		if (IsValidEntity(ClientWeapon))
+		{
+			// Classname check:
+			if (!StrEqual("", WeaponClassnameRestriction))
+			{
+				char Classname[64];
+				GetEntityClassname(ClientWeapon, Classname, sizeof(Classname));
+				if (!StrContains(Classname, WeaponClassnameRestriction)) return false;
+			}
+		}
+	}
+
+	return true;
+}
+
+/**
+ * Checks to see if a client has already completed a Contract.
+ *
+ * @param client    Client index.
+ * @param UUID      UUID of Contract to check.
+ * @return      True if the client has completed the contract, false otherwise.
+ * @error       Invalid client index or invalid UUID.
+ */
+public any Native_HasClientCompletedContract(Handle plugin, int numParams)
+{
+	int client = GetNativeCell(1);
+	if (!IsClientValid(client))
+	{
+		ThrowNativeError(SP_ERROR_NATIVE, "Invalid client index (%d).", client);
+	}
+
+	char UUID[MAX_UUID_SIZE];
+	GetNativeString(2, UUID, sizeof(UUID));
+	if (UUID[0] != '{')
+	{
+		ThrowNativeError(SP_ERROR_NATIVE, "Invalid UUID structure (%s).", UUID);
+	}
+	return CompletedContracts[client].ContainsKey(UUID);
+}
+
+/**
+ * Checks to see if the client has completed their active Contract.
+ *
+ * @param client    Client index.
+ * @return      True if a client has completed their active Contract.
+ *              False if the client has not finished their contract or has no contract active.
+ * @error       Invalid client index.
+ */
+public any Native_IsActiveContractComplete(Handle plugin, int numParams)
+{
+	int client = GetNativeCell(1);
+	if (!IsClientValid(client))
+	{
+		ThrowNativeError(SP_ERROR_NATIVE, "Invalid client index (%d).", client);
+	}
+
+	return ActiveContract[client].IsContractComplete();
 }
 
 // Function for event timers.

@@ -242,7 +242,7 @@ public void CB_SetObjectiveProgressDatabase(Database db, DBResultSet results, co
     {
         if (results.AffectedRows < 1 && g_DebugQuery.BoolValue)
         {
-            LogMessage("[ZContracts] %s SAVE: No progress inserted for Contract Objective %d [SQL ERR: %s]", steamid64, error);
+            LogMessage("[ZContracts] %s SAVE: No progress inserted for Contract Objective %d [SQL ERR: %s]", steamid64, objective_id, error);
         }
         else if (results.AffectedRows == 1 && g_DebugQuery.BoolValue)
         {

@@ -36,11 +36,18 @@ public void OnClientActivatedContract(int client, char UUID[MAX_UUID_SIZE])
             PrintToChat(client, "Grabbed Objective %d \"%s\" schema successfully", i, ObjectiveDesc);
         }
     }
+
+    StringMap CompletedContracts = GetClientCompletedContracts(client);
+    PrintToChat(client, "Completed Contracts: %d", CompletedContracts.Size);
+    PrintToChat(client, "Can activate this contract: %d", CanClientActivateContract(client, UUID));
+    PrintToChat(client, "Can complete contract: %d", CanClientCompleteContract(client, UUID));
+    PrintToChat(client, "Has client completed contract: %d", HasClientCompletedContract(client, UUID));
 }
 
 public void OnContractProgressReceived(int client, char UUID[MAX_UUID_SIZE], int progress)
 {
     // Progress testing. Yes it's right there but I'm testing the Natives!
+    PrintToChat(client, "Is active contract complete: %d", IsActiveContractComplete(client));
     PrintToChat(client, "Main Contract Progress: %d", GetActiveContractProgress(client));
 }
 

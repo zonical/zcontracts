@@ -47,6 +47,30 @@ stock bool IsClientValid(int client)
 	return true;
 }
 
+// Methodmap that represents a Contract. This should be passed between plugins
+// INSTEAD of using the enum structs below.
+/* TODO: Come back to this later. This feels ugly.
+methodmap ZContract
+{
+	public ZContract(int client)
+	{
+		if (!IsClientValid(client))
+		{
+			ThrowError("Invalid client index (%d) when constructing methodmap.", client);
+		}
+		return view_as<ZContract>(client);
+	}
+	property int Client
+	{ 
+		public get() { return view_as<int>(this); }
+	}
+	public bool GetUUID(char[] uuidbuffer, int buffersize)
+	{
+		return GetClientContract(view_as<int>(this), uuidbuffer, buffersize);
+	}
+
+};*/
+
 enum ContractType
 {
 	// Each objective has it's own progress bar. All objectives must be completed

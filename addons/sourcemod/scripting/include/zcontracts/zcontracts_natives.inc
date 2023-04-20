@@ -139,6 +139,58 @@ native void SetActiveContractProgress(int client, int value);
  */
 native void SetActiveObjectiveProgress(int client, int objective, int value);
 
+// =========================== CONTRACT COMPLETION ===========================
+
+/**
+ * Returns a list of all completed contracts.
+ *
+ * @param client    Client index.
+ * @return      StringMap sorted by UUID as key and completion data as the info.
+ * @note        This function is partially unsafe as enum structs are still used inside.
+ * @error       Invalid client index.
+ */
+native StringMap GetClientCompletedContracts(int client);
+
+/**
+ * Checks to see if the client can activate a Contract.
+ *
+ * @param client    Client index.
+ * @param UUID      UUID of Contract to check.
+ * @return      True if the client can activate a contract, false otherwise.
+ * @error       Invalid client index or invalid UUID.
+ */
+native bool CanClientActivateContract(int client, char UUID[MAX_UUID_SIZE]);
+
+/**
+ * Checks to see if the client can complete a Contract at the current time.
+ *
+ * @param client    Client index.
+ * @param UUID      UUID of Contract to check.
+ * @return      True if the client can complete the contract, false otherwise.
+ * @error       Invalid client index or invalid UUID.
+ */
+native bool CanClientCompleteContract(int client, char UUID[MAX_UUID_SIZE]);
+
+/**
+ * Checks to see if the client has completed their active Contract.
+ *
+ * @param client    Client index.
+ * @return      True if a client has completed their active Contract.
+ *              False if the client has not finished their contract or has no contract active.
+ * @error       Invalid client index.
+ */
+native bool IsActiveContractComplete(int client);
+
+/**
+ * Checks to see if a client has already completed a Contract.
+ *
+ * @param client    Client index.
+ * @param UUID      UUID of Contract to check.
+ * @return      True if the client has completed the contract, false otherwise.
+ * @error       Invalid client index or invalid UUID.
+ */
+native bool HasClientCompletedContract(int client, char UUID[MAX_UUID_SIZE]);
+
 // =========================== DATABASE SAVING ===========================
 
 /**

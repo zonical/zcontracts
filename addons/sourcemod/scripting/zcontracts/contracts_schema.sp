@@ -192,33 +192,8 @@ public void CreateContract(KeyValues hContractConf, Contract hContract)
 	// Grab the teams that can do this contract.
 	char sTeamBuffer[64];
 	hContractConf.GetString("team_restriction", sTeamBuffer, sizeof(sTeamBuffer), "-1");
-	// Is this an int? We can easily grab the team index and set it from there.
-	int iTeamIndex = StringToInt(sTeamBuffer);
-	// CS:GO and TF2 team indexes don't go any higher than three. If this plugin
-	// is ported to another Engine with more teams, you will need to change the
-	// value of MAXIMUM_TEAMS to be max+1.
-	if (iTeamIndex != 0 && iTeamIndex < MAXIMUM_TEAMS)
-	{
-		hContract.m_iTeamRestriction = iTeamIndex;
-	}
-	else if (StrEqual(sTeamBuffer, "0")) hContract.m_iTeamRestriction = -1;
-	else
-	{
-		// Set the  incoming restriction string to be all lowercase.
-		for (int i = 0; i < strlen(sTeamBuffer); i++)
-		{
-			CharToLower(sTeamBuffer[i]);
-		}
-
-		// Depending on the engine version, we can specify aliases
-		// to use instead of intergers. 
-		switch (GetEngineVersion())
-		{
-			case Engine_TF2: iTeamIndex = TF2_GetTeamIndexFromString(sTeamBuffer);
-			case Engine_CSGO: iTeamIndex = CSGO_GetTeamIndexFromString(sTeamBuffer);
-		}
-		hContract.m_iTeamRestriction = iTeamIndex;
-	}
+	
+	hContract.m_iTeamRestriction = GetTeamFromSchema(sTeamBuffer);
 	
 	// Create our objectives.
 	if (hContractConf.JumpToKey("objectives", false))
@@ -394,7 +369,6 @@ public any Native_GetContractObjectiveCount(Handle plugin, int numParams)
 	return count;
 }
 
-
 bool CreateContractFromUUID(const char[] sUUID, Contract hBuffer)
 {
 	hBuffer.m_bInitalized = false;
@@ -417,4 +391,37 @@ bool GetContractDirectory(const char[] sUUID, char buffer[MAX_DIRECTORY_SIZE])
 		return true;
 	}
 	return false;
+}
+
+int GetTeamFromSchema(const char[] sTeamBuffer)
+{
+	// Is this an int? We can easily grab the team index and set it from there.
+	int iTeamIndex = StringToInt(sTeamBuffer);
+	// CS:GO and TF2 team indexes don't go any higher than three. If this plugin
+	// is ported to another Engine with more teams, you will need to change the
+	// value of MAXIMUM_TEAMS to be max+1.
+	if (iTeamIndex != 0 && iTeamIndex < MAXIMUM_TEAMS)
+	{
+		return iTeamIndex;
+	}
+	else if (StrEqual(sTeamBuffer, "0")) return -1;
+	else
+	{
+		// Set the  incoming restriction string to be all lowercase.
+		for (int i = 0; i < strlen(sTeamBuffer); i++)
+		{
+			CharToLower(sTeamBuffer[i]);
+		}
+
+		// Depending on the engine version, we can specify aliases
+		// to use instead of intergers. 
+		switch (GetEngineVersion())
+		{
+			case Engine_TF2: return TF2_GetTeamIndexFromString(sTeamBuffer);
+			case Engine_CSGO: return CSGO_GetTeamIndexFromString(sTeamBuffer);
+		}
+	}
+
+	// Could not determine team.
+	return -1;
 }
