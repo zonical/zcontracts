@@ -60,6 +60,14 @@ int value, Contract hContract, ContractObjective hObjective);
 forward void OnClientActivatedContract(int client, char UUID[MAX_UUID_SIZE]);
 
 /**
+ * Called when a client selects a Contract and data from the database has been retrieved.
+ * 
+ * @param client	Client index.
+ * @param UUID		UUID of the Contract.
+ */
+forward void OnClientActivatedContractPost(int client, char UUID[MAX_UUID_SIZE]);
+
+/**
  * Called when the database returns progress data about a Contract.
  * 
  * @param client	Client index.

@@ -51,6 +51,7 @@ GlobalForward g_fOnContractPreSave;
 GlobalForward g_fOnObjectivePreSave;
 GlobalForward g_fOnProcessContractLogic;
 GlobalForward g_fOnClientActivatedContract;
+GlobalForward g_fOnClientActivatedContractPost;
 GlobalForward g_fOnContractProgressReceived;
 GlobalForward g_fOnObjectiveProgressReceived;
 
@@ -91,6 +92,7 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 	g_fOnObjectivePreSave = new GlobalForward("OnObjectivePreSave", ET_Event, Param_Cell, Param_String, Param_Array);
 	g_fOnProcessContractLogic = new GlobalForward("OnProcessContractLogic", ET_Event, Param_Cell, Param_String, Param_String, Param_Cell, Param_Array, Param_Array);
 	g_fOnClientActivatedContract = new GlobalForward("OnClientActivatedContract", ET_Ignore, Param_Cell, Param_String);
+	g_fOnClientActivatedContractPost = new GlobalForward("OnClientActivatedContractPost", ET_Ignore, Param_Cell, Param_String);
 	g_fOnContractProgressReceived = new GlobalForward("OnContractProgressReceived", ET_Ignore, Param_Cell, Param_String, Param_Cell);
 	g_fOnObjectiveProgressReceived = new GlobalForward("OnObjectiveProgressReceived", ET_Ignore, Param_Cell, Param_String, Param_Cell, Param_Cell);
 
@@ -1005,6 +1007,11 @@ public Action Timer_DisplayContractInfo(Handle hTimer, int client)
 	
 	if (ActiveContract[client].m_bLoadedFromDatabase || Attempts >= 3)
 	{
+		Call_StartForward(g_fOnClientActivatedContractPost);
+		Call_PushCell(client);
+		Call_PushString(ActiveContract[client].m_sUUID);
+		Call_Finish();
+
 		CreateObjectiveDisplay(client, ActiveContract[client], false);
 		return Plugin_Stop;
 	}
