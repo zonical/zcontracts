@@ -296,6 +296,105 @@ public void ProcessContractsSchema()
 	PrintToServer("[ZContracts] Loaded %d contracts.", iContractCount);
 }
 
+/**
+ * Grabs the Keyvalues schema for a Contract.
+ *
+ * @param UUID  Contract UUID.
+ * @return		KeyValues object of a Contract.
+ * @error       Contract could not be found in the schema.
+*/
+public any Native_GetContractSchema(Handle plugin, int numParams)
+{
+	char UUID[MAX_UUID_SIZE];
+	GetNativeString(1, UUID, sizeof(UUID));
+	if (!g_ContractSchema.JumpToKey(UUID))
+	{
+		// Error out!
+		ThrowNativeError(SP_ERROR_NOT_FOUND, "Could not find Contract in schema - invalid UUID %s", UUID);
+	}
+
+	// Clone our handle and return it.
+	KeyValues NewKV = new KeyValues(UUID);
+	NewKV.Import(g_ContractSchema);
+	g_ContractSchema.Rewind();
+	Handle Schema = CloneHandle(NewKV, plugin);
+	return view_as<KeyValues>(Schema);
+}
+
+/**
+ * Grabs the Keyvalues schema for an Objective.
+ *
+ * @param UUID  Contract UUID.
+ * @param objective Objective ID.
+ * @return		KeyValues object of an Objective.
+ * @error       Contract or Objective could not be found in the schema.
+ */
+public any Native_GetObjectiveSchema(Handle plugin, int numParams)
+{
+	char UUID[MAX_UUID_SIZE];
+	GetNativeString(1, UUID, sizeof(UUID));
+	int objective = GetNativeCell(2);
+	if (!g_ContractSchema.JumpToKey(UUID))
+	{
+		// Error out!
+		ThrowNativeError(SP_ERROR_NOT_FOUND, "Could not find Contract in schema - invalid UUID %s", UUID);
+	}
+	if (!g_ContractSchema.JumpToKey("objectives"))
+	{
+		// Error out again!
+		ThrowNativeError(SP_ERROR_NOT_FOUND, "Could not find objectives in %s schema - invalid structure", UUID);
+	}
+	char StrObjective[4];
+	IntToString(objective, StrObjective, sizeof(StrObjective));
+	if (!g_ContractSchema.JumpToKey(StrObjective))
+	{
+		// Error out once more!
+		ThrowNativeError(SP_ERROR_NOT_FOUND, "Could not find objective %d in %s schema", objective, UUID);
+	}
+
+	// Clone our handle and return it.
+	KeyValues NewKV = new KeyValues(StrObjective);
+	NewKV.Import(g_ContractSchema);
+	g_ContractSchema.Rewind();
+	Handle Schema = CloneHandle(NewKV, plugin);
+	return view_as<KeyValues>(Schema);
+}
+
+/**
+ * Grabs the amount of objectives in a Contract.
+ *
+ * @param UUID  Contract UUID.
+ * @return		Amount of objectives in a Contract.
+ * @error       Contract could not be found in the schema.
+ */
+public any Native_GetContractObjectiveCount(Handle plugin, int numParams)
+{
+	char UUID[MAX_UUID_SIZE];
+	GetNativeString(1, UUID, sizeof(UUID));
+	if (!g_ContractSchema.JumpToKey(UUID))
+	{
+		// Error out!
+		ThrowNativeError(SP_ERROR_NOT_FOUND, "Could not find Contract in schema - invalid UUID %s", UUID);
+	}
+	if (!g_ContractSchema.JumpToKey("objectives"))
+	{
+		// Error out again!
+		ThrowNativeError(SP_ERROR_NOT_FOUND, "Could not find objectives in %s schema - invalid structure", UUID);
+	}
+
+	int count = 0;
+	if(g_ContractSchema.GotoFirstSubKey())
+	{
+		do 
+		{
+			count++;
+		} while (g_ContractSchema.GotoNextKey());
+	}
+	g_ContractSchema.Rewind();
+	return count;
+}
+
+
 bool CreateContractFromUUID(const char[] sUUID, Contract hBuffer)
 {
 	hBuffer.m_bInitalized = false;

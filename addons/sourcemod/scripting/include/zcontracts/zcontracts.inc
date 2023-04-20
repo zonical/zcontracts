@@ -4,11 +4,38 @@
 
 #define __zcontracts_included
 
+#define ZCONTRACTS_PLUGIN_VERSION "0.9.0"
+// This value should be incremented with every breaking version made to the
+// database so saves can be easily converted. For developers who fork this project and
+// wish to merge changes, do not increment this number until merge.
+// Other plugins should use the GetContrackerVersion() native to get this value, but
+// this main plugin and subplugins are free to use the define name in its place.
+#define CONTRACKER_VERSION 2
+// How often the HUD will refresh itself.
+#define HUD_REFRESH_RATE 0.5
+
 #define MAX_UUID_SIZE 64
 #define MAX_CONTRACT_NAME_SIZE 64
 #define MAX_OBJECTIVE_DESC_SIZE 128
 #define MAX_EVENT_SIZE 256
 #define MAX_DIRECTORY_SIZE 128
+
+#include <zcontracts/zcontracts_natives>
+#include <zcontracts/zcontracts_forwards>
+
+/* Okay, quick developer story time.
+I originally developed this project with enum structs in mind. I learnt a lot of my SourceMod
+practices when developing Creators.TF, and the codebase used a lot of enum structs to store data in
+a clean way that is similar to other programming languiages. SourcePawn is notorious for not having
+the best OOP capabilities. With this in mind, I wanted to make the project as clean as possible from
+a codebase perspective. I started this project before I became aware of the black hole that exists with
+enum structs: they ***shouldn't*** be passed through with natives. If they are not handled carefully,
+server crashes will happen (see https://github.com/alliedmodders/sourcepawn/issues/547).
+This is the biggest coding flaw with ZContracts. In the far future, I would like to rewrite part of
+the code to use Methodmaps or some other sane way to transport data between plugins, but for now - this is
+my preferred approach. For developers: PLEASE recompile any plugin that deals with ZContracts when you
+install a new patch.
+*/
 
 stock int Int_Min(int a, int b) { return a < b ? a : b; }
 
@@ -195,10 +222,11 @@ enum struct Contract
 
 	char m_sRequiredGameRulesEntity[64]; // TF2
 	int m_iGameModeRestriction; // CSGO
-	// FOR CSGO: game_type convar.
-	// FOR TF2: gamemode extension (see contracts_tf2.sp)
 	int m_iGameTypeRestriction; 
 	int m_iSkirmishIDRestriction; // CSGO
+
+	// Other plugins can mark this Contract as uncompletable on player switch.
+	bool m_bIsCompletableOverride;
 
 	// What type of Contract are we handling? (see ContractType)
 	ContractType m_iContractType;
@@ -387,185 +415,3 @@ enum struct CompletedContractInfo
 	int m_iCompletions;
 	bool m_bReset;
 }
-
-/**
- * The Contracker version is used to determine the minimum Contract that should be
- * loaded from the database. This is intended to be used when a change is made to the
- * database structure or there is a breaking change in ZContracts.
- * @return The value of CONTRACKER_VERSION from zcontracts_main.sp
- */
-native int GetContrackerVersion();
-
-/**
- * Set a client's contract.
- *
- * @param client    Client index.
- * @param UUID    	The UUID of the contract.
- * @param dont_save	Optional argument: doesn't save this as the active Contract in the database.
- * @param dont_notify Optional argument: don't notify the player that we've set their contract.
- * @error           Client index is invalid or UUID is invalid.         
- */
-native bool SetClientContract(int client, char UUID[MAX_UUID_SIZE], bool dont_save = false, bool dont_notify = false);
-
-/**
- * Set a client's contract with an enum struct.
- *
- * @param client    Client index.
- * @param new_contract The new contract enum struct.
- * @param dont_save	Optional argument: doesn't save this as the active Contract in the database.
- * @param dont_notify Optional argument: don't notify the player that we've set their contract.
- * @error           Client index is invalid or UUID is invalid.         
- */
-native bool SetClientContractStruct(int client, any new_contract[sizeof(Contract)], bool dont_save = false, bool dont_notify = false);
-
-/**
- * Obtains a client's active Contract.
- *
- * @param client    Client index.
- * @param buffer    Buffer to store the client's contract.
- * @error           Client index is invalid.          
- */
-native bool GetClientContract(int client, any buffer[sizeof(Contract)]);
-
-/**
- * Processes an event for the client's active Contract.
- *
- * @param client    Client index.
- * @param event    	Event to process.
- * @param value		Value to send alongside this event.
- * @param can_combine 	If true, if this event was recently sent to the event queue, the value from this function will be added to the first event.
- * @return			True if an event is successfully called, false if the client's contract isn't active.
- * @error           Client index is invalid or is a bot.   
- */
-native bool CallContrackerEvent(int client, char event[MAX_EVENT_SIZE], int value, bool can_combine = false);
-
-// =========================== DATABASE SAVING ===========================
-
-/**
- * Sets the active session for a user in the database.
- * @param steamid64 	SteamID64 of the user.
- * @param UUID	Contract UUID to save.
- * @error	Invalid UUID.
- */
-native bool SetSessionDatabase(char steamid64[64], char UUID[MAX_UUID_SIZE]);
-
-/**
- * Saves a Contract to the database for a client.
- *
- * @param client    Client index.
- * @param ClientContract The enum struct of the contract to save.
- * @error           Client index is invalid or the Contract is invalid.         
- */
-native bool SaveClientContractProgress(int client, any ClientContract[sizeof(Contract)]);
-
-/**
- * Saves an Objective to the database for a client.
- *
- * @param client    Client index.
- * @param UUID	UUID of the Contract that contains this objective.
- * @param ClientObjective The enum struct of the objective to save.
- * @error           Client index is invalid or the ClientObjective is invalid.         
- */
-native bool SaveClientObjectiveProgress(int client, char UUID[MAX_UUID_SIZE], any ClientObjective[sizeof(ContractObjective)]);
-
-/**
- * Sets the progress of a Contract in the database.
- *
- * @param steamid64    SteamID64 of the user.
- * @param UUID	The UUID of the contract to modify.
- * @param value	The value to save to the database.         
- */
-native bool SetContractProgressDatabase(char steamid64[64], char UUID[MAX_UUID_SIZE], int value);
-
-/**
- * Sets the progress of an Objective in the database.
- *
- * @param steamid64    SteamID64 of the user.
- * @param UUID	The UUID of the contract to modify.
- * @param objective_id	The ID of the objective to modify.
- * @param value	The value to save to the database.         
- */
-native bool SetObjectiveProgressDatabase(char steamid64[64], char UUID[MAX_UUID_SIZE], int objective_id, int value);
-
-/**
- * Marks the contract as complete in the database.
- * @param steamid64    SteamID64 of the user.
- * @param UUID		The UUID of the contract.
- * @param data		Contract competion data.
-*/
-native bool SetCompletedContractInfoDatabase(char steamid64[64], char UUID[MAX_UUID_SIZE], any data[sizeof(CompletedContractInfo)]);
-
-/**
- * Deletes all client progress for a contract.
- * @param steamid64    SteamID64 of the user.
- * @param UUID		The UUID of the contract.
-*/
-native bool DeleteContractProgressDatabase(char steamid64[64], char UUID[MAX_UUID_SIZE]);
-
-/**
- * Deletes all client progress for an objective.
- * @param steamid64    SteamID64 of the user.
- * @param UUID		The UUID of the contract.
- * @param objective_id	The objective ID.
-*/
-native bool DeleteObjectiveProgressDatabase(char steamid64[64], char UUID[MAX_UUID_SIZE], int objective_id);
-
-/**
- * Deletes all client progress for all objectives.
- * @param steamid64    SteamID64 of the user.
- * @param UUID		The UUID of the contract.
-*/
-native bool DeleteAllObjectiveProgressDatabase(char steamid64[64], char UUID[MAX_UUID_SIZE]);
-
-// =========================== FORWARDS ===========================
-
-/**
- * Sent on client completion of a Contract objective.
- *
- * @param client    	Client index.
- * @param uuid    		The UUID of the original Contract.
- * @param hObjective	Handle to the completed objective.
- */
-forward void OnContractObjectiveCompleted(int client, char UUID[MAX_UUID_SIZE], ContractObjective hObjective);
-/**
- * Sent on client completion of a Contract.
- *
- * @param client    	Client index.
- * @param uuid    		The UUID of the original Contract.
- * @param hObjective	Handle to the completed Contract.
- */
-forward void OnContractCompleted(int client, char UUID[MAX_UUID_SIZE], Contract hContract);
-
-/**
- * Called before a contract is saved to the database. This is not called for any
- * low-level value setting functions (e.g SetContractProgressDatabase).
- *
- * @param client    	Client index.
- * @param uuid    		The UUID of the original Contract.
- * @param hContract	Handle to the objective.
- */
-forward bool OnContractPreSave(int client, char UUID[MAX_UUID_SIZE], Contract hContract);
-
-/**
- * Called before an objective is saved to the database. This is not called for any
- * low-level value setting functions (e.g SetObjectiveProgressDatabase).
- *
- * @param client    	Client index.
- * @param uuid    		The UUID of the original Contract.
- * @param hObjective	Handle to the objective.
- */
-forward bool OnObjectivePreSave(int client, char UUID[MAX_UUID_SIZE], ContractObjective hObjective);
-
-/**
- * Called when an event is about to potentially add progress to a Contract.
- * 
- * @param client	Client index.
- * @param UUID		UUID of the Contract.
- * @param event		Name of the event being processed.
- * @param value		Value passed by the event.
- * @param hContract	Enum struct of the Contract.
- * @param hObjective	Enum struct of the Objective.
- * @return A value higher than Plugin_Continue will prevent potential progress being added to the Contract.
- */
-forward Action OnProcessContractLogic(int client, char UUID[MAX_UUID_SIZE], char event[MAX_EVENT_SIZE],
-int value, Contract hContract, ContractObjective hObjective);

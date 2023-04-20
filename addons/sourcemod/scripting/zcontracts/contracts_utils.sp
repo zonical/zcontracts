@@ -88,11 +88,11 @@ void GiveRandomContract(int client)
 	// Grant Contract.
 	if (IsFakeClient(client) && !g_BotContracts.BoolValue)
 	{
-		SetClientContract(client, RandomUUID, false, false);
+		SetClientContractEx(client, RandomUUID, false, false);
 	}
 	else
 	{
-		SetClientContract(client, RandomUUID, true, true);
+		SetClientContractEx(client, RandomUUID, true, true);
 	}	
 }
 
