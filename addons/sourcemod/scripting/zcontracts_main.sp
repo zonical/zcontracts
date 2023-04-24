@@ -85,12 +85,12 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 {
 	RegPluginLibrary("zcontracts");
 	
-	// ================ FORWARDS ================ TODO: Make all of these safe.
-	g_fOnObjectiveCompleted = new GlobalForward("OnContractObjectiveCompleted", ET_Ignore, Param_Cell, Param_String, Param_Array);
-	g_fOnContractCompleted = new GlobalForward("OnContractCompleted", ET_Ignore, Param_Cell, Param_String, Param_Array);
-	g_fOnContractPreSave = new GlobalForward("OnContractPreSave", ET_Event, Param_Cell, Param_String, Param_Array);
-	g_fOnObjectivePreSave = new GlobalForward("OnObjectivePreSave", ET_Event, Param_Cell, Param_String, Param_Array);
-	g_fOnProcessContractLogic = new GlobalForward("OnProcessContractLogic", ET_Event, Param_Cell, Param_String, Param_String, Param_Cell, Param_Array, Param_Array);
+	// ================ FORWARDS ================
+	g_fOnObjectiveCompleted = new GlobalForward("OnContractObjectiveCompleted", ET_Ignore, Param_Cell, Param_String, Param_Cell);
+	g_fOnContractCompleted = new GlobalForward("OnContractCompleted", ET_Ignore, Param_Cell, Param_String);
+	g_fOnContractPreSave = new GlobalForward("OnContractPreSave", ET_Event, Param_Cell, Param_String);
+	g_fOnObjectivePreSave = new GlobalForward("OnObjectivePreSave", ET_Event, Param_Cell, Param_String, Param_Cell);
+	g_fOnProcessContractLogic = new GlobalForward("OnProcessContractLogic", ET_Event, Param_Cell, Param_String, Param_Cell, Param_String, Param_Cell);
 	g_fOnClientActivatedContract = new GlobalForward("OnClientActivatedContract", ET_Ignore, Param_Cell, Param_String);
 	g_fOnClientActivatedContractPost = new GlobalForward("OnClientActivatedContractPost", ET_Ignore, Param_Cell, Param_String);
 	g_fOnContractProgressReceived = new GlobalForward("OnContractProgressReceived", ET_Ignore, Param_Cell, Param_String, Param_Cell);
@@ -120,8 +120,8 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 	CreateNative("IsActiveContractComplete", Native_IsActiveContractComplete);
 	CreateNative("HasClientCompletedContract", Native_HasClientCompletedContract);
 
-	CreateNative("SaveClientContractProgress", Native_SaveClientContractProgress);
-	CreateNative("SaveClientObjectiveProgress", Native_SaveClientObjectiveProgress);
+	CreateNative("SaveActiveContractToDatabase", Native_SaveActiveContractToDatabase);
+	CreateNative("SaveActiveObjectiveToDatabase", Native_SetActiveObjectiveProgress);
 	CreateNative("SetContractProgressDatabase", Native_SetContractProgressDatabase);
 	CreateNative("SetObjectiveProgressDatabase", Native_SetObjectiveProgressDatabase);
 	CreateNative("DeleteContractProgressDatabase", Native_DeleteContractProgressDatabase);
@@ -235,14 +235,14 @@ public void OnMapEnd()
 		if (!IsClientValid(i) || IsFakeClient(i)) continue;
 		SaveClientPreferences(i);
 
-		SaveClientContractProgress(i, ActiveContract[i]);
+		SaveActiveContractToDatabase(i);
 		for (int j = 0; j < ActiveContract[i].m_hObjectives.Length; j++)
 		{
 			ContractObjective ActiveContractObjective;
 			ActiveContract[i].GetObjective(j, ActiveContractObjective);
 			if (!ActiveContractObjective.m_bInitalized) continue;
 
-			SaveClientObjectiveProgress(i, ActiveContract[i].m_sUUID, ActiveContractObjective);
+			SaveActiveObjectiveToDatabase(i, j);
 		}
 	}
 }
@@ -296,14 +296,14 @@ public void OnClientDisconnect(int client)
 	&& g_DB != null)
 	{
 		SaveClientPreferences(client);
-		SaveClientContractProgress(client, ActiveContract[client]);
+		SaveActiveContractToDatabase(client);
 		for (int i = 0; i < ActiveContract[i].m_hObjectives.Length; i++)
 		{
 			ContractObjective ActiveContractObjective;
 			ActiveContract[i].GetObjective(i, ActiveContractObjective);
 			if (!ActiveContractObjective.m_bInitalized) continue;
 
-			SaveClientObjectiveProgress(client, ActiveContract[i].m_sUUID, ActiveContractObjective);
+			SaveActiveObjectiveToDatabase(client, i);
 		}
 	}
 
@@ -529,14 +529,16 @@ public any Native_SetClientContract(Handle plugin, int numParams)
 	!StrEqual(OldContract[client].m_sUUID, UUID) && 
 	g_DB != null)
 	{
-		SaveClientContractProgress(client, OldContract[client]);
+		char steamid64[64];
+		GetClientAuthId(client, AuthId_SteamID64, steamid64, sizeof(steamid64));
+		SetContractProgressDatabase(steamid64, OldContract[client].m_sUUID, OldContract[client].m_iProgress);
 		for (int i = 0; i < OldContract[client].m_hObjectives.Length; i++)
 		{
 			ContractObjective OldContractObjective;
 			OldContract[client].GetObjective(i, OldContractObjective);
 			if (!OldContractObjective.m_bInitalized) continue;
 
-			SaveClientObjectiveProgress(client, OldContract[client].m_sUUID, OldContractObjective);
+			SetObjectiveProgressDatabase(steamid64, OldContract[client].m_sUUID, i, OldContractObjective.m_iProgress);
 		}
 	}
 
@@ -629,14 +631,16 @@ public any Native_SetClientContractEx(Handle plugin, int numParams)
 	!StrEqual(OldContract[client].m_sUUID, UUID) && 
 	g_DB != null)
 	{
-		SaveClientContractProgress(client, OldContract[client]);
+		char steamid64[64];
+		GetClientAuthId(client, AuthId_SteamID64, steamid64, sizeof(steamid64));
+		SetContractProgressDatabase(steamid64, OldContract[client].m_sUUID, OldContract[client].m_iProgress);
 		for (int i = 0; i < OldContract[client].m_hObjectives.Length; i++)
 		{
 			ContractObjective OldContractObjective;
 			OldContract[client].GetObjective(i, OldContractObjective);
 			if (!OldContractObjective.m_bInitalized) continue;
 
-			SaveClientObjectiveProgress(client, OldContract[client].m_sUUID, OldContractObjective);
+			SetObjectiveProgressDatabase(steamid64, OldContract[client].m_sUUID, i, OldContractObjective.m_iProgress);
 		}
 	}
 
@@ -1261,7 +1265,11 @@ public Action Timer_ProcessEvents(Handle hTimer)
 			// Get the new progress and completion status for the old contract.
 			ContractObjective OldObjective;
 			OldContract[client].GetObjective(objective_id, OldObjective);
-			SaveClientObjectiveProgress(client, OldContract[client].m_sUUID, OldObjective);
+			
+			char steamid64[64];
+			GetClientAuthId(client, AuthId_SteamID64, steamid64, sizeof(steamid64));
+
+			SetObjectiveProgressDatabase(steamid64, OldContract[client].m_sUUID, objective_id, OldObjective.m_iProgress);
 		}
 		else
 		{
@@ -1304,11 +1312,9 @@ void ProcessLogicForContractObjective(Contract ClientContract, int objective_id,
 	Call_StartForward(g_fOnProcessContractLogic);
 	Call_PushCell(client);
 	Call_PushString(ClientContract.m_sUUID);
+	Call_PushCell(objective_id);
 	Call_PushString(event);
 	Call_PushCell(value);
-	// TODO: make this safe.
-	Call_PushArray(ClientContract, sizeof(Contract));
-	Call_PushArray(Objective, sizeof(ContractObjective));
 	bool ShouldBlock = false;
 	Call_Finish(ShouldBlock);
 
@@ -1416,12 +1422,12 @@ void ProcessLogicForContractObjective(Contract ClientContract, int objective_id,
 			Call_StartForward(g_fOnObjectiveCompleted);
 			Call_PushCell(client);
 			Call_PushString(ClientContract.m_sUUID);
-			Call_PushArray(Objective, sizeof(ContractObjective));
+			Call_PushCell(objective_id);
 			Call_Finish();
 
 			if (g_DB != null)
 			{
-				SaveClientObjectiveProgress(client, ClientContract.m_sUUID, Objective);
+				SaveActiveObjectiveToDatabase(client, objective_id);
 			}
 
 			break;
@@ -1441,8 +1447,6 @@ void ProcessLogicForContractObjective(Contract ClientContract, int objective_id,
 		Call_StartForward(g_fOnContractCompleted);
 		Call_PushCell(client);
 		Call_PushString(ClientContract.m_sUUID);
-		// TODO: make this safe.
-		Call_PushArray(ClientContract, sizeof(Contract));
 		Call_Finish();
 
 		// Increment the amount of times we've completed this Contract.
@@ -1458,7 +1462,7 @@ void ProcessLogicForContractObjective(Contract ClientContract, int objective_id,
 			PrintColoredChatAll("%s[ZC]%s %N has completed the contract: %s\"%s\"%s, congratulations!",
 			COLOR_LIGHTSEAGREEN, COLOR_DEFAULT, client, COLOR_YELLOW, ClientContract.m_sContractName, COLOR_DEFAULT);
 
-			SaveClientContractProgress(client, ClientContract);
+			SaveActiveContractToDatabase(client);
 			info.m_bReset = false;
 		}
 		else // Delete all progress from database and reset the Contract.
@@ -1859,14 +1863,14 @@ public Action DebugSaveContract(int client, int args)
 		int user = target_list[i];
 		if (!ActiveContract[user].IsContractInitalized()) continue;
 
-		SaveClientContractProgress(user, ActiveContract[user]);
+		SaveActiveContractToDatabase(user);
 		for (int j = 0; j < ActiveContract[user].m_hObjectives.Length; j++)
 		{
 			ContractObjective ActiveContractObjective;
 			ActiveContract[user].GetObjective(user, ActiveContractObjective);
 			if (!ActiveContractObjective.m_bInitalized) continue;
 
-			SaveClientObjectiveProgress(user, ActiveContract[user].m_sUUID, ActiveContractObjective);
+			SaveActiveObjectiveToDatabase(user, j);
 		}
 	}
 

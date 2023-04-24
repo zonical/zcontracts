@@ -205,20 +205,18 @@ native bool SetSessionDatabase(char steamid64[64], char UUID[MAX_UUID_SIZE]);
  * Saves a Contract to the database for a client.
  *
  * @param client    Client index.
- * @param ClientContract The enum struct of the contract to save.
- * @error           Client index is invalid or the Contract is invalid.         
+ * @error           Client index is invalid.      
  */
-native bool SaveClientContractProgress(int client, any ClientContract[sizeof(Contract)]);
+native bool SaveActiveContractToDatabase(int client);
 
 /**
  * Saves an Objective to the database for a client.
  *
  * @param client    Client index.
- * @param UUID	UUID of the Contract that contains this objective.
- * @param ClientObjective The enum struct of the objective to save.
- * @error           Client index is invalid or the ClientObjective is invalid.         
+ * @param objective Objective ID.
+ * @error           Client index is invalid.         
  */
-native bool SaveClientObjectiveProgress(int client, char UUID[MAX_UUID_SIZE], any ClientObjective[sizeof(ContractObjective)]);
+native bool SaveActiveObjectiveToDatabase(int client, int objective);
 
 /**
  * Sets the progress of a Contract in the database.

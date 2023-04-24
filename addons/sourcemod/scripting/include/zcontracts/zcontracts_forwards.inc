@@ -5,17 +5,16 @@
  *
  * @param client    	Client index.
  * @param uuid    		The UUID of the original Contract.
- * @param hObjective	Handle to the completed objective.
+ * @param objective     Objective index.
  */
-forward void OnContractObjectiveCompleted(int client, char UUID[MAX_UUID_SIZE], ContractObjective hObjective);
+forward void OnContractObjectiveCompleted(int client, char UUID[MAX_UUID_SIZE], int objective);
 /**
  * Sent on client completion of a Contract.
  *
  * @param client    	Client index.
  * @param uuid    		The UUID of the original Contract.
- * @param hObjective	Handle to the completed Contract.
  */
-forward void OnContractCompleted(int client, char UUID[MAX_UUID_SIZE], Contract hContract);
+forward void OnContractCompleted(int client, char UUID[MAX_UUID_SIZE]);
 
 /**
  * Called before a contract is saved to the database. This is not called for any
@@ -23,9 +22,8 @@ forward void OnContractCompleted(int client, char UUID[MAX_UUID_SIZE], Contract 
  *
  * @param client    	Client index.
  * @param uuid    		The UUID of the original Contract.
- * @param hContract	Handle to the objective.
  */
-forward bool OnContractPreSave(int client, char UUID[MAX_UUID_SIZE], Contract hContract);
+forward bool OnContractPreSave(int client, char UUID[MAX_UUID_SIZE]);
 
 /**
  * Called before an objective is saved to the database. This is not called for any
@@ -33,23 +31,22 @@ forward bool OnContractPreSave(int client, char UUID[MAX_UUID_SIZE], Contract hC
  *
  * @param client    	Client index.
  * @param uuid    		The UUID of the original Contract.
- * @param hObjective	Handle to the objective.
+ * @param objective	    Objective index.
  */
-forward bool OnObjectivePreSave(int client, char UUID[MAX_UUID_SIZE], ContractObjective hObjective);
+forward bool OnObjectivePreSave(int client, char UUID[MAX_UUID_SIZE], int objective);
 
 /**
  * Called when an event is about to potentially add progress to a Contract.
  * 
  * @param client	Client index.
  * @param UUID		UUID of the Contract.
+ * @param objective Objective index.
  * @param event		Name of the event being processed.
  * @param value		Value passed by the event.
- * @param hContract	Enum struct of the Contract.
- * @param hObjective	Enum struct of the Objective.
  * @return A value higher than Plugin_Continue will prevent potential progress being added to the Contract.
  */
-forward Action OnProcessContractLogic(int client, char UUID[MAX_UUID_SIZE], char event[MAX_EVENT_SIZE],
-int value, Contract hContract, ContractObjective hObjective);
+forward Action OnProcessContractLogic(int client, char UUID[MAX_UUID_SIZE], int objective, char event[MAX_EVENT_SIZE],
+int value);
 
 /**
  * Called when a client selects a Contract.

@@ -86,7 +86,7 @@ public Action Timer_SaveAllToDB(Handle hTimer)
             // Save the Contract.
             if (ActiveContract[i].m_bNeedsDBSave)
             {
-                SaveClientContractProgress(i, ActiveContract[i]);
+                SaveActiveContractToDatabase(i);
                 ActiveContract[i].m_bNeedsDBSave = false;
             }
             // Save each of our objectives.
@@ -98,7 +98,7 @@ public Action Timer_SaveAllToDB(Handle hTimer)
 
                 if (ActiveContractObjective.m_bNeedsDBSave)
                 {
-                    SaveClientObjectiveProgress(i, ActiveContract[i].m_sUUID, ActiveContractObjective);
+                    SaveActiveObjectiveToDatabase(i, j);
                     ActiveContractObjective.m_bNeedsDBSave = false;
                     ActiveContract[i].SaveObjective(j, ActiveContractObjective);
                 }
@@ -257,30 +257,28 @@ public void CB_SetObjectiveProgressDatabase(Database db, DBResultSet results, co
  * Saves a Contract to the database for a client.
  *
  * @param client    Client index.
- * @param ClientContract The enum struct of the contract to save.
- * @error           Client index is invalid or the Contract is invalid.         
+ * @error           Client index is invalid.      
  */
-public any Native_SaveClientContractProgress(Handle plugin, int numParams)
+public any Native_SaveActiveContractToDatabase(Handle plugin, int numParams)
 {
     int client = GetNativeCell(1);
-    Contract ClientContract;
-    GetNativeArray(2, ClientContract, sizeof(Contract));
-
     if (IsFakeClient(client) && g_BotContracts.BoolValue) return false;
     if (!IsClientValid(client) || IsFakeClient(client))
 	{
 		ThrowNativeError(SP_ERROR_NATIVE, "Invalid client index. (%d)", client);
 	}
-    if (ClientContract.m_sUUID[0] != '{')
+
+    char UUID[MAX_UUID_SIZE];
+    if (!GetClientContract(client, UUID, sizeof(UUID)))
     {
-        ThrowNativeError(SP_ERROR_NATIVE, "Invalid UUID passed. (%s)", ClientContract.m_sUUID);
+        LogMessage("SaveActiveContractToDatabase: Client does not have an active contract to save! (%d)", client);
+        return false;
     }
 
     // Call pre-save forward.
     Call_StartForward(g_fOnContractPreSave);
     Call_PushCell(client);
-    Call_PushString(ClientContract.m_sUUID);
-    Call_PushArray(ClientContract, sizeof(Contract));
+    Call_PushString(UUID);
     bool ShouldBlock = false;
     Call_Finish(ShouldBlock);
 
@@ -290,9 +288,10 @@ public any Native_SaveClientContractProgress(Handle plugin, int numParams)
     // If noone responded or we got a positive response, save to database.
     if (GetForwardFunctionCount(g_fOnContractPreSave) == 0 || !ShouldBlock)
     {
-        if (ClientContract.m_iProgress > 0)
+        int ActiveProgress = GetActiveContractProgress(client);
+        if (ActiveProgress > 0)
         {
-            SetContractProgressDatabase(steamid64, ClientContract.m_sUUID, ClientContract.m_iProgress);
+            SetContractProgressDatabase(steamid64, UUID, ActiveProgress);
         }
         return true;
     }
@@ -311,33 +310,37 @@ public any Native_SaveClientContractProgress(Handle plugin, int numParams)
  * Saves an Objective to the database for a client.
  *
  * @param client    Client index.
- * @param UUID	UUID of the Contract that contains this objective.
- * @param ClientObjective The enum struct of the objective to save.
- * @error           Client index is invalid or the ClientObjective is invalid.         
+ * @param objective Objective ID.
+ * @error           Client index is invalid.         
  */
-public any Native_SaveClientObjectiveProgress(Handle plugin, int numParams)
+public any Native_SaveActiveObjectiveToDatabase(Handle plugin, int numParams)
 {
     int client = GetNativeCell(1);
-    char UUID[MAX_UUID_SIZE];
-    GetNativeString(2, UUID, sizeof(UUID));
-    ContractObjective ActiveContractObjective;
-    GetNativeArray(3, ActiveContractObjective, sizeof(ContractObjective));
-
     if (IsFakeClient(client) && g_BotContracts.BoolValue) return false;
     if (!IsClientValid(client) || IsFakeClient(client))
 	{
 		ThrowNativeError(SP_ERROR_NATIVE, "Invalid client index. (%d)", client);
 	}
-    if (UUID[0] != '{')
+
+    char UUID[MAX_UUID_SIZE];
+    if (!GetClientContract(client, UUID, sizeof(UUID)))
     {
-        ThrowNativeError(SP_ERROR_NATIVE, "Invalid UUID passed. (%s)", UUID);
+        LogMessage("SaveActiveObjectiveToDatabase: Client %N does not have an active contract to save!", client);
+        return false;
+    }
+
+    int objective = GetNativeCell(2);
+    if (objective > /*zero indexed*/ GetContractObjectiveCount(UUID)-1)
+    {
+        LogMessage("SaveActiveObjectiveToDatabase: Invalid contract objective ID passed (%N: %d)", client, objective);
+        return false;
     }
 
     // Call pre-save forward.
     Call_StartForward(g_fOnObjectivePreSave);
     Call_PushCell(client);
     Call_PushString(UUID);
-    Call_PushArray(ActiveContractObjective, sizeof(ContractObjective));
+    Call_PushCell(objective);
     bool ShouldBlock = false;
     Call_Finish(ShouldBlock);
 
@@ -347,9 +350,10 @@ public any Native_SaveClientObjectiveProgress(Handle plugin, int numParams)
     // If noone responded or we got a positive response, save to database.
     if (GetForwardFunctionCount(g_fOnObjectivePreSave) == 0 || !ShouldBlock)
     {
-        if (ActiveContractObjective.m_iProgress > 0)
+        int ActiveProgress = GetActiveObjectiveProgress(client, objective);
+        if (ActiveProgress > 0)
         {
-            SetObjectiveProgressDatabase(steamid64, UUID, ActiveContractObjective.m_iInternalID, ActiveContractObjective.m_iProgress);
+            SetObjectiveProgressDatabase(steamid64, UUID, objective, ActiveProgress);
         }
         return true;
     }
