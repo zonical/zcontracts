@@ -192,33 +192,8 @@ public void CreateContract(KeyValues hContractConf, Contract hContract)
 	// Grab the teams that can do this contract.
 	char sTeamBuffer[64];
 	hContractConf.GetString("team_restriction", sTeamBuffer, sizeof(sTeamBuffer), "-1");
-	// Is this an int? We can easily grab the team index and set it from there.
-	int iTeamIndex = StringToInt(sTeamBuffer);
-	// CS:GO and TF2 team indexes don't go any higher than three. If this plugin
-	// is ported to another Engine with more teams, you will need to change the
-	// value of MAXIMUM_TEAMS to be max+1.
-	if (iTeamIndex != 0 && iTeamIndex < MAXIMUM_TEAMS)
-	{
-		hContract.m_iTeamRestriction = iTeamIndex;
-	}
-	else if (StrEqual(sTeamBuffer, "0")) hContract.m_iTeamRestriction = -1;
-	else
-	{
-		// Set the  incoming restriction string to be all lowercase.
-		for (int i = 0; i < strlen(sTeamBuffer); i++)
-		{
-			CharToLower(sTeamBuffer[i]);
-		}
-
-		// Depending on the engine version, we can specify aliases
-		// to use instead of intergers. 
-		switch (GetEngineVersion())
-		{
-			case Engine_TF2: iTeamIndex = TF2_GetTeamIndexFromString(sTeamBuffer);
-			case Engine_CSGO: iTeamIndex = CSGO_GetTeamIndexFromString(sTeamBuffer);
-		}
-		hContract.m_iTeamRestriction = iTeamIndex;
-	}
+	
+	hContract.m_iTeamRestriction = GetTeamFromSchema(sTeamBuffer);
 	
 	// Create our objectives.
 	if (hContractConf.JumpToKey("objectives", false))
@@ -296,6 +271,104 @@ public void ProcessContractsSchema()
 	PrintToServer("[ZContracts] Loaded %d contracts.", iContractCount);
 }
 
+/**
+ * Grabs the Keyvalues schema for a Contract.
+ *
+ * @param UUID  Contract UUID.
+ * @return		KeyValues object of a Contract.
+ * @error       Contract could not be found in the schema.
+*/
+public any Native_GetContractSchema(Handle plugin, int numParams)
+{
+	char UUID[MAX_UUID_SIZE];
+	GetNativeString(1, UUID, sizeof(UUID));
+	if (!g_ContractSchema.JumpToKey(UUID))
+	{
+		// Error out!
+		ThrowNativeError(SP_ERROR_NOT_FOUND, "Could not find Contract in schema - invalid UUID %s", UUID);
+	}
+
+	// Clone our handle and return it.
+	KeyValues NewKV = new KeyValues(UUID);
+	NewKV.Import(g_ContractSchema);
+	g_ContractSchema.Rewind();
+	Handle Schema = CloneHandle(NewKV, plugin);
+	return view_as<KeyValues>(Schema);
+}
+
+/**
+ * Grabs the Keyvalues schema for an Objective.
+ *
+ * @param UUID  Contract UUID.
+ * @param objective Objective ID.
+ * @return		KeyValues object of an Objective.
+ * @error       Contract or Objective could not be found in the schema.
+ */
+public any Native_GetObjectiveSchema(Handle plugin, int numParams)
+{
+	char UUID[MAX_UUID_SIZE];
+	GetNativeString(1, UUID, sizeof(UUID));
+	int objective = GetNativeCell(2);
+	if (!g_ContractSchema.JumpToKey(UUID))
+	{
+		// Error out!
+		ThrowNativeError(SP_ERROR_NOT_FOUND, "Could not find Contract in schema - invalid UUID %s", UUID);
+	}
+	if (!g_ContractSchema.JumpToKey("objectives"))
+	{
+		// Error out again!
+		ThrowNativeError(SP_ERROR_NOT_FOUND, "Could not find objectives in %s schema - invalid structure", UUID);
+	}
+	char StrObjective[4];
+	IntToString(objective, StrObjective, sizeof(StrObjective));
+	if (!g_ContractSchema.JumpToKey(StrObjective))
+	{
+		// Error out once more!
+		ThrowNativeError(SP_ERROR_NOT_FOUND, "Could not find objective %d in %s schema", objective, UUID);
+	}
+
+	// Clone our handle and return it.
+	KeyValues NewKV = new KeyValues(StrObjective);
+	NewKV.Import(g_ContractSchema);
+	g_ContractSchema.Rewind();
+	Handle Schema = CloneHandle(NewKV, plugin);
+	return view_as<KeyValues>(Schema);
+}
+
+/**
+ * Grabs the amount of objectives in a Contract.
+ *
+ * @param UUID  Contract UUID.
+ * @return		Amount of objectives in a Contract.
+ * @error       Contract could not be found in the schema.
+ */
+public any Native_GetContractObjectiveCount(Handle plugin, int numParams)
+{
+	char UUID[MAX_UUID_SIZE];
+	GetNativeString(1, UUID, sizeof(UUID));
+	if (!g_ContractSchema.JumpToKey(UUID))
+	{
+		// Error out!
+		ThrowNativeError(SP_ERROR_NOT_FOUND, "Could not find Contract in schema - invalid UUID %s", UUID);
+	}
+	if (!g_ContractSchema.JumpToKey("objectives"))
+	{
+		// Error out again!
+		ThrowNativeError(SP_ERROR_NOT_FOUND, "Could not find objectives in %s schema - invalid structure", UUID);
+	}
+
+	int count = 0;
+	if(g_ContractSchema.GotoFirstSubKey())
+	{
+		do 
+		{
+			count++;
+		} while (g_ContractSchema.GotoNextKey());
+	}
+	g_ContractSchema.Rewind();
+	return count;
+}
+
 bool CreateContractFromUUID(const char[] sUUID, Contract hBuffer)
 {
 	hBuffer.m_bInitalized = false;
@@ -318,4 +391,37 @@ bool GetContractDirectory(const char[] sUUID, char buffer[MAX_DIRECTORY_SIZE])
 		return true;
 	}
 	return false;
+}
+
+int GetTeamFromSchema(const char[] sTeamBuffer)
+{
+	// Is this an int? We can easily grab the team index and set it from there.
+	int iTeamIndex = StringToInt(sTeamBuffer);
+	// CS:GO and TF2 team indexes don't go any higher than three. If this plugin
+	// is ported to another Engine with more teams, you will need to change the
+	// value of MAXIMUM_TEAMS to be max+1.
+	if (iTeamIndex != 0 && iTeamIndex < MAXIMUM_TEAMS)
+	{
+		return iTeamIndex;
+	}
+	else if (StrEqual(sTeamBuffer, "0")) return -1;
+	else
+	{
+		// Set the  incoming restriction string to be all lowercase.
+		for (int i = 0; i < strlen(sTeamBuffer); i++)
+		{
+			CharToLower(sTeamBuffer[i]);
+		}
+
+		// Depending on the engine version, we can specify aliases
+		// to use instead of intergers. 
+		switch (GetEngineVersion())
+		{
+			case Engine_TF2: return TF2_GetTeamIndexFromString(sTeamBuffer);
+			case Engine_CSGO: return CSGO_GetTeamIndexFromString(sTeamBuffer);
+		}
+	}
+
+	// Could not determine team.
+	return -1;
 }

@@ -1,12 +1,3 @@
-bool HasClientCompletedContract(int client, char UUID[MAX_UUID_SIZE])
-{
-	// Could this be made any faster? I'm not a real programmer.
-	// The answer is, yes it can.
-	if (!IsClientValid(client)) return false;
-	if (IsFakeClient(client) && !g_BotContracts.BoolValue) return false;
-	return CompletedContracts[client].ContainsKey(UUID);
-}
-
 bool IsContractLockedForClient(int client, char UUID[MAX_UUID_SIZE])
 {
 	if (g_DebugUnlockContracts.BoolValue) return false;
@@ -88,11 +79,11 @@ void GiveRandomContract(int client)
 	// Grant Contract.
 	if (IsFakeClient(client) && !g_BotContracts.BoolValue)
 	{
-		SetClientContract(client, RandomUUID, false, false);
+		SetClientContractEx(client, RandomUUID, false, false);
 	}
 	else
 	{
-		SetClientContract(client, RandomUUID, true, true);
+		SetClientContractEx(client, RandomUUID, true, true);
 	}	
 }
 

@@ -13,7 +13,7 @@ public Action EventTimer(Handle hTimer, DataPack hPack)
 	
 	// Get our contracts.
 	Contract hContract;
-	GetClientContract(client, hContract);
+	GetClientContractStruct(client, hContract);
 	
 	// Grab our objective.
 	ContractObjective hObjective;

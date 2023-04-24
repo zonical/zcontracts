@@ -141,20 +141,45 @@ public any Native_GetTF2GameModeExt(Handle plugin, int numParams)
 
 // ============================= LOGIC =============================
 
-public Action OnProcessContractLogic(int client, char UUID[MAX_UUID_SIZE], char event[MAX_EVENT_SIZE],
-int value, Contract ClientContract, ContractObjective ClientContractObjective)
+public Action OnProcessContractLogic(int client, char UUID[MAX_UUID_SIZE], int objective, 
+char event[MAX_EVENT_SIZE], int value)
 {
 	if (GetGameTime() >= g_LastValidProgressTime && g_LastValidProgressTime != -1.0) return Plugin_Stop;
 	
-	// Class check.
-	TFClassType Class = TF2_GetPlayerClass(client);
-	if (Class == TFClass_Unknown) return Plugin_Stop;
-	if (!ClientContract.m_bClass[Class]) return Plugin_Stop;
+	KeyValues ContractSchema = GetContractSchema(UUID);
+	
+	if (ContractSchema.JumpToKey("classes"))
+	{
+		// Class check.
+		TFClassType Class = TF2_GetPlayerClass(client);
+		if (Class == TFClass_Unknown) return Plugin_Stop;
+
+		// Construct temporary array.
+		bool ClassCheckArray[10];
+		ClassCheckArray[TFClass_Scout]      = view_as<bool>(ContractSchema.GetNum("scout", 0));
+        ClassCheckArray[TFClass_Soldier]    = view_as<bool>(ContractSchema.GetNum("soldier", 0));
+        ClassCheckArray[TFClass_Pyro]       = view_as<bool>(ContractSchema.GetNum("pyro", 0));
+        ClassCheckArray[TFClass_DemoMan]    = view_as<bool>(ContractSchema.GetNum("demoman", 0));
+        ClassCheckArray[TFClass_Heavy]      = view_as<bool>(ContractSchema.GetNum("heavy", 0));
+        ClassCheckArray[TFClass_Engineer]   = view_as<bool>(ContractSchema.GetNum("engineer", 0));
+        ClassCheckArray[TFClass_Sniper]     = view_as<bool>(ContractSchema.GetNum("sniper", 0));
+        ClassCheckArray[TFClass_Medic]      = view_as<bool>(ContractSchema.GetNum("medic", 0));
+        ClassCheckArray[TFClass_Spy]        = view_as<bool>(ContractSchema.GetNum("spy", 0));
+
+		if (!ClassCheckArray[Class]) return Plugin_Stop;
+		ContractSchema.Rewind();
+	}
 
 	// Gamemode extension check.
-	if (!TF2_ValidGameRulesEntityExists(ClientContract.m_sRequiredGameRulesEntity)) return Plugin_Stop;
-	if ((ClientContract.m_iGameTypeRestriction != view_as<int>(TGE_NoExtension)) 
-	&& (ClientContract.m_iGameTypeRestriction != view_as<int>(g_TF2_GameModeExtension))) return Plugin_Stop;
+	char RequiredGameRulesEnt[64];
+	ContractSchema.GetString("required_gamerules", RequiredGameRulesEnt, sizeof(RequiredGameRulesEnt));
+	if (!StrEqual(RequiredGameRulesEnt, ""))
+	{
+		if (!TF2_ValidGameRulesEntityExists(RequiredGameRulesEnt)) return Plugin_Stop;
+	}
+
+	if ((ContractSchema.GetNum("gamemode_extension", view_as<int>(TGE_NoExtension)) != view_as<int>(TGE_NoExtension)) 
+	&& (ContractSchema.GetNum("gamemode_extension", view_as<int>(TGE_NoExtension)) != view_as<int>(g_TF2_GameModeExtension))) return Plugin_Stop;
 
 	// All good! :)
 	return Plugin_Continue;

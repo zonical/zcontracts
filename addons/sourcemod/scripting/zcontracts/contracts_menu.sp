@@ -20,7 +20,7 @@ void CreateContractMenu()
 	
 	gContractMenu = new Menu(ContractMenuHandler, MENU_ACTIONS_ALL);
 	char MenuTitle[128] = "ZContracts %s - Contract Selector";
-	Format(MenuTitle, sizeof(MenuTitle), MenuTitle, PLUGIN_VERSION);
+	Format(MenuTitle, sizeof(MenuTitle), MenuTitle, ZCONTRACTS_PLUGIN_VERSION);
 	gContractMenu.SetTitle(MenuTitle);
 	gContractMenu.OptionFlags = MENUFLAG_NO_SOUND | MENUFLAG_BUTTON_EXIT;
 	
@@ -92,9 +92,6 @@ int ContractMenuHandler(Menu menu, MenuAction action, int param1, int param2)
 			// Are we a contract?
 			else if (MenuKey[0] == '{')
 			{
-				Contract ClientContract;
-				GetClientContract(param1, ClientContract);
-
 				char ContractDirectory[MAX_DIRECTORY_SIZE];
 				GetContractDirectory(MenuKey, ContractDirectory);
 				// Are we in the right directory?
@@ -104,9 +101,9 @@ int ContractMenuHandler(Menu menu, MenuAction action, int param1, int param2)
 				}
 
 				// Are we currently using this contract?
-				if (StrEqual(MenuKey, ClientContract.m_sUUID)) 
+				if (StrEqual(MenuKey, ActiveContract[param1].m_sUUID)) 
 				{
-					if (g_RepeatContracts.BoolValue && ClientContract.IsContractComplete())
+					if (g_RepeatContracts.BoolValue && ActiveContract[param1].IsContractComplete())
 					{
 						return ITEMDRAW_DEFAULT;
 					}
@@ -140,8 +137,8 @@ int ContractMenuHandler(Menu menu, MenuAction action, int param1, int param2)
 			return style;
 		}
 
-		// If we're currently doing a Contract, add "(SELECTED)"
-		// If the item is a directory, add ">>"
+		// If we're currently doing a Contract, add "(ACTIVE)"
+		// If the item is a directory, add ">"
 		case MenuAction_DisplayItem:
 		{
 			char MenuDisplay[MAX_CONTRACT_NAME_SIZE + 16];
@@ -175,9 +172,6 @@ int ContractMenuHandler(Menu menu, MenuAction action, int param1, int param2)
 			// Is this a Contract?
 			else if (MenuKey[0] == '{')
 			{
-				Contract ClientContract;
-				GetClientContract(param1, ClientContract);
-
 				if (IsContractLockedForClient(param1, MenuKey))
 				{
 					Format(MenuDisplay, sizeof(MenuDisplay), "[X] %s", MenuDisplay);
@@ -200,7 +194,7 @@ int ContractMenuHandler(Menu menu, MenuAction action, int param1, int param2)
 					return RedrawMenuItem(MenuDisplay);
 				}
 
-				if (StrEqual(ClientContract.m_sUUID, MenuKey))
+				if (StrEqual(ActiveContract[param1].m_sUUID, MenuKey))
 				{
 					Format(MenuDisplay, sizeof(MenuDisplay), "%s [ACTIVE]", MenuDisplay);
 					return RedrawMenuItem(MenuDisplay);
@@ -223,7 +217,7 @@ int ContractMenuHandler(Menu menu, MenuAction action, int param1, int param2)
 					ReplaceString(MenuDisplay, sizeof(MenuDisplay), g_Menu_CurrentDirectory[param1], "");
 				}
 
-				Format(MenuDisplay, sizeof(MenuDisplay), ">> %s", MenuDisplay);
+				Format(MenuDisplay, sizeof(MenuDisplay), "> %s", MenuDisplay);
 				return RedrawMenuItem(MenuDisplay);
 			}
 		}
@@ -246,14 +240,14 @@ int ContractMenuHandler(Menu menu, MenuAction action, int param1, int param2)
 				// If we're allowed to repeat Contracts, allow us to repeat
 				// our currently selected contract if it's completed.
 				else if (g_RepeatContracts.BoolValue && 
-				StrEqual(MenuKey, ClientContracts[param1].m_sUUID) &&
-				ClientContracts[param1].IsContractComplete())
+				StrEqual(MenuKey, ActiveContract[param1].m_sUUID) &&
+				ActiveContract[param1].IsContractComplete())
 				{
 					CompletedContractInfo info;
-					CompletedContracts[param1].GetArray(ClientContracts[param1].m_sUUID, info, sizeof(CompletedContractInfo));
+					CompletedContracts[param1].GetArray(ActiveContract[param1].m_sUUID, info, sizeof(CompletedContractInfo));
 					if (!info.m_bReset)
 					{
-						ConstructRepeatContractPanel(param1, ClientContracts[param1].m_sUUID);
+						ConstructRepeatContractPanel(param1, ActiveContract[param1].m_sUUID);
 					}
 					else 
 					{
@@ -275,7 +269,7 @@ int ContractMenuHandler(Menu menu, MenuAction action, int param1, int param2)
 					}
 				}
 				// Are we NOT currently using this contract?
-				else if (!StrEqual(MenuKey, ClientContracts[param1].m_sUUID))
+				else if (!StrEqual(MenuKey, ActiveContract[param1].m_sUUID))
 				{
 					SetClientContract(param1, MenuKey);	
 				}
@@ -340,14 +334,11 @@ public Action OpenContrackerForClientCmd(int client, int args)
 
 void OpenContrackerForClient(int client)
 {
-	Contract ClientContract;
-	GetClientContract(client, ClientContract);
-
 	// Are we doing a Contract?
-	if (ClientContract.IsContractInitalized())
+	if (ActiveContract[client].IsContractInitalized())
 	{
 		// Display our objective display instead.
-		CreateObjectiveDisplay(client, ClientContract, false);
+		CreateObjectiveDisplay(client, ActiveContract[client], false);
 	}
 	else
 	{
@@ -504,7 +495,7 @@ void ConstructHelpPanel(int client)
 	gHelpDisplay[client].DrawText("Welcome to ZContracts - a custom Contracker implementation."); 
 	gHelpDisplay[client].DrawText("To select a Contract, press the corresponding menu option.");
 	gHelpDisplay[client].DrawText("Completed Contracts are marked with [✓], locked Contracts are maked with [X]")
-	gHelpDisplay[client].DrawText("Directories are notated with \">>\". They contain more Contracts inside.");
+	gHelpDisplay[client].DrawText("Directories are notated with \">\". They contain more Contracts inside.");
 	gHelpDisplay[client].DrawText("If you wish to disable the HUD or sounds, type \"/zcpref\" in chat.");
 	gHelpDisplay[client].DrawText(" ");
 	gHelpDisplay[client].DrawItem("Take me to the Contracker and never show this again!");
@@ -607,7 +598,7 @@ int LockedContractMenuHandler(Menu menu, MenuAction action, int param1, int para
 			if (MenuKey[0] == '{')
 			{
 				Contract ClientContract;
-				GetClientContract(param1, ClientContract);
+				GetClientContractStruct(param1, ClientContract);
 
 				// Are we currently using this contract?
 				if (StrEqual(MenuKey, ClientContract.m_sUUID)) 
@@ -633,7 +624,7 @@ int LockedContractMenuHandler(Menu menu, MenuAction action, int param1, int para
 			if (MenuKey[0] == '{')
 			{
 				Contract ClientContract;
-				GetClientContract(param1, ClientContract);
+				GetClientContractStruct(param1, ClientContract);
 
 				// Are we doing this Contract?
 				if (StrEqual(ClientContract.m_sUUID, MenuKey))
@@ -675,7 +666,7 @@ int LockedContractMenuHandler(Menu menu, MenuAction action, int param1, int para
 					delete menu;
 				}
 				// Are we NOT currently using this contract?
-				else if (!StrEqual(MenuKey, ClientContracts[param1].m_sUUID))
+				else if (!StrEqual(MenuKey, ActiveContract[param1].m_sUUID))
 				{
 					SetClientContract(param1, MenuKey);	
 				}

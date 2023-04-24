@@ -79,34 +79,31 @@ public Action Timer_SaveAllToDB(Handle hTimer)
         if (!IsClientValid(i) || IsFakeClient(i)) continue;
 
         // Save this contract to the database.
-        Contract ClientContract;
-        GetClientContract(i, ClientContract);
-        if (!ClientContract.IsContractInitalized()) continue;
+        if (!ActiveContract[i].IsContractInitalized()) continue;
 
         if (g_DB != null)
         {
             // Save the Contract.
-            if (ClientContract.m_bNeedsDBSave)
+            if (ActiveContract[i].m_bNeedsDBSave)
             {
-                SaveClientContractProgress(i, ClientContract);
-                ClientContract.m_bNeedsDBSave = false;
+                SaveActiveContractToDatabase(i);
+                ActiveContract[i].m_bNeedsDBSave = false;
             }
             // Save each of our objectives.
-            for (int j = 0; j < ClientContract.m_hObjectives.Length; j++)
+            for (int j = 0; j < ActiveContract[i].m_hObjectives.Length; j++)
             {
-                ContractObjective ClientContractObjective;
-                ClientContract.GetObjective(j, ClientContractObjective);
-                if (!ClientContractObjective.m_bInitalized) continue;
+                ContractObjective ActiveContractObjective;
+                ActiveContract[i].GetObjective(j, ActiveContractObjective);
+                if (!ActiveContractObjective.m_bInitalized) continue;
 
-                if (ClientContractObjective.m_bNeedsDBSave)
+                if (ActiveContractObjective.m_bNeedsDBSave)
                 {
-                    SaveClientObjectiveProgress(i, ClientContract.m_sUUID, ClientContractObjective);
-                    ClientContractObjective.m_bNeedsDBSave = false;
-                    ClientContract.SaveObjective(j, ClientContractObjective);
+                    SaveActiveObjectiveToDatabase(i, j);
+                    ActiveContractObjective.m_bNeedsDBSave = false;
+                    ActiveContract[i].SaveObjective(j, ActiveContractObjective);
                 }
             }
         }
-        ClientContracts[i] = ClientContract;
     }
     return Plugin_Continue;
 }
@@ -245,7 +242,7 @@ public void CB_SetObjectiveProgressDatabase(Database db, DBResultSet results, co
     {
         if (results.AffectedRows < 1 && g_DebugQuery.BoolValue)
         {
-            LogMessage("[ZContracts] %s SAVE: No progress inserted for Contract Objective %d [SQL ERR: %s]", steamid64, error);
+            LogMessage("[ZContracts] %s SAVE: No progress inserted for Contract Objective %d [SQL ERR: %s]", steamid64, objective_id, error);
         }
         else if (results.AffectedRows == 1 && g_DebugQuery.BoolValue)
         {
@@ -260,30 +257,28 @@ public void CB_SetObjectiveProgressDatabase(Database db, DBResultSet results, co
  * Saves a Contract to the database for a client.
  *
  * @param client    Client index.
- * @param ClientContract The enum struct of the contract to save.
- * @error           Client index is invalid or the Contract is invalid.         
+ * @error           Client index is invalid.      
  */
-public any Native_SaveClientContractProgress(Handle plugin, int numParams)
+public any Native_SaveActiveContractToDatabase(Handle plugin, int numParams)
 {
     int client = GetNativeCell(1);
-    Contract ClientContract;
-    GetNativeArray(2, ClientContract, sizeof(Contract));
-
     if (IsFakeClient(client) && g_BotContracts.BoolValue) return false;
     if (!IsClientValid(client) || IsFakeClient(client))
 	{
 		ThrowNativeError(SP_ERROR_NATIVE, "Invalid client index. (%d)", client);
 	}
-    if (ClientContract.m_sUUID[0] != '{')
+
+    char UUID[MAX_UUID_SIZE];
+    if (!GetClientContract(client, UUID, sizeof(UUID)))
     {
-        ThrowNativeError(SP_ERROR_NATIVE, "Invalid UUID passed. (%s)", ClientContract.m_sUUID);
+        LogMessage("SaveActiveContractToDatabase: Client does not have an active contract to save! (%d)", client);
+        return false;
     }
 
     // Call pre-save forward.
     Call_StartForward(g_fOnContractPreSave);
     Call_PushCell(client);
-    Call_PushString(ClientContract.m_sUUID);
-    Call_PushArray(ClientContract, sizeof(Contract));
+    Call_PushString(UUID);
     bool ShouldBlock = false;
     Call_Finish(ShouldBlock);
 
@@ -293,9 +288,10 @@ public any Native_SaveClientContractProgress(Handle plugin, int numParams)
     // If noone responded or we got a positive response, save to database.
     if (GetForwardFunctionCount(g_fOnContractPreSave) == 0 || !ShouldBlock)
     {
-        if (ClientContract.m_iProgress > 0)
+        int ActiveProgress = GetActiveContractProgress(client);
+        if (ActiveProgress > 0)
         {
-            SetContractProgressDatabase(steamid64, ClientContract.m_sUUID, ClientContract.m_iProgress);
+            SetContractProgressDatabase(steamid64, UUID, ActiveProgress);
         }
         return true;
     }
@@ -314,33 +310,37 @@ public any Native_SaveClientContractProgress(Handle plugin, int numParams)
  * Saves an Objective to the database for a client.
  *
  * @param client    Client index.
- * @param UUID	UUID of the Contract that contains this objective.
- * @param ClientObjective The enum struct of the objective to save.
- * @error           Client index is invalid or the ClientObjective is invalid.         
+ * @param objective Objective ID.
+ * @error           Client index is invalid.         
  */
-public any Native_SaveClientObjectiveProgress(Handle plugin, int numParams)
+public any Native_SaveActiveObjectiveToDatabase(Handle plugin, int numParams)
 {
     int client = GetNativeCell(1);
-    char UUID[MAX_UUID_SIZE];
-    GetNativeString(2, UUID, sizeof(UUID));
-    ContractObjective ClientContractObjective;
-    GetNativeArray(3, ClientContractObjective, sizeof(ContractObjective));
-
     if (IsFakeClient(client) && g_BotContracts.BoolValue) return false;
     if (!IsClientValid(client) || IsFakeClient(client))
 	{
 		ThrowNativeError(SP_ERROR_NATIVE, "Invalid client index. (%d)", client);
 	}
-    if (UUID[0] != '{')
+
+    char UUID[MAX_UUID_SIZE];
+    if (!GetClientContract(client, UUID, sizeof(UUID)))
     {
-        ThrowNativeError(SP_ERROR_NATIVE, "Invalid UUID passed. (%s)", UUID);
+        LogMessage("SaveActiveObjectiveToDatabase: Client %N does not have an active contract to save!", client);
+        return false;
+    }
+
+    int objective = GetNativeCell(2);
+    if (objective > /*zero indexed*/ GetContractObjectiveCount(UUID)-1)
+    {
+        LogMessage("SaveActiveObjectiveToDatabase: Invalid contract objective ID passed (%N: %d)", client, objective);
+        return false;
     }
 
     // Call pre-save forward.
     Call_StartForward(g_fOnObjectivePreSave);
     Call_PushCell(client);
     Call_PushString(UUID);
-    Call_PushArray(ClientContractObjective, sizeof(ContractObjective));
+    Call_PushCell(objective);
     bool ShouldBlock = false;
     Call_Finish(ShouldBlock);
 
@@ -350,9 +350,10 @@ public any Native_SaveClientObjectiveProgress(Handle plugin, int numParams)
     // If noone responded or we got a positive response, save to database.
     if (GetForwardFunctionCount(g_fOnObjectivePreSave) == 0 || !ShouldBlock)
     {
-        if (ClientContractObjective.m_iProgress > 0)
+        int ActiveProgress = GetActiveObjectiveProgress(client, objective);
+        if (ActiveProgress > 0)
         {
-            SetObjectiveProgressDatabase(steamid64, UUID, ClientContractObjective.m_iInternalID, ClientContractObjective.m_iProgress);
+            SetObjectiveProgressDatabase(steamid64, UUID, objective, ActiveProgress);
         }
         return true;
     }
@@ -369,11 +370,8 @@ public any Native_SaveClientObjectiveProgress(Handle plugin, int numParams)
 */
 public void CB_SetClientContract_Contract(Database db, DBResultSet results, const char[] error, int client)
 {
-    Contract ClientContract;
-    GetClientContract(client, ClientContract);
-
     // This may need to change from CONTRACKER_VERSION in the future.
-    const int MinimumRequiredVersion = CONTRACKER_VERSION;
+    const int MinimumRequiredVersion = 1;
 
     if (results == INVALID_HANDLE) return;
     while (results.FetchRow())
@@ -385,20 +383,27 @@ public void CB_SetClientContract_Contract(Database db, DBResultSet results, cons
             ThrowError("Missing required database key: \"version\" while fetching client %d contract data.", client);
         }
         int DataVersion = results.FetchInt(VersionField);
-        if (DataVersion < MinimumRequiredVersion)
+        if (MinimumRequiredVersion > DataVersion)
         {
             ThrowError("Outdated contract data. Minimum version: %d, data version: %d", MinimumRequiredVersion, DataVersion);
         }
 
-        ClientContract.m_iProgress = results.FetchInt(2);
+        ActiveContract[client].m_iProgress = results.FetchInt(2);
+
+        Call_StartForward(g_fOnContractProgressReceived);
+        Call_PushCell(client);
+        Call_PushString(ActiveContract[client].m_sUUID);
+        Call_PushCell(ActiveContract[client].m_iProgress);
+        Call_Finish();
+
         if (g_DebugQuery.BoolValue && IsClientValid(client))
         {
-            LogMessage("[ZContracts] %N LOAD: Successfully grabbed Contract progress from database (%d/%d).", client, ClientContract.m_iProgress, ClientContract.m_iMaxProgress);
+            LogMessage("[ZContracts] %N LOAD: Successfully grabbed Contract progress from database (%d/%d).",
+            client, ActiveContract[client].m_iProgress, ActiveContract[client].m_iMaxProgress);
         }
     }
 
-    ClientContract.m_bLoadedFromDatabase = true;
-    ClientContracts[client] = ClientContract;
+    ActiveContract[client].m_bLoadedFromDatabase = true;
 }
 
 /**
@@ -406,11 +411,8 @@ public void CB_SetClientContract_Contract(Database db, DBResultSet results, cons
 */
 public void CB_SetClientContract_Objective(Database db, DBResultSet results, const char[] error, int client)
 {
-    Contract ClientContract;
-    GetClientContract(client, ClientContract);
-
     // This may need to change from CONTRACKER_VERSION in the future.
-    const int MinimumRequiredVersion = CONTRACKER_VERSION;
+    const int MinimumRequiredVersion = 1;
 
     if (results == INVALID_HANDLE) return;
     while (results.FetchRow())
@@ -422,16 +424,23 @@ public void CB_SetClientContract_Objective(Database db, DBResultSet results, con
             ThrowError("Missing required database key: \"version\" while fetching client %d contract data.", client);
         }
         int DataVersion = results.FetchInt(VersionField);
-        if (DataVersion < MinimumRequiredVersion)
+        if (MinimumRequiredVersion > DataVersion)
         {
             ThrowError("Outdated contract objective data. Minimum version: %d, data version: %d", MinimumRequiredVersion, DataVersion);
         }
 
         ContractObjective hObj;
         int db_id = results.FetchInt(2);
-        ClientContract.GetObjective(db_id, hObj);
+        ActiveContract[client].GetObjective(db_id, hObj);
         hObj.m_iProgress = results.FetchInt(3);
-        ClientContract.SaveObjective(db_id, hObj);
+        ActiveContract[client].SaveObjective(db_id, hObj);
+
+        Call_StartForward(g_fOnObjectiveProgressReceived);
+        Call_PushCell(client);
+        Call_PushString(ActiveContract[client].m_sUUID);
+        Call_PushCell(db_id);
+        Call_PushCell(hObj.m_iProgress);
+        Call_Finish();
 
         if (g_DebugQuery.BoolValue)
         {
@@ -440,8 +449,7 @@ public void CB_SetClientContract_Objective(Database db, DBResultSet results, con
         }
     }
 
-    ClientContract.m_bLoadedFromDatabase = true;
-    ClientContracts[client] = ClientContract;
+    ActiveContract[client].m_bLoadedFromDatabase = true;
 }
 
 /**
