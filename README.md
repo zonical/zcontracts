@@ -9,28 +9,35 @@ The plugin is officially supported for Team Fortress 2. Work has been started fo
 
 **DISCLAIMER:** This is a beta version! Documentation on existing features will be incomplete. Things are subject to change and there might be breaking changes!
 
-## TODO LIST for 1.0 release
-- [ ] Better weapon checking.
-- [ ] Weapon slot restrictions.
-- [ ] Subtract progress from a Contract.
-- [ ] Safer Native API for other plugins.
-- [ ] Time limited Contracts.
+## ZContracts Roadmap:
+- [X] Better weapon checking.
+- [X] Weapon slot restrictions.
+- [X] Subtract progress from a Contract.
+- [X] Safer Native API for other plugins.
+- [X] Time limited Contracts.
+- [ ] Daily/Weekly Contracts (special plugin?)
 
 ## Installation
 
 **Requirements:**
 - SourceMod 1.11+ (tested on 1.12.0.6967)
+- If running on TF2: [tf_econ_data by nosoop](https://github.com/nosoop/SM-TFEconData/tree/master)
 - MySQL 5.6+ database
 
 **Instructions:**
 1) Extract the contents of `/addons/sourcemod` to your SourceMod installation.
-2) Update `databases.cfg` to include an entry for `"zcontracts"`. An example can be found [here](https://github.com/zonical/zcontracts/blob/master/addons/sourcemod/configs/databases_example.cfg).
-3) Import the [SQL structure](https://github.com/zonical/zcontracts/blob/master/database/zcontracts.sql) into your database. 
-4) Turn on your server. There should be console output that starts with `[ZContracts]` when SourceMod is initalised. It will report how many Contracts are loaded and if a connection is established with the database.
-5) Double check that all the version numbers of all ZContracts plugins are synchronized. You can check this by typing `sm plugins list` in your server console. If the version are not synchronized, update your ZContracts install immediately.
+2) Depending on the game, install the required plugins (e.g for TF2, install tf_econ_data).
+3) Update `databases.cfg` to include an entry for `"zcontracts"`. An example can be found [here](https://github.com/zonical/zcontracts/blob/master/addons/sourcemod/configs/databases_example.cfg).
+4) Import the [SQL structure](https://github.com/zonical/zcontracts/blob/master/database/zcontracts.sql) into your database. 
+5) Turn on your server. There should be console output that starts with `[ZContracts]` when SourceMod is initalised. It will report how many Contracts are loaded and if a connection is established with the database.
+6) Double check that all the version numbers of all ZContracts plugins are synchronized. You can check this by typing `sm plugins list` in your server console. If the version are not synchronized, update your ZContracts install immediately.
 
 ## Building
-You will need the latest release of nosoop's stocksoup if you wish to build the plugin yourself. This is already included as a submodule inside the repository. When cloning the repository, make sure you grab the submodules as well: `git clone --recurse-submodules` and update the submodule when required: `git submodule update --remote --checkout`. Before compiling `zcontracts_main`, make sure there is a `scripting/zcontracts` folder with the required sub-plugins inside. If you make any edits to any of the enum structs, make sure you recompile all plugins that use ZContracts.
+You will need the latest release of nosoop's stocksoup if you wish to build the plugin yourself. This is already included as a submodule inside the repository. When cloning the repository, make sure you grab the submodules as well: `git clone --recurse-submodules` and update the submodule when required: `git submodule update --remote --checkout`. Before compiling `zcontracts_main`, make sure there is a `scripting/zcontracts` folder with the required sub-plugins inside.
+
+If you are building `zcontracts_tf2`, you will need the latest release of [tf_econ_data by nosoop](https://github.com/nosoop/SM-TFEconData/tree/master). I have included the .inc file in the repositiory.
+
+If you make any edits to any of the enum structs, make sure you recompile all plugins that use ZContracts.
 
 ## Features
 - All Contract selection handled in-game. No third party website or API.

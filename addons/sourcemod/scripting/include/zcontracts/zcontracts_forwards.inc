@@ -49,6 +49,16 @@ forward Action OnProcessContractLogic(int client, char UUID[MAX_UUID_SIZE], int 
 int value);
 
 /**
+ * Called whenever CanClientCompleteContract() is called to see if a client can complete
+ * a selected Contract.
+ * 
+ * @param client	Client index.
+ * @param UUID		UUID of the Contract.
+ * @return A value higher than Plugin_Continue will mark the contract as incompletable.
+ */
+forward Action OnContractCompletableCheck(int client, char UUID[MAX_UUID_SIZE]);
+
+/**
  * Called when a client selects a Contract.
  * 
  * @param client	Client index.

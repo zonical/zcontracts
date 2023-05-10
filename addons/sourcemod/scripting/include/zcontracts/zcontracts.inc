@@ -4,7 +4,7 @@
 
 #define __zcontracts_included
 
-#define ZCONTRACTS_PLUGIN_VERSION "0.9.0"
+#define ZCONTRACTS_PLUGIN_VERSION "0.10.0"
 // This value should be incremented with every breaking version made to the
 // database so saves can be easily converted. For developers who fork this project and
 // wish to merge changes, do not increment this number until merge.
@@ -238,16 +238,21 @@ enum struct Contract
 	ArrayList m_hRequiredContracts;
 
 	// Restrictions.
+	char m_sWeaponSlotRestriction[64];
 	char m_sWeaponNameRestriction[64];
-	char m_sWeaponItemDefRestriction[64];
 	char m_sWeaponClassnameRestriction[64];
+	int m_iWeaponItemDefRestriction;
+	char m_sInventoryItemNameRestriction[64];
+	char m_sInventoryItemClassnameRestriction[64];
+	int m_iInventoryItemItemDefRestriction;
+
 	char m_sMapRestriction[64];
 	int m_iTeamRestriction;
-
 	char m_sRequiredGameRulesEntity[64]; // TF2
 	int m_iGameModeRestriction; // CSGO
 	int m_iGameTypeRestriction; 
 	int m_iSkirmishIDRestriction; // CSGO
+	int m_iTimestampRestriction;
 
 	// Other plugins can mark this Contract as uncompletable on player switch.
 	bool m_bIsCompletableOverride;
@@ -316,62 +321,6 @@ enum struct Contract
 		}
 		
 		return false;
-	}
-
-	bool IsContractCompletableForClient(int client)
-	{
-		if (!this.m_bActive || !this.m_bInitalized) return false;
-
-		// Map check.
-		char Map[256];
-		GetCurrentMap(Map, sizeof(Map));
-		if (!StrEqual(Map, "") && StrContains(Map, this.m_sMapRestriction) == -1) return false;
-
-		// Team check.
-		if (this.m_iTeamRestriction != -1 && GetClientTeam(client) != this.m_iTeamRestriction) return false;
-
-		// Weapon check.
-		if (!StrEqual("", this.m_sWeaponItemDefRestriction)
-		|| !StrEqual("", this.m_sWeaponClassnameRestriction))
-		{
-			int ClientWeapon = GetEntPropEnt(client, Prop_Send, "m_hActiveWeapon");
-			if (IsValidEntity(ClientWeapon))
-			{
-				// Item definition index check:
-				if (!StrEqual("", this.m_sWeaponItemDefRestriction))
-				{
-					int DefIndex = GetEntProp(ClientWeapon, Prop_Send, "m_iItemDefinitionIndex");
-					if (DefIndex != StringToInt(this.m_sWeaponItemDefRestriction)) return false;
-				}
-				// Classname check:
-				if (!StrEqual("", this.m_sWeaponClassnameRestriction))
-				{
-					char Classname[64];
-					GetEntityClassname(ClientWeapon, Classname, sizeof(Classname));
-					if (!StrContains(Classname, this.m_sWeaponClassnameRestriction)) return false;
-				}
-			}
-		}
-
-		// Specific game check.
-		// TODO: Remove me!
-		/*
-		switch (GetEngineVersion())
-		{
-			case Engine_TF2:
-			{
-				
-			}
-			case Engine_CSGO:
-			{
-				if (this.m_iGameTypeRestriction != -1 && !CSGO_IsCorrectGameType(this.m_iGameTypeRestriction)) return false;
-				if (this.m_iGameModeRestriction != -1 && !CSGO_IsCorrectGameMode(this.m_iGameModeRestriction)) return false;
-				if (this.m_iSkirmishIDRestriction != -1 && !CSGO_IsCorrectSkirmishID(this.m_iSkirmishIDRestriction)) return false;
-			}
-		}*/
-
-		// All checks passed, we're good to go!
-		return true;
 	}
 
 	/**

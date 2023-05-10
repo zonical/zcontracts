@@ -1,0 +1,70 @@
+"Contract"
+{
+	"{def56f7c-e542-4e83-87ff-fd00052e66f0}"
+	{
+		"name"		"Testing - Subtract"
+		"directory"	"root/testing"
+		"type"		"2"
+		"maximum_cp"	"50"
+
+		// What classes can do this contract?
+		"classes"
+		{
+			"soldier"	"1"
+			"pyro"		"1"
+			"heavy"		"1"
+			"engineer"	"1"
+			"scout"		"1"
+			"demoman"	"1"
+			"sniper"	"1"
+			"medic"		"1"
+			"spy"		"1"
+		}
+		
+		"objectives"
+		{
+			"1"
+			{
+				"description"		"Kill a player."
+				"infinite"			"1"
+				
+				// How many points should we give for successfully doing this objective?
+				"award"		"2"
+				
+				// The events that this objective looks out for.
+				"events"		
+				{
+					"CONTRACTS_PLAYER_KILL"
+					{
+						// What this event should do.
+						"type"		"increment"
+						
+						// How many times does this event need to trigger to add points?
+						"threshold"	"1"	
+					}
+				}
+			}
+			"2"
+			{
+				"description"		"Get killed by another player."
+				"infinite"			"1"
+				
+				// How many points should we give for successfully doing this objective?
+				"award"		"2"
+				
+				// The events that this objective looks out for.
+				"events"		
+				{
+					"CONTRACTS_PLAYER_DEATH"
+					{
+						// What this event should do.
+						"type"		"subtract"
+						
+						// How many times does this event need to trigger to add points?
+						"threshold"	"1"	
+					}
+				}
+			}
+		}
+	}
+}

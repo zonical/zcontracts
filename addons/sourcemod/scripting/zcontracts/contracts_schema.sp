@@ -88,13 +88,14 @@ public void CreateContractObjectiveEvent(KeyValues hEventConf, ContractObjective
 	hEventConf.GetSectionName(hEvent.m_sEventName, sizeof(hEvent.m_sEventName)); 	// Our event trigger is the section name.
 	hEventConf.GetString("type", hEvent.m_sEventType, sizeof(hEvent.m_sEventType), "increment");
 	hEvent.m_iThreshold = hEventConf.GetNum("threshold", 1);
+	hEvent.m_hTimer = INVALID_HANDLE;
 	
 	// If this event has a timer...
 	if (hEventConf.JumpToKey("timer", false))
 	{
 		// Populate our variables.
 		hEvent.m_fTime = hEventConf.GetFloat("time");
-		hEvent.m_iMaxLoops = hEventConf.GetNum("loop");
+		hEvent.m_iMaxLoops = hEventConf.GetNum("loops");
 		
 		// Check if any events exist.
 		if (hEventConf.JumpToKey("OnTimerEnd", false))
@@ -160,14 +161,33 @@ public void CreateContract(KeyValues hContractConf, Contract hContract)
 
 	// Grab our UUID from the section name.
 	hContractConf.GetSectionName(hContract.m_sUUID, sizeof(hContract.m_sUUID));
+	// Display name of the Contract in the Contracker.
 	hContractConf.GetString("name", hContract.m_sContractName, sizeof(hContract.m_sContractName));
+	// Directory of the Contract. This MUST include "root" and not end in a slash.
 	hContractConf.GetString("directory", hContract.m_sDirectoryPath, sizeof(hContract.m_sDirectoryPath), "root");
-	hContractConf.GetString("weapon_name_restriction", hContract.m_sWeaponNameRestriction, sizeof(hContract.m_sWeaponNameRestriction));
 
-	// This needs to work across econ-supported games. Disabled for now.
-	//hContractConf.GetString("weapon_itemdef_restriction", hContract.m_sWeaponItemDefRestriction, sizeof(hContract.m_sWeaponItemDefRestriction));
+	// Weapon restriction types:
+	// "active_weapon_slot": The slot for the weapon set at m_hActiveWeapon (see items_game.txt)
+	// "active_weapon_name": The display economy name for the weapon set at m_hActiveWeapon.
+	// "active_weapon_classname": The classname of the weapon set at m_hActiveWeapon.
+	// "active_weapon_itemdef": The item definition index for the weapon set at m_hActiveWeapon.
+	// "inventory_item_name": The display economy name for an item in the players current inventory.
+	// "inventory_item_classname": The classname for an item in the players current inventory.
+	// "inventory_item_itemdef": The item definition index for an item in the players current inventory.
+	// If a player kills another player without using the specified active weapon, the contract is not updated.
+	// If a player kills another player with a specified active weapon, the contract is updated.
+	// If a player kills another player without having a specified inventory item equipped, the contract is not updated.
+	// If a player kills another player while having a specified inventory item equipped, the contract is updated.
+	hContractConf.GetString("active_weapon_slot", hContract.m_sWeaponSlotRestriction, sizeof(hContract.m_sWeaponSlotRestriction));
+	hContractConf.GetString("active_weapon_name", hContract.m_sWeaponNameRestriction, sizeof(hContract.m_sWeaponNameRestriction));
+	hContractConf.GetString("active_weapon_classname", hContract.m_sWeaponClassnameRestriction, sizeof(hContract.m_sWeaponClassnameRestriction));
+	hContractConf.GetString("inventory_item_name", hContract.m_sInventoryItemNameRestriction, sizeof(hContract.m_sInventoryItemNameRestriction));
+	hContractConf.GetString("inventory_item_classname", hContract.m_sInventoryItemClassnameRestriction, sizeof(hContract.m_sInventoryItemClassnameRestriction));
+	hContract.m_iWeaponItemDefRestriction = hContractConf.GetNum("active_weapon_itemdef", -1);
+	hContract.m_iInventoryItemItemDefRestriction = hContractConf.GetNum("inventory_item_itemdef", -1);
 
-	hContractConf.GetString("weapon_classname_restriction", hContract.m_sWeaponClassnameRestriction, sizeof(hContract.m_sWeaponClassnameRestriction));
+	// This can be a whole map or part of a map name.
+	// Examples: "pl_upward", "ctf_2fort", "koth_", "pl_constantlyupdated_v3"
 	hContractConf.GetString("map_restriction", hContract.m_sMapRestriction, sizeof(hContract.m_sMapRestriction));
 
 	hContract.m_bNoMultiplication = view_as<bool>(hContractConf.GetNum("no_multiply", 0));

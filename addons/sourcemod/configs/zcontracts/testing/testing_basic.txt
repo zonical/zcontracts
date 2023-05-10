@@ -2,10 +2,10 @@
 {
 	"{42c93235-93d5-4f4f-a73f-b8c011c7c917}"
 	{
-		"name"		"Testing #1"
+		"name"		"Testing - Basic Objective"
 		"directory"	"root/testing"
 		"type"		"2"
-		"maximum_cp"	"4"
+		"maximum_cp"	"50"
 
 		// What classes can do this contract?
 		"classes"

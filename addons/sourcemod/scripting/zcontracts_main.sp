@@ -54,6 +54,7 @@ GlobalForward g_fOnClientActivatedContract;
 GlobalForward g_fOnClientActivatedContractPost;
 GlobalForward g_fOnContractProgressReceived;
 GlobalForward g_fOnObjectiveProgressReceived;
+GlobalForward g_fOnContractCompletableCheck;
 
 // This arraylist contains a list of objectives that we need to update.
 ArrayList g_ObjectiveUpdateQueue;
@@ -95,6 +96,7 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 	g_fOnClientActivatedContractPost = new GlobalForward("OnClientActivatedContractPost", ET_Ignore, Param_Cell, Param_String);
 	g_fOnContractProgressReceived = new GlobalForward("OnContractProgressReceived", ET_Ignore, Param_Cell, Param_String, Param_Cell);
 	g_fOnObjectiveProgressReceived = new GlobalForward("OnObjectiveProgressReceived", ET_Ignore, Param_Cell, Param_String, Param_Cell, Param_Cell);
+	g_fOnContractCompletableCheck = new GlobalForward("OnContractCompletableCheck", ET_Event, Param_Cell, Param_String);
 
 	// ================ NATIVES ================
 	CreateNative("GetContrackerVersion", Native_GetContrackerVersion);
@@ -923,6 +925,15 @@ public any Native_CanClientCompleteContract(Handle plugin, int numParams)
 		ThrowNativeError(SP_ERROR_NATIVE, "Invalid UUID structure (%s).", UUID);
 	}
 	
+	// Call forward to see if any plugins want to block this function.
+	Call_StartForward(g_fOnContractCompletableCheck);
+	Call_PushCell(client);
+	Call_PushString(UUID);
+	bool ShouldBlock = false;
+	Call_Finish(ShouldBlock);
+
+	if (ShouldBlock) return false;
+
 	KeyValues Schema = GetContractSchema(UUID);
 
 	// Map check.
@@ -940,22 +951,24 @@ public any Native_CanClientCompleteContract(Handle plugin, int numParams)
 
 	// Weapon check.
 	char WeaponClassnameRestriction[64];
-	Schema.GetString("weapon_classname_restriction", WeaponClassnameRestriction, sizeof(WeaponClassnameRestriction));
+	Schema.GetString("active_weapon_classname", WeaponClassnameRestriction, sizeof(WeaponClassnameRestriction));
 	if (/*!StrEqual("", this.m_sWeaponItemDefRestriction)
 	|| */!StrEqual("", WeaponClassnameRestriction))
 	{
 		int ClientWeapon = GetEntPropEnt(client, Prop_Send, "m_hActiveWeapon");
 		if (IsValidEntity(ClientWeapon))
 		{
-			// Classname check:
-			if (!StrEqual("", WeaponClassnameRestriction))
-			{
-				char Classname[64];
-				GetEntityClassname(ClientWeapon, Classname, sizeof(Classname));
-				if (!StrContains(Classname, WeaponClassnameRestriction)) return false;
-			}
+			char Classname[64];
+			GetEntityClassname(ClientWeapon, Classname, sizeof(Classname));
+			if (StrContains(Classname, WeaponClassnameRestriction) == -1) return false;
 		}
 	}
+
+	// Timestamp check.
+	int BeginTimestampRestriction = Schema.GetNum("contract_start_unixtime", -1);
+	if (BeginTimestampRestriction != -1 && BeginTimestampRestriction > GetTime()) return false;
+	int EndTimestampRestriction = Schema.GetNum("contract_end_unixtime", -1);
+	if (EndTimestampRestriction != -1 && EndTimestampRestriction < GetTime()) return false;
 
 	return true;
 }
@@ -1113,7 +1126,7 @@ public Action Timer_DrawContrackerHud(Handle hTimer)
 			char CompleteText[] = "CONTRACT COMPLETE - Type /c to\nselect a new Contract.";
 			StrCat(DisplayText, sizeof(DisplayText), CompleteText);
 		}
-		else if (!ActiveContract[i].IsContractCompletableForClient(i))
+		else if (!CanClientCompleteContract(i, ActiveContract[i].m_sUUID))
 		{
 			char WarningText[] = "This Contract cannot be completed.\nType /c to select a new Contract.";
 			StrCat(DisplayText, sizeof(DisplayText), WarningText);
@@ -1130,8 +1143,18 @@ public Action Timer_DrawContrackerHud(Handle hTimer)
 				// Adds +xCP value to the end of the text.
 				if (ActiveContract[i].m_bHUD_ContractUpdate)
 				{
-					SetHudTextParams(1.0, -1.0, 1.0, 52, 235, 70, 255, 1);
-					char AddText[16] = " +%dCP";
+					char AddText[16];
+					if (ActiveContract[i].m_iHUD_UpdateValue > 0)
+					{
+						AddText = " +%dCP";
+						SetHudTextParams(1.0, -1.0, 1.0, 52, 235, 70, 255, 1);
+					}
+					else // subtract
+					{
+						AddText = " -%dCP";
+						SetHudTextParams(1.0, -1.0, 1.0, 209, 33, 21, 255, 1);
+					}
+					
 					Format(AddText, sizeof(AddText), AddText, ActiveContract[i].m_iHUD_UpdateValue);
 					StrCat(ProgressText, sizeof(ProgressText), AddText);
 					ActiveContract[i].m_bHUD_ContractUpdate = false;
@@ -1153,30 +1176,35 @@ public Action Timer_DrawContrackerHud(Handle hTimer)
 				ContractObjective ActiveContractObjective;
 				ActiveContract[i].GetObjective(j, ActiveContractObjective);
 				if (!ActiveContractObjective.m_bInitalized) continue;
-				if (ActiveContractObjective.m_bInfinite) continue;
 				if (ActiveContractObjective.IsObjectiveComplete()) continue;
-
 				if (ActiveContractObjective.m_bNeedsDBSave) DisplaySavingText = true;
 
-				char ObjectiveText[64] = "#%d: [%d/%d]";
-				Format(ObjectiveText, sizeof(ObjectiveText), ObjectiveText,
-				DisplayID, ActiveContractObjective.m_iProgress, ActiveContractObjective.m_iMaxProgress);
-
-				// Adds +x value to the end of the text.
-				if (ActiveContract[i].m_iHUD_ObjectiveUpdate == ActiveContractObjective.m_iInternalID)
+				char ObjectiveText[64] = "#%d:";
+				Format(ObjectiveText, sizeof(ObjectiveText), ObjectiveText, DisplayID);
+				// Display the progress of this objective if we're not infinite.
+				if (!ActiveContractObjective.m_bInfinite)
 				{
-					SetHudTextParams(1.0, -1.0, 1.0, 52, 235, 70, 255, 1);
-					char AddText[16] = " +%d";
-					Format(AddText, sizeof(AddText), AddText, ActiveContract[i].m_iHUD_UpdateValue);
-					StrCat(ObjectiveText, sizeof(ObjectiveText), AddText);
-					ActiveContract[i].m_bHUD_ContractUpdate = false;
-					ActiveContract[i].m_iHUD_ObjectiveUpdate = -1;
+					char ProgressText[64] = " [%d/%d]";
+					Format(ProgressText, sizeof(ProgressText), ProgressText,
+					ActiveContractObjective.m_iProgress, ActiveContractObjective.m_iMaxProgress);
+					StrCat(ObjectiveText, sizeof(ObjectiveText), ProgressText);
 
-					g_NextHUDUpdate[i] = GetGameTime() + 1.0;
+					// Adds +x value to the end of the text.
+					if (ActiveContract[i].m_iHUD_ObjectiveUpdate == ActiveContractObjective.m_iInternalID)
+					{
+						SetHudTextParams(1.0, -1.0, 1.0, 52, 235, 70, 255, 1);
+						char AddText[16] = " +%d";
+						Format(AddText, sizeof(AddText), AddText, ActiveContract[i].m_iHUD_UpdateValue);
+						StrCat(ObjectiveText, sizeof(ObjectiveText), AddText);
+						ActiveContract[i].m_bHUD_ContractUpdate = false;
+						ActiveContract[i].m_iHUD_ObjectiveUpdate = -1;
+
+						g_NextHUDUpdate[i] = GetGameTime() + 1.0;
+					}
 				}
+				// Infinite contract objectives may have timers attached to them, so we
+				// add them here.
 
-				StrCat(DisplayText, sizeof(DisplayText), ObjectiveText);
-				
 				char TimerText[16] = " [TIME: %ds]";
 				// Display a timer if we have one active.
 				for (int k = 0; k < ActiveContractObjective.m_hEvents.Length; k++)
@@ -1189,12 +1217,16 @@ public Action Timer_DrawContrackerHud(Handle hTimer)
 					{
 						int TimeDiff = RoundFloat((GetGameTime() - ObjEvent.m_fStarted));
 						Format(TimerText, sizeof(TimerText), TimerText, TimeDiff);
-						StrCat(DisplayText, sizeof(DisplayText), TimerText);
+						StrCat(ObjectiveText, sizeof(ObjectiveText), TimerText);
 					}
 				}
 
-				StrCat(DisplayText, sizeof(DisplayText), "\n");
-				DisplayID++;
+				if (strlen(ObjectiveText) > 4)
+				{
+					StrCat(DisplayText, sizeof(DisplayText), ObjectiveText);
+					StrCat(DisplayText, sizeof(DisplayText), "\n");
+					DisplayID++;
+				}
 			}
 
 			// Add some text saying that we're saving the Contract to the database.
@@ -1306,7 +1338,7 @@ void ProcessLogicForContractObjective(Contract ClientContract, int objective_id,
 	// Is this contract completed or able to be completed right now?
 	if (ClientContract.IsContractComplete()) return;
 	if (Objective.IsObjectiveComplete()) return;
-	if (!ClientContract.IsContractCompletableForClient(client)) return;
+	if (!CanClientCompleteContract(client, ClientContract.m_sUUID)) return;
 
 	// Call forward to see if any plugins want to block this function.
 	Call_StartForward(g_fOnProcessContractLogic);
@@ -1368,13 +1400,17 @@ void ProcessLogicForContractObjective(Contract ClientContract, int objective_id,
 			ObjEvent.m_iCurrentThreshold += value;
 			if (ObjEvent.m_iCurrentThreshold >= ObjEvent.m_iThreshold)
 			{
-				// What type of value are we? Are we incrementing or resetting?
-				if (StrEqual(ObjEvent.m_sEventType, "increment"))
+				if (StrEqual(ObjEvent.m_sEventType, "increment") || StrEqual(ObjEvent.m_sEventType, "subtract"))
 				{
+					if (StrEqual(ObjEvent.m_sEventType, "subtract"))
+					{
+						value *= -1;
+					}
+
 					switch (ClientContract.m_iContractType)
 					{
-						case Contract_ObjectiveProgress: IncrementObjectiveProgress(client, value, ClientContract, Objective);
-						case Contract_ContractProgress: IncrementContractProgress(client, value, ClientContract, Objective);
+						case Contract_ObjectiveProgress: ModifyObjectiveProgress(client, value, ClientContract, Objective);
+						case Contract_ContractProgress: ModifyContractProgress(client, value, ClientContract, Objective);
 					}
 
 					// Reset our threshold.
@@ -1485,18 +1521,8 @@ void ProcessLogicForContractObjective(Contract ClientContract, int objective_id,
 	}
 }
 
-/**
- * Increments progress for Contract-Style progression Contracts.
- * 
- * @param client                      Client index of who triggered the event.
- * @param value                       Value passed from CallContrackerEvent.
- * @param ClientContract              Enum struct of the Contract to modify.
- * @param ActiveContractObjective     Enum struct of the Contract Objective to modify.
- */
-void IncrementContractProgress(int client, int value, Contract ClientContract, ContractObjective ActiveContractObjective)
+void ModifyContractProgress(int client, int value, Contract ClientContract, ContractObjective ActiveContractObjective)
 {
-	if (PlayerSoundsEnabled[client] == Sounds_Enabled) EmitGameSoundToClient(client, IncrementProgressSound);
-
 	int AddValue = 0;
 
 	// This award value will not be multiplied by the value argument. This may be useful for some Contracts.
@@ -1505,10 +1531,17 @@ void IncrementContractProgress(int client, int value, Contract ClientContract, C
 	else AddValue = ActiveContractObjective.m_iAward * value;
 	ClientContract.m_iProgress += AddValue;
 	ClientContract.m_iProgress = Int_Min(ClientContract.m_iProgress, ClientContract.m_iMaxProgress);
+	if (ClientContract.m_iProgress < 0)
+	{
+		ClientContract.m_iProgress = 0;
+		return;
+	}
 
 	// Update HUD.
 	ClientContract.m_iHUD_UpdateValue = AddValue;
 	ClientContract.m_bHUD_ContractUpdate = true;
+	
+	if (PlayerSoundsEnabled[client] == Sounds_Enabled) EmitGameSoundToClient(client, IncrementProgressSound);
 
 	// In Contract-Style progression, Objectives are only triggered
 	// once at a time if they are not infinite.
@@ -1522,19 +1555,26 @@ void IncrementContractProgress(int client, int value, Contract ClientContract, C
 	if (g_DisplayHudMessages.BoolValue && PlayerHintEnabled[client])
 	{							
 		char MessageText[256];
+		char AwardStr[8];
+		if (AddValue > 0) AwardStr = "+%dCP";
+		else AwardStr = "%dCP";
 		if (ActiveContractObjective.m_bNoMultiplication)
 		{
-			MessageText = "\"%s\" (%s [%d/%dCP]) +%dCP";
+			Format(AwardStr, sizeof(AwardStr), AwardStr, ActiveContractObjective.m_iAward);
+
+			MessageText = "\"%s\" (%s [%d/%dCP]) %s";
 			PrintHintText(client, MessageText, ActiveContractObjective.m_sDescription,
 			ClientContract.m_sContractName, ClientContract.m_iProgress,
-			ClientContract.m_iMaxProgress, ActiveContractObjective.m_iAward);
+			ClientContract.m_iMaxProgress, AwardStr);
 		}
 		else
 		{
-			MessageText = "\"%s\" %dx (%s [%d/%dCP]) +%dCP";
+			Format(AwardStr, sizeof(AwardStr), AwardStr, ActiveContractObjective.m_iAward * value);
+
+			MessageText = "\"%s\" %dx (%s [%d/%dCP]) %s";
 			PrintHintText(client, MessageText, ActiveContractObjective.m_sDescription,
 			value, ClientContract.m_sContractName, ClientContract.m_iProgress,
-			ClientContract.m_iMaxProgress, ActiveContractObjective.m_iAward * value);
+			ClientContract.m_iMaxProgress, AwardStr);
 		}
 	}
 	if (g_DebugProgress.BoolValue)
@@ -1547,29 +1587,26 @@ void IncrementContractProgress(int client, int value, Contract ClientContract, C
 	ClientContract.m_bNeedsDBSave = true;
 }
 
-/**
- * Increments progress for Objective-Style progression Contracts.
- * 
- * @param client                      Client index of who triggered the event.
- * @param value                       Value passed from CallContrackerEvent.
- * @param ClientContract              Enum struct of the Contract to modify.
- * @param ActiveContractObjective     Enum struct of the Contract Objective to modify.
- */
-void IncrementObjectiveProgress(int client, int value, Contract ClientContract, ContractObjective ActiveContractObjective)
+void ModifyObjectiveProgress(int client, int value, Contract ClientContract, ContractObjective ActiveContractObjective)
 {
-	if (PlayerSoundsEnabled[client] == Sounds_Enabled) EmitGameSoundToClient(client, IncrementProgressSound);
-
 	int AddValue = 0;
 
 	// This award value will not be multiplied by the value argument. This may be useful for some Contracts.
 	if (ActiveContractObjective.m_bNoMultiplication) AddValue = ActiveContractObjective.m_iAward;
 	else AddValue = ActiveContractObjective.m_iAward * value;
 	ActiveContractObjective.m_iProgress += AddValue;
+	if (ActiveContractObjective.m_iProgress < 0)
+	{
+		ActiveContractObjective.m_iProgress = 0;
+		return;
+	}
 
 	// Update HUD.
 	ClientContract.m_iHUD_UpdateValue = AddValue;
 	ClientContract.m_bHUD_ContractUpdate = true;
 	ClientContract.m_iHUD_ObjectiveUpdate = ActiveContractObjective.m_iInternalID;
+
+	if (PlayerSoundsEnabled[client] == Sounds_Enabled) EmitGameSoundToClient(client, IncrementProgressSound);
 
 	// In Objective-Style progression, each Objective tracks its own progress
 	// individually. If the Objective is not infinite, its progress will be clamped.
@@ -1584,19 +1621,26 @@ void IncrementObjectiveProgress(int client, int value, Contract ClientContract, 
 	if (g_DisplayHudMessages.BoolValue && PlayerHintEnabled[client])
 	{
 		char MessageText[256];
+		char AwardStr[8];
+		if (AddValue > 0) AwardStr = "+%dCP";
+		else AwardStr = "%dCP";
 		if (ActiveContractObjective.m_bNoMultiplication)
 		{
-			MessageText = "\"%s\" (%s [%d/%d]) +%d";
+			Format(AwardStr, sizeof(AwardStr), AwardStr, ActiveContractObjective.m_iAward);
+
+			MessageText = "\"%s\" (%s [%d/%d]) %s";
 			PrintHintText(client, MessageText, ActiveContractObjective.m_sDescription,
 			ClientContract.m_sContractName, ActiveContractObjective.m_iProgress,
-			ActiveContractObjective.m_iMaxProgress, ActiveContractObjective.m_iAward);
+			ActiveContractObjective.m_iMaxProgress, AwardStr);
 		}
 		else
 		{
-			MessageText = "\"%s\" %dx (%s [%d/%d]) +%d";
+			Format(AwardStr, sizeof(AwardStr), AwardStr, ActiveContractObjective.m_iAward * value);
+
+			MessageText = "\"%s\" %dx (%s [%d/%d]) %s";
 			PrintHintText(client, MessageText, ActiveContractObjective.m_sDescription,
 			value, ClientContract.m_sContractName, ActiveContractObjective.m_iProgress,
-			ActiveContractObjective.m_iMaxProgress, ActiveContractObjective.m_iAward * value);
+			ActiveContractObjective.m_iMaxProgress, AwardStr);
 		}
 	}
 	if (g_DebugProgress.BoolValue)

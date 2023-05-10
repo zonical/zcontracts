@@ -4,6 +4,7 @@
 #include <tf2_stocks>
 #include <zcontracts/zcontracts>
 #include <zcontracts/zcontracts_tf2>
+#include <tf_econ_data>
 
 float g_LastValidProgressTime = -1.0;
 
@@ -141,11 +142,8 @@ public any Native_GetTF2GameModeExt(Handle plugin, int numParams)
 
 // ============================= LOGIC =============================
 
-public Action OnProcessContractLogic(int client, char UUID[MAX_UUID_SIZE], int objective, 
-char event[MAX_EVENT_SIZE], int value)
+public Action OnContractCompletableCheck(int client, char UUID[MAX_UUID_SIZE])
 {
-	if (GetGameTime() >= g_LastValidProgressTime && g_LastValidProgressTime != -1.0) return Plugin_Stop;
-	
 	KeyValues ContractSchema = GetContractSchema(UUID);
 	
 	if (ContractSchema.JumpToKey("classes"))
@@ -177,10 +175,158 @@ char event[MAX_EVENT_SIZE], int value)
 	{
 		if (!TF2_ValidGameRulesEntityExists(RequiredGameRulesEnt)) return Plugin_Stop;
 	}
-
 	if ((ContractSchema.GetNum("gamemode_extension", view_as<int>(TGE_NoExtension)) != view_as<int>(TGE_NoExtension)) 
 	&& (ContractSchema.GetNum("gamemode_extension", view_as<int>(TGE_NoExtension)) != view_as<int>(g_TF2_GameModeExtension))) return Plugin_Stop;
 
+	// Active weapon checks.
+	char ActiveWeaponSlot[64];
+	ContractSchema.GetString("active_weapon_slot", ActiveWeaponSlot, sizeof(ActiveWeaponSlot));
+	if (!StrEqual(ActiveWeaponSlot, ""))
+	{
+		int ActiveWeapon = GetEntPropEnt(client, Prop_Send, "m_hActiveWeapon");
+		if (IsValidEntity(ActiveWeapon))
+		{
+			int ItemDef = GetEntProp(ActiveWeapon, Prop_Send, "m_iItemDefinitionIndex");
+			if (!TF2Econ_IsValidItemDefinition(ItemDef)) return Plugin_Stop;
+
+			int LoadoutSlot = TF2Econ_GetItemLoadoutSlot(ItemDef, TF2_GetPlayerClass(client));
+			char LoadoutSlotName[64];
+			TF2Econ_TranslateLoadoutSlotIndexToName(LoadoutSlot, LoadoutSlotName, sizeof(LoadoutSlotName));
+			if (!StrEqual(LoadoutSlotName, ActiveWeaponSlot)) return Plugin_Stop;
+		}
+	}
+
+	char ActiveWeaponName[64];
+	ContractSchema.GetString("active_weapon_name", ActiveWeaponName, sizeof(ActiveWeaponName));
+	int SchemaItemDef = ContractSchema.GetNum("active_weapon_itemdef", -1);
+	if ((!StrEqual(ActiveWeaponName, "")) || (SchemaItemDef != -1 && TF2Econ_IsValidItemDefinition(SchemaItemDef)))
+	{
+		bool ItemFound = true;
+		int ActiveWeapon = GetEntPropEnt(client, Prop_Send, "m_hActiveWeapon");
+		if (IsValidEntity(ActiveWeapon))
+		{
+			int ItemDef = GetEntProp(ActiveWeapon, Prop_Send, "m_iItemDefinitionIndex");
+			if (!TF2Econ_IsValidItemDefinition(ItemDef)) ItemFound = false;
+
+			if (!StrEqual(ActiveWeaponName, ""))
+			{
+				char WeaponName[64];
+				TF2Econ_GetItemName(ItemDef, WeaponName, sizeof(WeaponName));
+				if (!StrEqual(ActiveWeaponName, WeaponName)) ItemFound = false;
+			}
+			// Item definition index.
+			if (SchemaItemDef !=  ItemDef) ItemFound = false;
+		}
+		if (!ItemFound) return Plugin_Stop;
+	}
+
+	char InventoryItemName[64];
+	ContractSchema.GetString("inventory_item_name", InventoryItemName, sizeof(InventoryItemName))
+	char InventoryItemClassname[64];
+	ContractSchema.GetString("inventory_item_classname", InventoryItemClassname, sizeof(InventoryItemClassname));
+	SchemaItemDef = ContractSchema.GetNum("inventory_item_itemdef", -1);
+
+	if ((!StrEqual(InventoryItemName, "")) || 
+	(!StrEqual(InventoryItemClassname, "")) ||
+	(SchemaItemDef != -1 && TF2Econ_IsValidItemDefinition(SchemaItemDef)))
+	{
+		bool ItemFound = false;
+		// Loop through all weapons.
+		for (int i = TFWeaponSlot_Primary; i < TFWeaponSlot_Item2; i++)
+		{
+			if (ItemFound) break;
+
+			int SlotWeapon = GetPlayerWeaponSlot(client, i);
+			if (IsValidEntity(SlotWeapon))
+			{
+				int ItemDef = GetEntProp(SlotWeapon, Prop_Send, "m_iItemDefinitionIndex");
+				if (!TF2Econ_IsValidItemDefinition(ItemDef)) continue;
+
+				// Economy name.
+				if (!StrEqual(InventoryItemName, ""))
+				{
+					char WeaponName[64];
+					TF2Econ_GetItemName(ItemDef, WeaponName, sizeof(WeaponName));
+					if (StrEqual(InventoryItemName, WeaponName))
+					{
+						ItemFound = true;
+						break;
+					}
+				}
+				// Weapon classname.
+				if (!StrEqual(InventoryItemClassname, ""))
+				{
+					char WeaponClassName[64];
+					GetEntityClassname(SlotWeapon, WeaponClassName, sizeof(WeaponClassName));
+					if (StrContains(WeaponClassName, InventoryItemClassname) != -1)
+					{
+						ItemFound = true;
+						break;
+					}
+				}
+				// Item definition index.
+				if (SchemaItemDef == ItemDef)
+				{
+					ItemFound = true;
+					break;
+				}
+			}
+		}
+		// Loop through all cosmetics.
+		int Next = GetEntPropEnt(client, Prop_Data, "m_hMoveChild");
+		while (Next != -1 && !ItemFound)
+		{
+			int CosmeticItem = Next;
+			Next = GetEntPropEnt(CosmeticItem, Prop_Data, "m_hMovePeer");
+			if (IsValidEntity(CosmeticItem))
+			{
+				// Only deal with wearable entities.
+				char ClassName[64];
+				GetEntityClassname(CosmeticItem, ClassName, sizeof(ClassName));
+				if (StrContains(ClassName, "tf_wearable") == -1) continue;
+
+				int ItemDef = GetEntProp(CosmeticItem, Prop_Send, "m_iItemDefinitionIndex");
+				if (!TF2Econ_IsValidItemDefinition(ItemDef)) continue;
+				// Economy name.
+				if (!StrEqual(InventoryItemName, ""))
+				{
+					char CosmeticName[64];
+					TF2Econ_GetItemName(ItemDef, CosmeticName, sizeof(CosmeticName));
+					if (StrEqual(InventoryItemName, CosmeticName)) ItemFound = true;
+				}
+				// Item classname.
+				if (!StrEqual(InventoryItemClassname, ""))
+				{
+					char ItemClassName[64];
+					GetEntityClassname(CosmeticItem, ItemClassName, sizeof(ItemClassName));
+					if (StrContains(ItemClassName, InventoryItemClassname) != -1)
+					{
+						ItemFound = true;
+						break;
+					}
+				}
+				// Item definition index.
+				if (SchemaItemDef == ItemDef)
+				{
+					ItemFound = true;
+					break;
+				}
+			}
+		}
+
+		if (!ItemFound) return Plugin_Stop;
+	}
+
+
+	// All good! :)
+	return Plugin_Continue;
+}
+
+public Action OnProcessContractLogic(int client, char UUID[MAX_UUID_SIZE], int objective, 
+char event[MAX_EVENT_SIZE], int value)
+{
+	if (GetGameTime() >= g_LastValidProgressTime && g_LastValidProgressTime != -1.0) return Plugin_Stop;
+	
 	// All good! :)
 	return Plugin_Continue;
 }

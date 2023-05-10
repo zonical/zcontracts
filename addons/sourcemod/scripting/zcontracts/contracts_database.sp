@@ -289,10 +289,8 @@ public any Native_SaveActiveContractToDatabase(Handle plugin, int numParams)
     if (GetForwardFunctionCount(g_fOnContractPreSave) == 0 || !ShouldBlock)
     {
         int ActiveProgress = GetActiveContractProgress(client);
-        if (ActiveProgress > 0)
-        {
-            SetContractProgressDatabase(steamid64, UUID, ActiveProgress);
-        }
+        SetContractProgressDatabase(steamid64, UUID, ActiveProgress);
+        
         return true;
     }
     else if (ShouldBlock)
@@ -351,10 +349,8 @@ public any Native_SaveActiveObjectiveToDatabase(Handle plugin, int numParams)
     if (GetForwardFunctionCount(g_fOnObjectivePreSave) == 0 || !ShouldBlock)
     {
         int ActiveProgress = GetActiveObjectiveProgress(client, objective);
-        if (ActiveProgress > 0)
-        {
-            SetObjectiveProgressDatabase(steamid64, UUID, objective, ActiveProgress);
-        }
+        SetObjectiveProgressDatabase(steamid64, UUID, objective, ActiveProgress);
+        
         return true;
     }
 

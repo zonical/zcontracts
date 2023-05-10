@@ -1,0 +1,50 @@
+"Contract"
+{
+	"{b009dfd4-0908-4f11-a7a9-9c7b6f2c6ce0}"
+	{
+		"name"		"Testing - Active Weapon: Economy Name"
+		"directory"	"root/testing"
+		"type"		"2"
+		"maximum_cp"	"50"
+		"active_weapon_name"		"Panic Attack Shotgun"
+
+		// What classes can do this contract?
+		"classes"
+		{
+			"soldier"	"1"
+			"pyro"		"1"
+			"heavy"		"1"
+			"engineer"	"1"
+			"scout"		"1"
+			"demoman"	"1"
+			"sniper"	"1"
+			"medic"		"1"
+			"spy"		"1"
+		}
+		
+		"objectives"
+		{
+			"1"
+			{
+				"description"		"Kill a player."
+				"infinite"			"1"
+				
+				// How many points should we give for successfully doing this objective?
+				"award"		"2"
+				
+				// The events that this objective looks out for.
+				"events"		
+				{
+					"CONTRACTS_PLAYER_KILL"
+					{
+						// What this event should do.
+						"type"		"increment"
+						
+						// How many times does this event need to trigger to add points?
+						"threshold"	"1"	
+					}
+				}
+			}
+		}
+	}
+}
