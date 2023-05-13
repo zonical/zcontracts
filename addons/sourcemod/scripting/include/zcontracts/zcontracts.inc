@@ -4,7 +4,7 @@
 
 #define __zcontracts_included
 
-#define ZCONTRACTS_PLUGIN_VERSION "0.10.0"
+#define ZCONTRACTS_PLUGIN_VERSION "0.10.1"
 // This value should be incremented with every breaking version made to the
 // database so saves can be easily converted. For developers who fork this project and
 // wish to merge changes, do not increment this number until merge.
@@ -23,22 +23,7 @@
 #include <zcontracts/zcontracts_natives>
 #include <zcontracts/zcontracts_forwards>
 
-/* Okay, quick developer story time.
-I originally developed this project with enum structs in mind. I learnt a lot of my SourceMod
-practices when developing Creators.TF, and the codebase used a lot of enum structs to store data in
-a clean way that is similar to other programming languiages. SourcePawn is notorious for not having
-the best OOP capabilities. With this in mind, I wanted to make the project as clean as possible from
-a codebase perspective. I started this project before I became aware of the black hole that exists with
-enum structs: they ***shouldn't*** be passed through with natives. If they are not handled carefully,
-server crashes will happen (see https://github.com/alliedmodders/sourcepawn/issues/547).
-This is the biggest coding flaw with ZContracts. In the far future, I would like to rewrite part of
-the code to use Methodmaps or some other sane way to transport data between plugins, but for now - this is
-my preferred approach. For developers: PLEASE recompile any plugin that deals with ZContracts when you
-install a new patch.
-*/
-
 stock int Int_Min(int a, int b) { return a < b ? a : b; }
-
 stock bool IsClientValid(int client)
 {
 	if (client <= 0 || client > MaxClients)return false;
@@ -46,30 +31,6 @@ stock bool IsClientValid(int client)
 	if (!IsClientAuthorized(client))return false;
 	return true;
 }
-
-// Methodmap that represents a Contract. This should be passed between plugins
-// INSTEAD of using the enum structs below.
-/* TODO: Come back to this later. This feels ugly.
-methodmap ZContract
-{
-	public ZContract(int client)
-	{
-		if (!IsClientValid(client))
-		{
-			ThrowError("Invalid client index (%d) when constructing methodmap.", client);
-		}
-		return view_as<ZContract>(client);
-	}
-	property int Client
-	{ 
-		public get() { return view_as<int>(this); }
-	}
-	public bool GetUUID(char[] uuidbuffer, int buffersize)
-	{
-		return GetClientContract(view_as<int>(this), uuidbuffer, buffersize);
-	}
-
-};*/
 
 enum ContractType
 {
@@ -80,12 +41,6 @@ enum ContractType
 	// reach the maximum points (e.g 100CP) to complete the contract. All objectives
 	// are optional to complete.
 	Contract_ContractProgress = 2
-}
-
-enum DatabaseStatus
-{
-	DBS_NoInformation,
-	DBS_GrabbedInformation
 }
 
 // Timer events for ContractObjectiveEvent timers.
@@ -229,33 +184,10 @@ enum struct Contract
 
 	// Difficulty of the Contract.
 	int m_iDifficulty;
-
-	// Boolean value representing what classes can use this contract. (TF2 only!)
-	bool m_bClass[10];
 	
 	// The contracts the client must have completed before
 	// being allowed to activate this Contract.
 	ArrayList m_hRequiredContracts;
-
-	// Restrictions.
-	char m_sWeaponSlotRestriction[64];
-	char m_sWeaponNameRestriction[64];
-	char m_sWeaponClassnameRestriction[64];
-	int m_iWeaponItemDefRestriction;
-	char m_sInventoryItemNameRestriction[64];
-	char m_sInventoryItemClassnameRestriction[64];
-	int m_iInventoryItemItemDefRestriction;
-
-	char m_sMapRestriction[64];
-	int m_iTeamRestriction;
-	char m_sRequiredGameRulesEntity[64]; // TF2
-	int m_iGameModeRestriction; // CSGO
-	int m_iGameTypeRestriction; 
-	int m_iSkirmishIDRestriction; // CSGO
-	int m_iTimestampRestriction;
-
-	// Other plugins can mark this Contract as uncompletable on player switch.
-	bool m_bIsCompletableOverride;
 
 	// What type of Contract are we handling? (see ContractType)
 	ContractType m_iContractType;

@@ -201,6 +201,13 @@ public any Native_SetObjectiveProgressDatabase(Handle plugin, int numParams)
         ThrowNativeError(SP_ERROR_NATIVE, "Invalid UUID passed. (%s)", UUID);
     }
 
+    // Don't save infinite objectives.
+    KeyValues Schema = GetObjectiveSchema(UUID, objective_id+1);
+    if (view_as<bool>(Schema.GetNum("infinite", 0)))
+    {
+        ThrowNativeError(SP_ERROR_NATIVE, "Cannot set progress for an objective that's marked infinite (UUID: %s, OBJ: %d)", UUID, objective_id);
+    }
+
     DataPack dp = new DataPack();
     dp.WriteString(steamid64);
     dp.WriteString(UUID);
@@ -331,6 +338,14 @@ public any Native_SaveActiveObjectiveToDatabase(Handle plugin, int numParams)
     if (objective > /*zero indexed*/ GetContractObjectiveCount(UUID)-1)
     {
         LogMessage("SaveActiveObjectiveToDatabase: Invalid contract objective ID passed (%N: %d)", client, objective);
+        return false;
+    }
+
+    // Don't save infinite objectives.
+    KeyValues Schema = GetObjectiveSchema(UUID, objective+1);
+    if (view_as<bool>(Schema.GetNum("infinite", 0)))
+    {
+        PrintToChat(client, "Prevented infinite obj save!");
         return false;
     }
 

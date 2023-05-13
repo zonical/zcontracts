@@ -150,22 +150,12 @@ public void CreateContractObjective(KeyValues hObjectiveConf, ContractObjective 
 		}
 		hObjectiveConf.GoBack();
 	}
-	
-	
 }
 
 // Creates a contract.
 public void CreateContract(KeyValues hContractConf, Contract hContract)
 {	
-	hContract.Initalize();
-
-	// Grab our UUID from the section name.
-	hContractConf.GetSectionName(hContract.m_sUUID, sizeof(hContract.m_sUUID));
-	// Display name of the Contract in the Contracker.
-	hContractConf.GetString("name", hContract.m_sContractName, sizeof(hContract.m_sContractName));
-	// Directory of the Contract. This MUST include "root" and not end in a slash.
-	hContractConf.GetString("directory", hContract.m_sDirectoryPath, sizeof(hContract.m_sDirectoryPath), "root");
-
+	// THERE ARE SEVERAL THINGS LISTED HERE THAT ARE NOT STORED IN THE CONTRACT STRUCT!
 	// Weapon restriction types:
 	// "active_weapon_slot": The slot for the weapon set at m_hActiveWeapon (see items_game.txt)
 	// "active_weapon_name": The display economy name for the weapon set at m_hActiveWeapon.
@@ -178,42 +168,26 @@ public void CreateContract(KeyValues hContractConf, Contract hContract)
 	// If a player kills another player with a specified active weapon, the contract is updated.
 	// If a player kills another player without having a specified inventory item equipped, the contract is not updated.
 	// If a player kills another player while having a specified inventory item equipped, the contract is updated.
-	hContractConf.GetString("active_weapon_slot", hContract.m_sWeaponSlotRestriction, sizeof(hContract.m_sWeaponSlotRestriction));
-	hContractConf.GetString("active_weapon_name", hContract.m_sWeaponNameRestriction, sizeof(hContract.m_sWeaponNameRestriction));
-	hContractConf.GetString("active_weapon_classname", hContract.m_sWeaponClassnameRestriction, sizeof(hContract.m_sWeaponClassnameRestriction));
-	hContractConf.GetString("inventory_item_name", hContract.m_sInventoryItemNameRestriction, sizeof(hContract.m_sInventoryItemNameRestriction));
-	hContractConf.GetString("inventory_item_classname", hContract.m_sInventoryItemClassnameRestriction, sizeof(hContract.m_sInventoryItemClassnameRestriction));
-	hContract.m_iWeaponItemDefRestriction = hContractConf.GetNum("active_weapon_itemdef", -1);
-	hContract.m_iInventoryItemItemDefRestriction = hContractConf.GetNum("inventory_item_itemdef", -1);
-
-	// This can be a whole map or part of a map name.
+	//
+	// Map restriction: "map_restriction". This can be a whole map or part of a map name.
 	// Examples: "pl_upward", "ctf_2fort", "koth_", "pl_constantlyupdated_v3"
-	hContractConf.GetString("map_restriction", hContract.m_sMapRestriction, sizeof(hContract.m_sMapRestriction));
+	//
+	// Team restriction: "team_restriction". This can be a team index number or a special name.
+
+
+	hContract.Initalize();
+
+	// Grab our UUID from the section name.
+	hContractConf.GetSectionName(hContract.m_sUUID, sizeof(hContract.m_sUUID));
+	// Display name of the Contract in the Contracker.
+	hContractConf.GetString("name", hContract.m_sContractName, sizeof(hContract.m_sContractName));
+	// Directory of the Contract. This MUST include "root" and not end in a slash.
+	hContractConf.GetString("directory", hContract.m_sDirectoryPath, sizeof(hContract.m_sDirectoryPath), "root");
 
 	hContract.m_bNoMultiplication = view_as<bool>(hContractConf.GetNum("no_multiply", 0));
 	hContract.m_iContractType = view_as<ContractType>(hContractConf.GetNum("type", view_as<int>(Contract_ObjectiveProgress))); // stops a warning
 	hContract.m_iMaxProgress = hContractConf.GetNum("maximum_cp", -1);
 	hContract.m_iDifficulty = hContractConf.GetNum("difficulty", 1);
-
-	if (GetEngineVersion() == Engine_TF2)
-	{
-		// Grab the classes that can do this contract.
-		TF2_ConstructClassRestrictions(hContractConf, hContract);
-		hContractConf.GetString("required_gamerules", hContract.m_sRequiredGameRulesEntity, sizeof(hContract.m_sRequiredGameRulesEntity));
-		hContract.m_iGameTypeRestriction = hContractConf.GetNum("gamemode_extension", view_as<int>(TGE_NoExtension));
-	}
-	if (GetEngineVersion() == Engine_CSGO)
-	{
-		hContract.m_iGameTypeRestriction = CSGO_GetGameTypeRestriction(hContractConf);
-		hContract.m_iGameModeRestriction = CSGO_GetGameModeRestriction(hContractConf);
-		hContract.m_iSkirmishIDRestriction = CSGO_GetSkirmishRestriction(hContractConf);
-	}
-
-	// Grab the teams that can do this contract.
-	char sTeamBuffer[64];
-	hContractConf.GetString("team_restriction", sTeamBuffer, sizeof(sTeamBuffer), "-1");
-	
-	hContract.m_iTeamRestriction = GetTeamFromSchema(sTeamBuffer);
 	
 	// Create our objectives.
 	if (hContractConf.JumpToKey("objectives", false))

@@ -8,25 +8,6 @@
 #include <tf2_stocks>
 
 // ============================= SCHEMA FUNCTIONS =============================
-stock void TF2_ConstructClassRestrictions(KeyValues ContractSchema, Contract ContractBuffer)
-{
-    if (ContractSchema.JumpToKey("classes", false))
-    {
-        ContractBuffer.m_bClass[TFClass_Scout]      = view_as<bool>(ContractSchema.GetNum("scout", 0));
-        ContractBuffer.m_bClass[TFClass_Soldier]    = view_as<bool>(ContractSchema.GetNum("soldier", 0));
-        ContractBuffer.m_bClass[TFClass_Pyro]       = view_as<bool>(ContractSchema.GetNum("pyro", 0));
-        ContractBuffer.m_bClass[TFClass_DemoMan]    = view_as<bool>(ContractSchema.GetNum("demoman", 0));
-        ContractBuffer.m_bClass[TFClass_Heavy]      = view_as<bool>(ContractSchema.GetNum("heavy", 0));
-        ContractBuffer.m_bClass[TFClass_Engineer]   = view_as<bool>(ContractSchema.GetNum("engineer", 0));
-        ContractBuffer.m_bClass[TFClass_Sniper]     = view_as<bool>(ContractSchema.GetNum("sniper", 0));
-        ContractBuffer.m_bClass[TFClass_Medic]      = view_as<bool>(ContractSchema.GetNum("medic", 0));
-        ContractBuffer.m_bClass[TFClass_Spy]        = view_as<bool>(ContractSchema.GetNum("spy", 0));
-        
-        // Return.
-        ContractSchema.GoBack();
-    }
-    return;
-}
 
 stock int TF2_GetTeamIndexFromString(const char[] team)
 {

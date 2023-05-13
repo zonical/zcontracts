@@ -123,7 +123,7 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 	CreateNative("HasClientCompletedContract", Native_HasClientCompletedContract);
 
 	CreateNative("SaveActiveContractToDatabase", Native_SaveActiveContractToDatabase);
-	CreateNative("SaveActiveObjectiveToDatabase", Native_SetActiveObjectiveProgress);
+	CreateNative("SaveActiveObjectiveToDatabase", Native_SaveActiveObjectiveToDatabase);
 	CreateNative("SetContractProgressDatabase", Native_SetContractProgressDatabase);
 	CreateNative("SetObjectiveProgressDatabase", Native_SetObjectiveProgressDatabase);
 	CreateNative("DeleteContractProgressDatabase", Native_DeleteContractProgressDatabase);
@@ -299,12 +299,11 @@ public void OnClientDisconnect(int client)
 	{
 		SaveClientPreferences(client);
 		SaveActiveContractToDatabase(client);
-		for (int i = 0; i < ActiveContract[i].m_hObjectives.Length; i++)
-		{
-			ContractObjective ActiveContractObjective;
-			ActiveContract[i].GetObjective(i, ActiveContractObjective);
-			if (!ActiveContractObjective.m_bInitalized) continue;
+		char ActiveContractUUID[MAX_UUID_SIZE];
+		GetClientContract(client, ActiveContractUUID, sizeof(ActiveContractUUID));
 
+		for (int i = 0; i < GetContractObjectiveCount(ActiveContractUUID); i++)
+		{
 			SaveActiveObjectiveToDatabase(client, i);
 		}
 	}
@@ -540,6 +539,8 @@ public any Native_SetClientContract(Handle plugin, int numParams)
 			OldContract[client].GetObjective(i, OldContractObjective);
 			if (!OldContractObjective.m_bInitalized) continue;
 
+			// Prevent saving infinite objectives.
+			if (OldContractObjective.m_bInfinite) continue;
 			SetObjectiveProgressDatabase(steamid64, OldContract[client].m_sUUID, i, OldContractObjective.m_iProgress);
 		}
 	}
@@ -867,38 +868,39 @@ public any Native_CanClientActivateContract(Handle plugin, int numParams)
 	
 	if (g_DebugUnlockContracts.BoolValue) return true;
 
-	// Grab the Contract from the schema.
-	if (g_ContractSchema.JumpToKey(UUID))
-	{
-		// Construct the required contracts.
-		if (g_ContractSchema.JumpToKey("required_contracts", false))
-		{
-			int Value = 0;
-			for (;;)
-			{
-				char ContractUUID[MAX_UUID_SIZE];
-				char ValueStr[4];
-				IntToString(Value, ValueStr, sizeof(ValueStr));
+	KeyValues Schema = GetContractSchema(UUID);
 
-				g_ContractSchema.GetString(ValueStr, ContractUUID, sizeof(ContractUUID), "{}");
-				// If we reach a blank UUID, we're at the end of the list.
-				if (StrEqual("{}", ContractUUID)) break;
-				if (CompletedContracts[client].ContainsKey(ContractUUID))
-				{
-					g_ContractSchema.Rewind();
-					return true;
-				}
-				Value++;
-			}
-			g_ContractSchema.GoBack();
-		}
-		else
+	// Time restriction check.
+	int BeginTimestampRestriction = Schema.GetNum("contract_start_unixtime", -1);
+	if (BeginTimestampRestriction != -1 && BeginTimestampRestriction > GetTime()) return false;
+	int EndTimestampRestriction = Schema.GetNum("contract_end_unixtime", -1);
+	if (EndTimestampRestriction != -1 && EndTimestampRestriction < GetTime()) return false;
+	
+	// Required contracts check.
+	if (Schema.JumpToKey("required_contracts", false))
+	{
+		int Value = 0;
+		for (;;)
 		{
-			g_ContractSchema.Rewind();
-			return true;	
+			char ContractUUID[MAX_UUID_SIZE];
+			char ValueStr[4];
+			IntToString(Value, ValueStr, sizeof(ValueStr));
+
+			Schema.GetString(ValueStr, ContractUUID, sizeof(ContractUUID), "{}");
+			// If we reach a blank UUID, we're at the end of the list.
+			if (StrEqual("{}", ContractUUID)) break;
+			if (CompletedContracts[client].ContainsKey(ContractUUID))
+			{
+				return true;
+			}
+			Value++;
 		}
 	}
-	g_ContractSchema.Rewind();
+	else
+	{
+		return true;	
+	}
+	
 	return false;
 }
 
@@ -1099,9 +1101,12 @@ public Action Timer_DrawContrackerHud(Handle hTimer)
 	{
 		if (!IsClientValid(i) || IsFakeClient(i)) continue;
 		if (g_NextHUDUpdate[i] > GetGameTime()) continue;
+		if (!ActiveContract[i].IsContractInitalized() || !ActiveContract[i].m_bActive) continue;
 		if (!PlayerHUDEnabled[i]) continue;
 
-		if (!ActiveContract[i].IsContractInitalized() || !ActiveContract[i].m_bActive) continue;
+		// TF2 specific check.
+		if (GetEngineVersion() == Engine_TF2 &&
+		(TF2_GetClientTeam(i) == TFTeam_Spectator || TF2_GetClientTeam(i) == TFTeam_Unassigned)) continue;
 
 		// Prepare our text.
 		SetHudTextParams(1.0, -1.0, HUD_REFRESH_RATE + 0.1, 255, 255, 255, 255);
@@ -1192,8 +1197,18 @@ public Action Timer_DrawContrackerHud(Handle hTimer)
 					// Adds +x value to the end of the text.
 					if (ActiveContract[i].m_iHUD_ObjectiveUpdate == ActiveContractObjective.m_iInternalID)
 					{
-						SetHudTextParams(1.0, -1.0, 1.0, 52, 235, 70, 255, 1);
-						char AddText[16] = " +%d";
+						char AddText[16];
+						if (ActiveContract[i].m_iHUD_UpdateValue > 0)
+						{
+							AddText = " +%dCP";
+							SetHudTextParams(1.0, -1.0, 1.0, 52, 235, 70, 255, 1);
+						}
+						else // subtract
+						{
+							AddText = " -%dCP";
+							SetHudTextParams(1.0, -1.0, 1.0, 209, 33, 21, 255, 1);
+						}
+					
 						Format(AddText, sizeof(AddText), AddText, ActiveContract[i].m_iHUD_UpdateValue);
 						StrCat(ObjectiveText, sizeof(ObjectiveText), AddText);
 						ActiveContract[i].m_bHUD_ContractUpdate = false;

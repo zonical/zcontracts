@@ -85,6 +85,11 @@ public void OnAllPluginsLoaded()
 	{
 		SetFailState("This plugin requires the main ZContracts plugin to function.");
 	}
+		// Check to see if we have tf_econ_data loaded.
+	if (!LibraryExists("tf_econ_data"))
+	{
+		SetFailState("This plugin requires the \"tf_econ_data\" plugin to function.");
+	}
 }
 
 // ============================= GAMEMODE EXTENSIONS =============================
