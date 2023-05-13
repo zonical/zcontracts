@@ -345,7 +345,6 @@ public any Native_SaveActiveObjectiveToDatabase(Handle plugin, int numParams)
     KeyValues Schema = GetObjectiveSchema(UUID, objective+1);
     if (view_as<bool>(Schema.GetNum("infinite", 0)))
     {
-        PrintToChat(client, "Prevented infinite obj save!");
         return false;
     }
 
