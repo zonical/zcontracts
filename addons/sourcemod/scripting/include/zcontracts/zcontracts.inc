@@ -4,7 +4,7 @@
 
 #define __zcontracts_included
 
-#define ZCONTRACTS_PLUGIN_VERSION "0.10.1"
+#define ZCONTRACTS_PLUGIN_VERSION "0.10.2"
 // This value should be incremented with every breaking version made to the
 // database so saves can be easily converted. For developers who fork this project and
 // wish to merge changes, do not increment this number until merge.
@@ -43,14 +43,6 @@ enum ContractType
 	Contract_ContractProgress = 2
 }
 
-// Timer events for ContractObjectiveEvent timers.
-enum struct TimerEvent
-{
-	char m_sEventName[MAX_EVENT_SIZE];
-	char m_sAction[MAX_EVENT_SIZE];
-	int m_iVariable;
-}
-
 // Contract objective events.
 enum struct ContractObjectiveEvent
 {
@@ -73,24 +65,20 @@ enum struct ContractObjectiveEvent
 	float m_fTime; 
 	// The maximum amount of timer loops.
 	int m_iMaxLoops; 
-	// When this timer was started.
+	// When this loop of the timer was started.
 	float m_fStarted;
 	int m_iCurrentLoops;
-	// The events that get triggered on certain timer events.
-	ArrayList m_hTimerEvents; // See TimerEvent
 	
 	bool m_bInitalized;
 	
 	void Initalize()
 	{
-		this.m_hTimerEvents = new ArrayList(sizeof(TimerEvent));
 		this.m_bInitalized = true;
 	}
 	
 	void Destroy()
 	{
-		if (!this.m_bInitalized || !this.m_hTimerEvents) return;
-		delete this.m_hTimerEvents;
+		if (!this.m_bInitalized) return;
 		this.m_bInitalized = false;
 	}
 }

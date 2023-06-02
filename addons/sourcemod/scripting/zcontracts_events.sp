@@ -2,15 +2,12 @@
 #include <sdkhooks>
 #include <zcontracts/zcontracts>
 
-int g_PlayerDamageDealt[MAXPLAYERS+1];
-int g_PlayerDamageTaken[MAXPLAYERS+1];
-
 public Plugin myinfo =
 {
 	name = "ZContracts - Event Logic",
 	author = "ZoNiCaL",
 	description = "Hooks game events into the ZContract system.",
-	version = "0.8.0",
+	version = ZCONTRACTS_PLUGIN_VERSION,
 	url = ""
 };
 
@@ -31,13 +28,6 @@ public void OnPluginStart()
 	{
 		case Engine_TF2: HookEvent("teamplay_round_win", OnRoundWin);
 		case Engine_CSGO: HookEvent("round_end", OnRoundWin);
-	}
-	
-	
-	for (int i = 0; i < MAXPLAYERS + 1; i++)
-	{
-		g_PlayerDamageDealt[i] = 0;
-		g_PlayerDamageTaken[i] = 0;
 	}
 }
 
@@ -68,6 +58,12 @@ public Action OnPlayerDeath(Event event, const char[] name, bool dontBroadcast)
 			CallContrackerEvent(assister, "CONTRACTS_PLAYER_ASSIST_KILL", 1, true);
 		}
 	}
+
+	if (IsClientValid(attacker) && attacker == victim)
+	{
+		CallContrackerEvent(attacker, "CONTRACTS_PLAYER_SUICIDE", 1, true);
+	}
+
 	return Plugin_Continue;
 }
 
@@ -114,8 +110,6 @@ public Action OnRoundWin(Event event, const char[] name, bool dontBroadcast)
 		case Engine_TF2: team = event.GetInt("team");
 		case Engine_CSGO: team = event.GetInt("winner");
 	}
-	
-	//int winreason = event.GetInt("winreason");
 
 	for (int i = 0; i < MAXPLAYERS+1; i++)
 	{

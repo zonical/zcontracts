@@ -43,6 +43,7 @@ ConVar g_DebugQuery;
 ConVar g_DebugProgress;
 ConVar g_DebugSessions;
 ConVar g_DebugUnlockContracts;
+ConVar g_DebugTimers;
 
 // Forwards
 GlobalForward g_fOnObjectiveCompleted;
@@ -165,6 +166,7 @@ public void OnPluginStart()
 	g_DebugProgress = CreateConVar("zc_debug_progress", "0", "Logs every time player progress is incremented internally.");
 	g_DebugSessions = CreateConVar("zc_debug_sessions", "0", "Logs every time a session is restored.");
 	g_DebugUnlockContracts = CreateConVar("zc_debug_unlock_contracts", "0", "Allows any contract to be selected.");
+	g_DebugTimers = CreateConVar("zc_debug_timers", "0", "Logs timer events.");
 
 	g_DatabaseRetryTime.AddChangeHook(OnDatabaseRetryChange);
 	g_DisplayProgressHud.AddChangeHook(OnDisplayHudChange);
@@ -1100,7 +1102,6 @@ public Action Timer_DrawContrackerHud(Handle hTimer)
 	for (int i = 0; i < MAXPLAYERS+1; i++)
 	{
 		if (!IsClientValid(i) || IsFakeClient(i)) continue;
-		if (g_NextHUDUpdate[i] > GetGameTime()) continue;
 		if (!ActiveContract[i].IsContractInitalized() || !ActiveContract[i].m_bActive) continue;
 		if (!PlayerHUDEnabled[i]) continue;
 
@@ -1122,7 +1123,6 @@ public Action Timer_DrawContrackerHud(Handle hTimer)
 			char CompletionsText[64] = "Completions: %d\n";
 			Format(CompletionsText, sizeof(CompletionsText), CompletionsText, info.m_iCompletions);
 			StrCat(DisplayText, sizeof(DisplayText), CompletionsText);
-
 		}
 
 		// Add text if we've completed the Contract.
@@ -1141,6 +1141,8 @@ public Action Timer_DrawContrackerHud(Handle hTimer)
 			// Display the overall Contract progress.
 			if (ActiveContract[i].m_iContractType == Contract_ContractProgress)
 			{
+				if (g_NextHUDUpdate[i] > GetGameTime()) continue;
+
 				char ProgressText[128] = "Progress: [%d/%d]";
 				Format(ProgressText, sizeof(ProgressText), ProgressText,
 				ActiveContract[i].m_iProgress, ActiveContract[i].m_iMaxProgress);		
@@ -1189,6 +1191,8 @@ public Action Timer_DrawContrackerHud(Handle hTimer)
 				// Display the progress of this objective if we're not infinite.
 				if (!ActiveContractObjective.m_bInfinite)
 				{
+					if (g_NextHUDUpdate[i] > GetGameTime()) continue;
+
 					char ProgressText[64] = " [%d/%d]";
 					Format(ProgressText, sizeof(ProgressText), ProgressText,
 					ActiveContractObjective.m_iProgress, ActiveContractObjective.m_iMaxProgress);
@@ -1220,7 +1224,7 @@ public Action Timer_DrawContrackerHud(Handle hTimer)
 				// Infinite contract objectives may have timers attached to them, so we
 				// add them here.
 
-				char TimerText[16] = " [TIME: %ds]";
+				char TimerText[64] = " [TIME: %ds]";
 				// Display a timer if we have one active.
 				for (int k = 0; k < ActiveContractObjective.m_hEvents.Length; k++)
 				{
@@ -1232,6 +1236,22 @@ public Action Timer_DrawContrackerHud(Handle hTimer)
 					{
 						int TimeDiff = RoundFloat((GetGameTime() - ObjEvent.m_fStarted));
 						Format(TimerText, sizeof(TimerText), TimerText, TimeDiff);
+
+						if (g_TimeChange[i] != 0.0)
+						{
+							SetHudTextParams(1.0, -1.0, 1.0, 255, 242, 0, 255, 1);
+							char TimeDiffText[16] = " %s%.1fs";
+							if (g_TimeChange[i] > 0.0)
+							{
+								Format(TimeDiffText, sizeof(TimeDiffText), TimeDiffText, "+", g_TimeChange[i]);
+							}
+							if (g_TimeChange[i] < 0.0)
+							{
+								Format(TimeDiffText, sizeof(TimeDiffText), TimeDiffText, "-", g_TimeChange[i]);
+							}
+							StrCat(TimerText, sizeof(TimerText), TimeDiffText);
+							g_NextHUDUpdate[i] = GetGameTime() + 1.0;
+						}
 						StrCat(ObjectiveText, sizeof(ObjectiveText), TimerText);
 					}
 				}
@@ -1391,7 +1411,7 @@ void ProcessLogicForContractObjective(Contract ClientContract, int objective_id,
 			// Do we have a timer going?
 			if (ObjEvent.m_hTimer != INVALID_HANDLE)
 			{
-				TriggerTimeEvent(Objective, ObjEvent, "OnThreshold");
+				SendEventToTimer(client, objective_id, i, "OnEventFired");
 			}
 			else 
 			{
@@ -1401,11 +1421,10 @@ void ProcessLogicForContractObjective(Contract ClientContract, int objective_id,
 					DataPack TimerData;
 					
 					// Create our timer. (see contracts_timers.sp)
-					ObjEvent.m_hTimer = CreateDataTimer(ObjEvent.m_fTime, EventTimer, TimerData, TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);
+					ObjEvent.m_hTimer = CreateDataTimer(0.5, EventTimer, TimerData, TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);
 					TimerData.WriteCell(client); // Pass through our client so we can get our contract.
 					TimerData.WriteCell(Objective.m_iInternalID); // Pass through our internal ID so we know which objective to look for.
 					TimerData.WriteCell(ObjEvent.m_iInternalID); // Pass through the current event index so we know which event we're looking for in our objective.
-					// ^^ The reason we do these two things as we can't pass enum structs through into a DataPack.
 
 					ObjEvent.m_fStarted = GetGameTime();
 				}
@@ -1424,8 +1443,8 @@ void ProcessLogicForContractObjective(Contract ClientContract, int objective_id,
 
 					switch (ClientContract.m_iContractType)
 					{
-						case Contract_ObjectiveProgress: ModifyObjectiveProgress(client, value, ClientContract, Objective);
-						case Contract_ContractProgress: ModifyContractProgress(client, value, ClientContract, Objective);
+						case Contract_ObjectiveProgress: ModifyObjectiveProgress(client, value, ClientContract, objective_id);
+						case Contract_ContractProgress: ModifyContractProgress(client, value, ClientContract, objective_id);
 					}
 
 					// Reset our threshold.
@@ -1453,13 +1472,25 @@ void ProcessLogicForContractObjective(Contract ClientContract, int objective_id,
 				// Cancel our timer now that we've reached our threshold.
 				if (ObjEvent.m_hTimer != INVALID_HANDLE)
 				{
+					if (g_DebugTimers.BoolValue)
+					{
+						LogMessage("[ZContracts] Timer finished for %N: [OBJ: %d, EVENT: %d, REASON: Event reached threshold]",
+						client, objective_id, i);
+					}
+
 					CloseHandle(ObjEvent.m_hTimer);
 					ObjEvent.m_hTimer = INVALID_HANDLE;
+
+					g_TimeChange[client] = 0.0;
+					g_TimerActive[client] = false;
 				}
 			}
 		
 			Objective.m_hEvents.SetArray(i, ObjEvent);
 			ClientContract.SaveObjective(objective_id, Objective);
+
+			// Update HUD now.
+			g_NextHUDUpdate[i] = -1;
 		}
 
 		if (Objective.IsObjectiveComplete())
@@ -1536,9 +1567,13 @@ void ProcessLogicForContractObjective(Contract ClientContract, int objective_id,
 	}
 }
 
-void ModifyContractProgress(int client, int value, Contract ClientContract, ContractObjective ActiveContractObjective)
+void ModifyContractProgress(int client, int value, Contract ClientContract, int objective_id)
 {
 	int AddValue = 0;
+
+	ContractObjective ActiveContractObjective;
+	ClientContract.GetObjective(objective_id, ActiveContractObjective);
+	if (!ActiveContractObjective.m_bInitalized) return;
 
 	// This award value will not be multiplied by the value argument. This may be useful for some Contracts.
 	if (ClientContract.m_bNoMultiplication) AddValue = ActiveContractObjective.m_iAward;
@@ -1600,10 +1635,15 @@ void ModifyContractProgress(int client, int value, Contract ClientContract, Cont
 
 	// Save progress to DB.
 	ClientContract.m_bNeedsDBSave = true;
+	ClientContract.SaveObjective(objective_id, ActiveContractObjective);
 }
 
-void ModifyObjectiveProgress(int client, int value, Contract ClientContract, ContractObjective ActiveContractObjective)
+void ModifyObjectiveProgress(int client, int value, Contract ClientContract, int objective_id)
 {
+	ContractObjective ActiveContractObjective;
+	ClientContract.GetObjective(objective_id, ActiveContractObjective);
+	if (!ActiveContractObjective.m_bInitalized) return;
+
 	int AddValue = 0;
 
 	// This award value will not be multiplied by the value argument. This may be useful for some Contracts.
@@ -1666,6 +1706,7 @@ void ModifyObjectiveProgress(int client, int value, Contract ClientContract, Con
 
 	// Save progress to DB.
 	ActiveContractObjective.m_bNeedsDBSave = true;
+	ClientContract.SaveObjective(objective_id, ActiveContractObjective);
 }
 
 // ============ DEBUG FUNCTIONS ============

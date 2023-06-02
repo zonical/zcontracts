@@ -89,29 +89,10 @@ public void CreateContractObjectiveEvent(KeyValues hEventConf, ContractObjective
 	hEventConf.GetString("type", hEvent.m_sEventType, sizeof(hEvent.m_sEventType), "increment");
 	hEvent.m_iThreshold = hEventConf.GetNum("threshold", 1);
 	hEvent.m_hTimer = INVALID_HANDLE;
-	
-	// If this event has a timer...
+
 	if (hEventConf.JumpToKey("timer", false))
 	{
-		// Populate our variables.
 		hEvent.m_fTime = hEventConf.GetFloat("time");
-		hEvent.m_iMaxLoops = hEventConf.GetNum("loops");
-		
-		// Check if any events exist.
-		if (hEventConf.JumpToKey("OnTimerEnd", false))
-		{
-			TimerEvent hTimer;
-			
-			// Populate our variables.
-			//hTimer.m_sEventName = "OnTimerEnd";
-			hTimer.m_iVariable = hEventConf.GetNum("variable");
-			hEventConf.GetString("event", hTimer.m_sAction, sizeof(hTimer.m_sAction));
-			
-			// Add to our list.
-			hEvent.m_hTimerEvents.PushArray(hTimer, sizeof(TimerEvent));
-			
-			hEventConf.GoBack();
-		}
 		hEventConf.GoBack();
 	}
 }
@@ -313,20 +294,32 @@ public any Native_GetObjectiveSchema(Handle plugin, int numParams)
 		// Error out again!
 		ThrowNativeError(SP_ERROR_NOT_FOUND, "Could not find objectives in %s schema - invalid structure", UUID);
 	}
-	char StrObjective[4];
-	IntToString(objective, StrObjective, sizeof(StrObjective));
-	if (!g_ContractSchema.JumpToKey(StrObjective))
-	{
-		// Error out once more!
-		ThrowNativeError(SP_ERROR_NOT_FOUND, "Could not find objective %d in %s schema", objective, UUID);
-	}
+	g_ContractSchema.GotoFirstSubKey();
 
-	// Clone our handle and return it.
-	KeyValues NewKV = new KeyValues(StrObjective);
-	NewKV.Import(g_ContractSchema);
+	int ObjectiveCount = 0;
+	do
+	{
+		if (ObjectiveCount == objective)
+		{
+			char StrObjective[4];
+			IntToString(ObjectiveCount, StrObjective, sizeof(StrObjective));
+
+			// Clone this objective and return it.
+			KeyValues NewKV = new KeyValues(StrObjective);
+			NewKV.Import(g_ContractSchema);
+			g_ContractSchema.Rewind();
+			Handle Schema = CloneHandle(NewKV, plugin);
+
+			char f[128];
+			NewKV.ExportToString(f, sizeof(f));
+
+			return view_as<KeyValues>(Schema);
+		}
+	} while (g_ContractSchema.GotoNextKey());
+
+	// Error out once more because we couldn't find the objective!
 	g_ContractSchema.Rewind();
-	Handle Schema = CloneHandle(NewKV, plugin);
-	return view_as<KeyValues>(Schema);
+	ThrowNativeError(SP_ERROR_NOT_FOUND, "Could not find objective %d in %s schema", objective, UUID);
 }
 
 /**

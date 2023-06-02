@@ -400,6 +400,7 @@ public Action OnPlayerDeath(Event event, const char[] name, bool dontBroadcast)
 	int attacker = GetClientOfUserId(event.GetInt("attacker"));
 	int victim = GetClientOfUserId(event.GetInt("userid"));
 	int death_flags = event.GetInt("death_flags");
+	int damagebits = event.GetInt("damagebits");
 
 	if (!IsClientValid(attacker)) return Plugin_Continue;
 	if (IsFakeClient(attacker)) return Plugin_Continue;
@@ -423,6 +424,8 @@ public Action OnPlayerDeath(Event event, const char[] name, bool dontBroadcast)
 		{
 			case TF_CUSTOM_HEADSHOT: CallContrackerEvent(attacker, "CONTRACTS_TF2_PLAYER_KILL_HEADSHOT", 1, true);
 			case TF_CUSTOM_BACKSTAB: CallContrackerEvent(attacker, "CONTRACTS_TF2_PLAYER_KILL_BACKSTAB", 1, true);
+			case TF_CUSTOM_TELEFRAG: CallContrackerEvent(attacker, "CONTRACTS_TF2_PLAYER_KILL_TELEFRAG", 1, true);
+			case TF_CUSTOM_CROC: CallContrackerEvent(victim, "CONTRACTS_TF2_PLAYER_DEATH_CROC", 1);
 		}
 
 		if (StrContains(weapon, "obj_minisentry") != -1 || StrContains(weapon, "obj_sentrygun") != -1)
@@ -462,13 +465,17 @@ public Action OnPlayerDeath(Event event, const char[] name, bool dontBroadcast)
 	if (IsFakeClient(assister)) return Plugin_Continue;
 	if (victim != assister)
 	{
-		CallContrackerEvent(assister, "CONTRACTS_TF2_PLAYER_ASSIST", 1, true);
 		if (TF2_IsPlayerInCondition(attacker, TFCond_Ubercharged)) CallContrackerEvent(assister, "CONTRACTS_TF2_PLAYER_ASSIST_UBER_TEAMMATE", 1, true);
 		if (TF2_IsPlayerInCondition(assister, TFCond_Ubercharged)) CallContrackerEvent(assister, "CONTRACTS_TF2_PLAYER_ASSIST_WHILE_UBERED", 1, true);
 
 		if (death_flags & TF_DEATHFLAG_ASSISTERDOMINATION) CallContrackerEvent(assister, "CONTRACTS_TF2_PLAYER_DOMINATION", 1, true);
 		if (death_flags & TF_DEATHFLAG_ASSISTERREVENGE) CallContrackerEvent(assister, "CONTRACTS_TF2_PLAYER_REVENGE", 1, true);
 	}
+
+	// Damage types.
+	if (damagebits & DMG_VEHICLE) CallContrackerEvent(victim, "CONTRACTS_TF2_PLAYER_DEATH_TRAIN", 1);
+	if (damagebits & DMG_FALL) CallContrackerEvent(victim, "CONTRACTS_TF2_PLAYER_DEATH_FALL", 1);
+	if (damagebits & DMG_NERVEGAS) CallContrackerEvent(victim, "CONTRACTS_TF2_PLAYER_DEATH_SAWBLADE", 1);
 
 	return Plugin_Continue;
 }

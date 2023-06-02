@@ -26,7 +26,7 @@ public void OnClientActivatedContractPost(int client, char UUID[MAX_UUID_SIZE])
 
     int ObjectiveCount = GetContractObjectiveCount(UUID);
     PrintToChat(client, "Amount of objectives: %d", ObjectiveCount);
-    for (int i = 1; i < ObjectiveCount+1; i++)
+    for (int i = 0; i < ObjectiveCount; i++)
     {
         KeyValues ObjectiveSchema = GetObjectiveSchema(UUID, i);
         if (ObjectiveSchema != INVALID_HANDLE)
@@ -39,9 +39,9 @@ public void OnClientActivatedContractPost(int client, char UUID[MAX_UUID_SIZE])
     PrintToChat(client, "Is active contract complete: %d", IsActiveContractComplete(client));
     PrintToChat(client, "Main Contract Progress: %d", GetActiveContractProgress(client));
 
-    for (int i = 0; i < ObjectiveCount-1; i++)
+    for (int i = 0; i < ObjectiveCount; i++)
     {
-        PrintToChat(client, "Objective %d Progress: %d", i, GetActiveObjectiveProgress(client, i+1));
+        PrintToChat(client, "Objective %d Progress: %d", i, GetActiveObjectiveProgress(client, i));
     }
 
     StringMap CompletedContracts = GetClientCompletedContracts(client);
