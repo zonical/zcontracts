@@ -69,121 +69,40 @@ enum struct ContractObjectiveEvent
 	float m_fStarted;
 	int m_iCurrentLoops;
 	
-	bool m_bInitalized;
+	bool Initalized;
 	
 	void Initalize()
 	{
-		this.m_bInitalized = true;
+		this.Initalized = true;
 	}
 	
 	void Destroy()
 	{
-		if (!this.m_bInitalized) return;
-		this.m_bInitalized = false;
-	}
-}
-
-// Contract objectives.
-enum struct ContractObjective
-{
-	// Store the original type of Contract.
-	ContractType m_iContractType;
-
-	int m_iInternalID;
-	bool m_bInitalized;
-	bool m_bInfinite;	// Objective doesn't have a maximum progress.
-	
-	char m_sDescription[MAX_OBJECTIVE_DESC_SIZE];
-	
-	// Award to give when this event is triggered.
-	int m_iAward;
-
-	// Because of the combine-event logic, there is a chance that the value passed
-	// to ProcessLogicForContractObjective() may be over the threshold. By default,
-	// the award is multiplied by the value to make up for this combination.
-	// (e.g 3 kills for 1 CP awards 3CP). Some objectives may wish to not use
-	// the multiplication (e.g heal a player for 300HP gives 5CP *only*)
-	bool m_bNoMultiplication;
-
-	// Progress of this objective. This includes how many times it should be used.
-	int m_iMaxProgress;
-	int m_iProgress;
-
-	// If the Objective progress needs to be updated in the database. This is only used
-	// with the repeating timer.
-	bool m_bNeedsDBSave;
-	
-	// Events for this Contract (see ContractObjectiveEvent).
-	ArrayList m_hEvents;
-
-	/**
-	 * @return		If this Contract is complete.
-	**/
-	bool IsObjectiveComplete()
-	{
-		if (this.m_bInfinite) return false;
-		return this.m_iProgress >= this.m_iMaxProgress;
-	}
-	/**
-	 * Creates the ArrayList for Objective Events.
-	**/
-	void Initalize()
-	{
-		this.m_hEvents = new ArrayList(sizeof(ContractObjectiveEvent));
-		this.m_bInitalized = true;
-		this.m_bNeedsDBSave = false;
-	}
-	
-	/**
-	 * Destory the ArrayList for Objective Events.
-	**/
-	void Destroy()
-	{
-		if (!this.m_bInitalized || !this.m_hEvents) return;
-		
-		// Destroy all of our events.
-		for (int i = 0; i < this.m_hEvents.Length; i++)
-		{
-			ContractObjectiveEvent hEvent;
-			this.m_hEvents.GetArray(i, hEvent, sizeof(ContractObjectiveEvent));
-			hEvent.Destroy();
-		}
-		
-		delete this.m_hEvents;
-		this.m_bInitalized = false;
-		this.m_bNeedsDBSave = false;
+		if (!this.Initalized) return;
+		this.Initalized = false;
 	}
 }
 
 // Struct representing a Contract.
 enum struct Contract
 {
-	bool m_bInitalized;
-	bool m_bActive;
+	bool Initalized;
+	bool Active;
+
+	KeyValues CachedSchema;
+	ArrayList CachedObjSchema;
 
 	// Internal representation of the Contract.
-	char m_sUUID[MAX_UUID_SIZE];
-
-	// Display name of the Contract.
-	char m_sContractName[MAX_CONTRACT_NAME_SIZE];
-	
-	// Path of where this Contract should be stored in the global Contracker.
-	char m_sDirectoryPath[MAX_DIRECTORY_SIZE]; 
-
-	// Difficulty of the Contract.
-	int m_iDifficulty;
-	
-	// The contracts the client must have completed before
-	// being allowed to activate this Contract.
-	ArrayList m_hRequiredContracts;
-
-	// What type of Contract are we handling? (see ContractType)
-	ContractType m_iContractType;
+	char UUID[MAX_UUID_SIZE];
 
 	// If we're using "contract progress" mode, there is one central
 	// progress bar that is updated alongside our objective.
-	int m_iProgress;
-	int m_iMaxProgress;
+	int ContractProgress;
+	// NOTE: values are never removed from these ArrayLists. The values are only modified.
+	ArrayList ObjectiveProgress;
+	ArrayList ObjectiveThreshold;
+	ArrayList ObjectiveTimers;
+	int ObjectiveCount;
 
 	// Because of the combine-event logic, there is a chance that the value passed
 	// to ProcessLogicForContractObjective() may be over the threshold. By default,
@@ -199,9 +118,6 @@ enum struct Contract
 	// Has this enum struct had information set from the database?
 	bool m_bLoadedFromDatabase;
 
-	// The objectives for this Contract.
-	ArrayList m_hObjectives;
-
 	// These three variables trigger visuals on the HUD.
 	bool m_bHUD_ContractUpdate;
 	int m_iHUD_ObjectiveUpdate;
@@ -209,7 +125,7 @@ enum struct Contract
 	
 	bool IsContractInitalized()
 	{
-		return this.m_sUUID[0] == '{';
+		return this.UUID[0] == '{' && this.Initalized;
 	}
 
 	/**
@@ -217,58 +133,80 @@ enum struct Contract
 	**/
 	bool IsContractComplete()
 	{
-		if (!this.m_bActive || !this.m_bInitalized) return false;
+		if (!this.Active || !this.Initalized) return false;
 		
 		switch (this.m_iContractType)
 		{
 			case Contract_ObjectiveProgress: // All objectives must be complete.
 			{
-				for (int i = 0; i < this.m_hObjectives.Length; i++)
+				for (int i = 0; i < this.m_hObjectiveProgress.Length; i++)
 				{
-					ContractObjective hContractObjective;
-					this.m_hObjectives.GetArray(i, hContractObjective);
-					if (!hContractObjective.m_bInitalized) continue;
-					if (hContractObjective.m_bInfinite) continue;
-					if (!hContractObjective.IsObjectiveComplete()) return false;
+					return (this.m_hObjectiveProgress.Get(i) >= this.CachedObjSchema.Get(i).GetNum("maximum_cp"));
 				}
 				return true;
 			}
 			case Contract_ContractProgress: // The Contract's progress bar must be complete.
 			{
-				return this.m_iProgress >= this.m_iMaxProgress;
-			}
-				
+				return this.Progress >= this.CachedSchema.GetNum("maximum_cp");
+			}	
 		}
-		
 		return false;
 	}
 
-	/**
-	 * Wrapper to easily get a Contract objective.
-	**/
-	void GetObjective(int index, ContractObjective hBuffer)
+	bool IsObjectiveComplete(int ObjectiveID)
 	{
-		this.m_hObjectives.GetArray(index, hBuffer, sizeof(ContractObjective));
+		return (this.ObjectiveProgress.Get(ObjectiveID) >= this.CachedObjSchema.Get(ObjectiveID).GetNum("maximum_cp"));
 	}
 
-	/**
-	 * Wrapper to easily save a Contract objective.
-	**/
-	void SaveObjective(int index, ContractObjective hBuffer)
+	bool IsObjectiveInfinite(int ObjectiveID)
 	{
-		this.m_hObjectives.SetArray(index, hBuffer, sizeof(ContractObjective));
+		return (this.CachedObjSchema.Get(ObjectiveID).GetNum("infinite") == 1)
+	}
+
+	bool IsTimerRunning(int ObjectiveID)
+	{
+		return (this.ObjectiveTimers.Get(ObjectiveID) != INVALID_HANDLE);
 	}
 
 	/**
 	 * Creates the ArrayList for objectives.
 	**/
-	void Initalize()
+	void Initalize(char UUID[MAX_UUID_SIZE])
 	{
-		this.m_hRequiredContracts = new ArrayList();
-		this.m_hObjectives = new ArrayList(sizeof(ContractObjective));
-		this.m_iProgress = 0;
-		this.m_bInitalized = true;
-		this.m_bActive = true;
+		this.Initalized = true;
+		this.Active = true;
+		this.Progress = 0;
+		this.UUID = UUID;
+
+		this.CachedSchema = GetContractSchema(this.UUID);
+		this.ObjectiveProgress = new ArrayList();
+		this.ObjectiveThreshold = new ArrayList(sizeof(StringMap));
+		this.ObjectiveTimers = new ArrayList(sizeof(Handle));
+
+		this.CachedObjSchema = new ArrayList(sizeof(KeyValues));
+
+		// Grab the schema KeyValue objects of our objectives and store them locally.
+		if (this.CachedSchema.JumpToKey("objectives"))
+		{
+			int ObjectiveID = 0;
+			this.CachedSchema.GotoFirstSubKey();
+			do
+			{
+				KeyValues ObjSchema = GetObjectiveSchema(ObjectiveID, this.UUID);
+				this.CachedObjSchema.Push(ObjSchema);
+				this.ObjectiveProgress.Push(0);
+				this.ObjectiveThreshold.Push(new StringMap());
+				this.ObjectiveTimers.Push(INVALID_HANDLE);
+				this.ObjectiveCount++;
+				ObjectiveID++;
+
+			} while (this.CachedSchema.GotoNextKey());
+		}
+		else
+		{
+			ThrowError("Tried to load Contract with no objectives! UUID: %s", this.UUID);
+		}
+
 		this.m_bLoadedFromDatabase = false;
 		this.m_bHUD_ContractUpdate = false;
 		this.m_iHUD_ObjectiveUpdate = -1;
@@ -279,18 +217,20 @@ enum struct Contract
 	**/
 	void Destroy()
 	{
-		for (int i = 0; i < this.m_hObjectives.Length; i++)
-		{
-			ContractObjective hContractObjective;
-			this.m_hObjectives.GetArray(i, hContractObjective);
-			if (!hContractObjective.m_bInitalized) continue;
-			hContractObjective.Destroy();
-			this.m_hObjectives.SetArray(i, hContractObjective);
-		}
-		this.m_hObjectives.Clear();
-		this.m_bInitalized = false;
-		this.m_bActive = false;
+		this.Initalized = false;
+		this.Active = false;
+
+		this.CachedSchema = null;
+		delete this.CachedObjSchema;
+
+		delete this.ObjectiveProgress;
+		delete this.ObjectiveThreshold;
+		this.ObjectiveCount = 0;
+
 		this.m_bLoadedFromDatabase = false;
+		this.m_bHUD_ContractUpdate = false;
+		this.m_iHUD_ObjectiveUpdate = -1;
+		this.m_iHUD_UpdateValue = 0;
 	}
 }
 
@@ -300,7 +240,7 @@ enum struct ObjectiveUpdate
 	int m_iValue;
 	int m_iObjectiveID;
 	char m_sEvent[MAX_EVENT_SIZE];
-	char m_sUUID[MAX_UUID_SIZE];
+	char UUID[MAX_UUID_SIZE];
 }
 
 enum struct CompletedContractInfo

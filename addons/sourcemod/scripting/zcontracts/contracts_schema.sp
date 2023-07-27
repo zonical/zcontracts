@@ -168,7 +168,6 @@ public void CreateContract(KeyValues hContractConf, Contract hContract)
 	hContract.m_bNoMultiplication = view_as<bool>(hContractConf.GetNum("no_multiply", 0));
 	hContract.m_iContractType = view_as<ContractType>(hContractConf.GetNum("type", view_as<int>(Contract_ObjectiveProgress))); // stops a warning
 	hContract.m_iMaxProgress = hContractConf.GetNum("maximum_cp", -1);
-	hContract.m_iDifficulty = hContractConf.GetNum("difficulty", 1);
 	
 	// Create our objectives.
 	if (hContractConf.JumpToKey("objectives", false))
@@ -309,9 +308,6 @@ public any Native_GetObjectiveSchema(Handle plugin, int numParams)
 			NewKV.Import(g_ContractSchema);
 			g_ContractSchema.Rewind();
 			Handle Schema = CloneHandle(NewKV, plugin);
-
-			char f[128];
-			NewKV.ExportToString(f, sizeof(f));
 
 			return view_as<KeyValues>(Schema);
 		}
