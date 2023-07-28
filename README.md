@@ -1,21 +1,13 @@
 
 <h1 align="center">
-ZContracts (Beta) - Custom Contracker for SourceMod
+ZContracts - Custom Contracker for SourceMod
 </h1>
 
-ZContracts is a plugin designed to emulate the Contracker progression system seen in Team Fortress 2. This project was heavily inspired by and started development during Creators.TF. The goal of this project is to provide an easy way for server developers to create a new gameplay experience for their players by completing as many Contracts as they can.
+ZContracts is a free, no BS solution for sever operators who wish to have an experience similar to the Contracker progression system seen in Team Fortress 2. This project was heavily inspired by and started development during Creators.TF. The goal of this project is to provide an easy way for server developers to create a new gameplay experience for their players by completing as many Contracts as they can.
 
 The plugin is officially supported for Team Fortress 2. Work has been started for CSGO but with the imminent release of CS2 and the uncertainty of SourceMod working on Source 2, I'm putting my focus towards supporting TF2.
 
 **DISCLAIMER:** This is a beta version! Documentation on existing features will be incomplete. Things are subject to change and there might be breaking changes!
-
-## ZContracts Roadmap:
-- [X] Better weapon checking.
-- [X] Weapon slot restrictions.
-- [X] Subtract progress from a Contract.
-- [X] Safer Native API for other plugins.
-- [X] Time limited Contracts.
-- [ ] Daily/Weekly Contracts (special plugin?)
 
 ## Installation
 
@@ -51,7 +43,7 @@ If you make any edits to any of the enum structs, make sure you recompile all pl
 - [Lots of customisation (e.g Contracts can be repeated infinitely), all controllable with ConVars](https://github.com/zonical/zcontracts/wiki/ConVar's-and-Console-Commands).
 
 ## Usage
-This plugin, like any other SourceMod plugin, falls under the [SourceMod License](https://www.sourcemod.net/license.php) (specifically GPLv3). You are free to use this plugin on your server and modify the plugin source code to suit your own needs. The sample Contracts provided in this repositiory are free to be used, modified, or deleted.
+This plugin, like any other SourceMod plugin, falls under the [SourceMod License](https://www.sourcemod.net/license.php) (specifically GPLv3). You are free to use this plugin on your server and modify the plugin source code to suit your own needs. I would appreciate a small credit for creating the plugin but it's not a requirement. This plugin will always be open sourced and free. The sample Contracts provided in this repositiory are free to be used, modified, or deleted.
 
 ## Questions, Issues, PR's
 Feel free to contact me at `ZoNiCaL#9740` on Discord if you have any questions.
