@@ -193,7 +193,7 @@ int ContractMenuHandler(Menu menu, MenuAction action, int param1, int param2)
 					return RedrawMenuItem(MenuDisplay);
 				}
 
-				if (StrEqual(ActiveContract[param1].m_sUUID, MenuKey))
+				if (StrEqual(ActiveContract[param1].UUID, MenuKey))
 				{
 					Format(MenuDisplay, sizeof(MenuDisplay), "%s [ACTIVE]", MenuDisplay);
 					return RedrawMenuItem(MenuDisplay);
@@ -243,10 +243,10 @@ int ContractMenuHandler(Menu menu, MenuAction action, int param1, int param2)
 				ActiveContract[param1].IsContractComplete())
 				{
 					CompletedContractInfo info;
-					CompletedContracts[param1].GetArray(ActiveContract[param1].m_sUUID, info, sizeof(CompletedContractInfo));
+					CompletedContracts[param1].GetArray(ActiveContract[param1].UUID, info, sizeof(CompletedContractInfo));
 					if (!info.m_bReset)
 					{
-						ConstructRepeatContractPanel(param1, ActiveContract[param1].m_sUUID);
+						ConstructRepeatContractPanel(param1, ActiveContract[param1].UUID);
 					}
 					else 
 					{
@@ -390,7 +390,7 @@ void CreateObjectiveDisplay(int client, bool unknown)
 
 	ContractDisplay.SetTitle(ContractName);
 
-	switch (ActiveContract[client].CachedSchema.GetNum("type"))
+	switch (view_as<ContractType>(ActiveContract[client].CachedSchema.GetNum("type")))
 	{
 		case Contract_ContractProgress:
 		{
@@ -420,7 +420,7 @@ void CreateObjectiveDisplay(int client, bool unknown)
 				ContractGoal = "To complete this Contract, complete %d objectives.\n";
 			}
 			
-			Format(ContractGoal, sizeof(ContractGoal), ContractGoal, ActiveContract[client].m_hObjectives.Length);
+			Format(ContractGoal, sizeof(ContractGoal), ContractGoal, ActiveContract[client].ObjectiveCount);
 			ContractDisplay.AddItem("#contract_goal", ContractGoal, ITEMDRAW_DISABLED);
 			ContractDisplay.AddItem("#divider2", "-------------------------------------------------", ITEMDRAW_SPACER);
 		}
@@ -442,7 +442,7 @@ void CreateObjectiveDisplay(int client, bool unknown)
 		}
 		else
 		{
-			switch (ActiveContract[client].CachedSchema.GetNum("type"))
+			switch (view_as<ContractType>(ActiveContract[client].CachedSchema.GetNum("type")))
 			{
 				case Contract_ObjectiveProgress:
 				{
@@ -842,7 +842,7 @@ int LockedContractMenuHandler(Menu menu, MenuAction action, int param1, int para
 	return 0;
 }
 
-void ConstructRepeatContractPanel(int client, const char[] UUID)
+void ConstructRepeatContractPanel(int client, char UUID[MAX_UUID_SIZE])
 {
 	gRepeatDisplay[client] = new Panel();
 	gRepeatDisplay[client].SetTitle("ZContracts - Repeat Contract");

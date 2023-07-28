@@ -48,7 +48,7 @@ public Action EventTimer(Handle hTimer, DataPack hPack)
 	else
 	{
 		// Call an event for when the timer ends.
-		SendEventToTimer(client, iObjectiveID, iEventID, "OnTimerEnd");
+		SendEventToTimer(client, obj_id, event, "OnTimerEnd");
 		ActiveContract[client].ObjectiveTimers.Set(obj_id, INVALID_HANDLE);
 		TimeRemaining = 0.0;
 		g_TimerActive[client] = false;
@@ -61,16 +61,14 @@ public Action EventTimer(Handle hTimer, DataPack hPack)
 		// Exit out of the timer.
 		return Plugin_Stop;
 	}
-
-	return Plugin_Continue;
 }
 
-public void SendEventToTimer(int client, int objective, char event[MAX_EVENT_SIZE], const char[] timer_event)
+public void SendEventToTimer(int client, int obj_id, char event[MAX_EVENT_SIZE], const char[] timer_event)
 {
 	// Grab the starting time from the Schema.
 	KeyValues Schema = ActiveContract[client].CachedObjSchema.Get(obj_id);
-	if (!Schema.JumpToKey("events")) ThrowError("Contract \"%s\" doesn't have any events! Fix this, server developer!", Buffer.UUID);
-	if (!Schema.JumpToKey(event)) ThrowError("Contract \"%s\" doesn't have requested event \"%s\"", Buffer.UUID, event);
+	if (!Schema.JumpToKey("events")) ThrowError("Contract \"%s\" doesn't have any events! Fix this, server developer!", ActiveContract[client].UUID);
+	if (!Schema.JumpToKey(event)) ThrowError("Contract \"%s\" doesn't have requested event \"%s\"", ActiveContract[client].UUID, event);
 	if (!Schema.JumpToKey("timer")) return;
 	if (!Schema.JumpToKey(timer_event)) return;
 
@@ -79,7 +77,7 @@ public void SendEventToTimer(int client, int objective, char event[MAX_EVENT_SIZ
 	if (g_DebugTimers.BoolValue)
 	{
 		LogMessage("[ZContracts] Timer event fired for %N: [OBJ: %d, OBJ-EVENT: %d, EVENT: %s, ACTION: %s]",
-		client, objective, event, timer_event, EventAction);
+		client, obj_id, event, timer_event, EventAction);
 	}
 	float Variable = Schema.GetFloat("variable");
 
@@ -87,10 +85,10 @@ public void SendEventToTimer(int client, int objective, char event[MAX_EVENT_SIZ
 	{
 		int Value = view_as<int>(Variable);
 		if (StrEqual(EventAction, "subtract_reward")) Value *= -1;
-		switch (ActiveContract[client].m_iContractType)
+		switch (view_as<ContractType>(ActiveContract[client].CachedSchema.GetNum("type")))
 		{
-			case Contract_ObjectiveProgress: ModifyObjectiveProgress(client, Value, ActiveContract[client], objective);
-			case Contract_ContractProgress: ModifyContractProgress(client, Value, ActiveContract[client], objective);
+			case Contract_ObjectiveProgress: ModifyObjectiveProgress(client, Value, ActiveContract[client], obj_id);
+			case Contract_ContractProgress: ModifyContractProgress(client, Value, ActiveContract[client], obj_id);
 		}
 	}
 	if (StrContains(EventAction, "threshold") != -1)
@@ -103,7 +101,4 @@ public void SendEventToTimer(int client, int objective, char event[MAX_EVENT_SIZ
 
 	if (StrEqual(EventAction, "add_time")) g_TimeChange[client] = Variable;
 	if (StrEqual(EventAction, "subtract_time")) g_TimeChange[client] = Variable * -1.0;
-	
-	ActiveObjective.m_hEvents.SetArray(event, ObjectiveEvent, sizeof(ContractObjectiveEvent));
-	ActiveContract[client].SaveObjective(objective, ActiveObjective);
 }

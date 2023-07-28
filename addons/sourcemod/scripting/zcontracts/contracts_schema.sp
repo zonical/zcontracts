@@ -80,142 +80,6 @@ public KeyValues LoadContractsSchema()
 	return contractSchema;
 }
 
-// Creates a contract event.
-public void CreateContractObjectiveEvent(KeyValues hEventConf, ContractObjectiveEvent hEvent)
-{
-	hEvent.Initalize();
-	
-	hEventConf.GetSectionName(hEvent.m_sEventName, sizeof(hEvent.m_sEventName)); 	// Our event trigger is the section name.
-	hEventConf.GetString("type", hEvent.m_sEventType, sizeof(hEvent.m_sEventType), "increment");
-	hEvent.m_iThreshold = hEventConf.GetNum("threshold", 1);
-	hEvent.m_hTimer = INVALID_HANDLE;
-
-	if (hEventConf.JumpToKey("timer", false))
-	{
-		hEvent.m_fTime = hEventConf.GetFloat("time");
-		hEventConf.GoBack();
-	}
-}
-
-// Creates a contract objective.
-public void CreateContractObjective(KeyValues hObjectiveConf, ContractObjective hObjective)
-{
-	hObjective.Initalize();
-
-	hObjectiveConf.GetString("description", hObjective.m_sDescription, sizeof(hObjective.m_sDescription));
-
-	if (hObjectiveConf.GetNum("maximum_cp", -1) != -1) hObjective.m_iMaxProgress = hObjectiveConf.GetNum("maximum_cp");
-	if (hObjectiveConf.GetNum("maximum_uses", -1) != -1) hObjective.m_iMaxProgress = hObjectiveConf.GetNum("maximum_uses");
-
-	hObjective.m_iAward = hObjectiveConf.GetNum("award", 1);
-	hObjective.m_bInfinite = view_as<bool>(hObjectiveConf.GetNum("infinite", 0));
-	hObjective.m_bNoMultiplication = view_as<bool>(hObjectiveConf.GetNum("no_multiply", 0));
-
-	// Create our events.
-	if (hObjectiveConf.JumpToKey("events", false))
-	{
-		if(hObjectiveConf.GotoFirstSubKey())
-		{
-			int id = 0;
-			do 
-			{
-				// Create an event from our logic.
-				ContractObjectiveEvent hEvent;
-				CreateContractObjectiveEvent(hObjectiveConf, hEvent);
-				hEvent.m_iInternalID = id;
-				id++;
-				hObjective.m_hEvents.PushArray(hEvent);
-				
-			} while (hObjectiveConf.GotoNextKey());
-			hObjectiveConf.GoBack();
-		}
-		hObjectiveConf.GoBack();
-	}
-}
-
-// Creates a contract.
-public void CreateContract(KeyValues hContractConf, Contract hContract)
-{	
-	// THERE ARE SEVERAL THINGS LISTED HERE THAT ARE NOT STORED IN THE CONTRACT STRUCT!
-	// Weapon restriction types:
-	// "active_weapon_slot": The slot for the weapon set at m_hActiveWeapon (see items_game.txt)
-	// "active_weapon_name": The display economy name for the weapon set at m_hActiveWeapon.
-	// "active_weapon_classname": The classname of the weapon set at m_hActiveWeapon.
-	// "active_weapon_itemdef": The item definition index for the weapon set at m_hActiveWeapon.
-	// "inventory_item_name": The display economy name for an item in the players current inventory.
-	// "inventory_item_classname": The classname for an item in the players current inventory.
-	// "inventory_item_itemdef": The item definition index for an item in the players current inventory.
-	// If a player kills another player without using the specified active weapon, the contract is not updated.
-	// If a player kills another player with a specified active weapon, the contract is updated.
-	// If a player kills another player without having a specified inventory item equipped, the contract is not updated.
-	// If a player kills another player while having a specified inventory item equipped, the contract is updated.
-	//
-	// Map restriction: "map_restriction". This can be a whole map or part of a map name.
-	// Examples: "pl_upward", "ctf_2fort", "koth_", "pl_constantlyupdated_v3"
-	//
-	// Team restriction: "team_restriction". This can be a team index number or a special name.
-
-
-	hContract.Initalize();
-
-	// Grab our UUID from the section name.
-	hContractConf.GetSectionName(hContract.m_sUUID, sizeof(hContract.m_sUUID));
-	// Display name of the Contract in the Contracker.
-	hContractConf.GetString("name", hContract.m_sContractName, sizeof(hContract.m_sContractName));
-	// Directory of the Contract. This MUST include "root" and not end in a slash.
-	hContractConf.GetString("directory", hContract.m_sDirectoryPath, sizeof(hContract.m_sDirectoryPath), "root");
-
-	hContract.m_bNoMultiplication = view_as<bool>(hContractConf.GetNum("no_multiply", 0));
-	hContract.m_iContractType = view_as<ContractType>(hContractConf.GetNum("type", view_as<int>(Contract_ObjectiveProgress))); // stops a warning
-	hContract.m_iMaxProgress = hContractConf.GetNum("maximum_cp", -1);
-	
-	// Create our objectives.
-	if (hContractConf.JumpToKey("objectives", false))
-	{
-		if(hContractConf.GotoFirstSubKey())
-		{
-			int obj = 0;
-			do 
-			{
-				ContractObjective m_hObjective;
-				CreateContractObjective(hContractConf, m_hObjective);
-				m_hObjective.m_iInternalID = obj;
-				m_hObjective.m_iContractType = hContract.m_iContractType;
-				m_hObjective.m_bInitalized = true;
-				hContract.m_hObjectives.PushArray(m_hObjective);
-				obj++;
-			} while (hContractConf.GotoNextKey());
-		}
-		hContractConf.GoBack();
-	}
-
-	// Get a list of contracts that are required to be completed before
-	// this one can be activated.
-	if (hContractConf.JumpToKey("required_contracts", false))
-	{
-		int Value = 0;
-		for (;;)
-		{
-			char ContractUUID[MAX_UUID_SIZE];
-			char ValueStr[4];
-			IntToString(Value, ValueStr, sizeof(ValueStr));
-
-			hContractConf.GetString(ValueStr, ContractUUID, sizeof(ContractUUID), "{}");
-			
-			// If we reach a blank UUID, we're at the end of the list.
-			if (StrEqual("{}", ContractUUID)) break;
-
-			hContract.m_hRequiredContracts.PushString(ContractUUID);
-			Value++;
-		}
-	
-		hContractConf.GoBack();
-	}
-
-	LogMessage("[ZContracts] Created Contract %s (%s) in directory: %s", hContract.m_sUUID, hContract.m_sContractName, hContract.m_sDirectoryPath);
-	hContractConf.GoBack();
-}
-
 public void ProcessContractsSchema()
 {
 	delete g_ContractSchema;
@@ -315,7 +179,7 @@ public any Native_GetObjectiveSchema(Handle plugin, int numParams)
 
 	// Error out once more because we couldn't find the objective!
 	g_ContractSchema.Rewind();
-	ThrowNativeError(SP_ERROR_NOT_FOUND, "Could not find objective %d in %s schema", objective, UUID);
+	return ThrowNativeError(SP_ERROR_NOT_FOUND, "Could not find objective %d in %s schema", objective, UUID);
 }
 
 /**
@@ -350,19 +214,6 @@ public any Native_GetContractObjectiveCount(Handle plugin, int numParams)
 	}
 	g_ContractSchema.Rewind();
 	return count;
-}
-
-bool CreateContractFromUUID(const char[] sUUID, Contract hBuffer)
-{
-	hBuffer.m_bInitalized = false;
-	if (g_ContractSchema.JumpToKey(sUUID))
-	{
-		CreateContract(g_ContractSchema, hBuffer);
-		g_ContractSchema.GoBack();
-		hBuffer.m_bInitalized = true;
-		return true;
-	}
-	return false;
 }
 
 bool GetContractDirectory(const char[] sUUID, char buffer[MAX_DIRECTORY_SIZE])

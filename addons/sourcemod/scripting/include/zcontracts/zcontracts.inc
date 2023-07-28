@@ -4,13 +4,13 @@
 
 #define __zcontracts_included
 
-#define ZCONTRACTS_PLUGIN_VERSION "0.10.2"
+#define ZCONTRACTS_PLUGIN_VERSION "0.11.0"
 // This value should be incremented with every breaking version made to the
 // database so saves can be easily converted. For developers who fork this project and
 // wish to merge changes, do not increment this number until merge.
 // Other plugins should use the GetContrackerVersion() native to get this value, but
 // this main plugin and subplugins are free to use the define name in its place.
-#define CONTRACKER_VERSION 2
+#define CONTRACKER_VERSION 3
 // How often the HUD will refresh itself.
 #define HUD_REFRESH_RATE 0.5
 
@@ -43,47 +43,27 @@ enum ContractType
 	Contract_ContractProgress = 2
 }
 
-// Contract objective events.
-enum struct ContractObjectiveEvent
-{
-	int m_iInternalID;
-	char m_sEventName[MAX_EVENT_SIZE];
-	
-	// If this event gets triggered and is apart of a special condition, trigger some different text.
-	char m_sExclusiveDescription[MAX_OBJECTIVE_DESC_SIZE];
-
-	// Threshold for how many times this event should called before giving an award.
-	int m_iThreshold;
-	int m_iCurrentThreshold;
-
-	char m_sEventType[16];
-	
-	// Timer logic.
-	Handle m_hTimer;
-
-	// The starting time for the timer.
-	float m_fTime; 
-	// The maximum amount of timer loops.
-	int m_iMaxLoops; 
-	// When this loop of the timer was started.
-	float m_fStarted;
-	int m_iCurrentLoops;
-	
-	bool Initalized;
-	
-	void Initalize()
-	{
-		this.Initalized = true;
-	}
-	
-	void Destroy()
-	{
-		if (!this.Initalized) return;
-		this.Initalized = false;
-	}
-}
-
 // Struct representing a Contract.
+// THERE ARE SEVERAL THINGS LISTED HERE THAT ARE NOT STORED IN THE CONTRACT STRUCT!
+// Weapon restriction types:
+// "name": Name of the Contract, duh.
+// "description": A description on how to complete the Contract or Objective.
+// "active_weapon_slot": The slot for the weapon set at m_hActiveWeapon (see items_game.txt)
+// "active_weapon_name": The display economy name for the weapon set at m_hActiveWeapon.
+// "active_weapon_classname": The classname of the weapon set at m_hActiveWeapon.
+// "active_weapon_itemdef": The item definition index for the weapon set at m_hActiveWeapon.
+// "inventory_item_name": The display economy name for an item in the players current inventory.
+// "inventory_item_classname": The classname for an item in the players current inventory.
+// "inventory_item_itemdef": The item definition index for an item in the players current inventory.
+// If a player kills another player without using the specified active weapon, the contract is not updated.
+// If a player kills another player with a specified active weapon, the contract is updated.
+// If a player kills another player without having a specified inventory item equipped, the contract is not updated.
+// If a player kills another player while having a specified inventory item equipped, the contract is updated.
+//
+// Map restriction: "map_restriction". This can be a whole map or part of a map name.
+// Examples: "pl_upward", "ctf_2fort", "koth_", "pl_constantlyupdated_v3"
+//
+// Team restriction: "team_restriction". This can be a team index number or a special name.
 enum struct Contract
 {
 	bool Initalized;
@@ -135,19 +115,20 @@ enum struct Contract
 	{
 		if (!this.Active || !this.Initalized) return false;
 		
-		switch (this.m_iContractType)
+		switch (view_as<ContractType>(this.CachedSchema.GetNum("type")))
 		{
 			case Contract_ObjectiveProgress: // All objectives must be complete.
 			{
-				for (int i = 0; i < this.m_hObjectiveProgress.Length; i++)
+				for (int i = 0; i < this.ObjectiveCount; i++)
 				{
-					return (this.m_hObjectiveProgress.Get(i) >= this.CachedObjSchema.Get(i).GetNum("maximum_cp"));
+					KeyValues ObjSchema = this.CachedObjSchema.Get(i);
+					return (this.ObjectiveProgress.Get(i) >= ObjSchema.GetNum("maximum_cp"));
 				}
 				return true;
 			}
 			case Contract_ContractProgress: // The Contract's progress bar must be complete.
 			{
-				return this.Progress >= this.CachedSchema.GetNum("maximum_cp");
+				return this.ContractProgress >= this.CachedSchema.GetNum("maximum_cp");
 			}	
 		}
 		return false;
@@ -155,12 +136,14 @@ enum struct Contract
 
 	bool IsObjectiveComplete(int ObjectiveID)
 	{
-		return (this.ObjectiveProgress.Get(ObjectiveID) >= this.CachedObjSchema.Get(ObjectiveID).GetNum("maximum_cp"));
+		KeyValues ObjSchema = this.CachedObjSchema.Get(ObjectiveID);
+		return (this.ObjectiveProgress.Get(ObjectiveID) >= ObjSchema.GetNum("maximum_cp"));
 	}
 
 	bool IsObjectiveInfinite(int ObjectiveID)
 	{
-		return (this.CachedObjSchema.Get(ObjectiveID).GetNum("infinite") == 1)
+		KeyValues ObjSchema = this.CachedObjSchema.Get(ObjectiveID);
+		return (ObjSchema.GetNum("infinite") == 1)
 	}
 
 	bool IsTimerRunning(int ObjectiveID)
@@ -175,7 +158,7 @@ enum struct Contract
 	{
 		this.Initalized = true;
 		this.Active = true;
-		this.Progress = 0;
+		this.ContractProgress = 0;
 		this.UUID = UUID;
 
 		this.CachedSchema = GetContractSchema(this.UUID);
@@ -192,7 +175,7 @@ enum struct Contract
 			this.CachedSchema.GotoFirstSubKey();
 			do
 			{
-				KeyValues ObjSchema = GetObjectiveSchema(ObjectiveID, this.UUID);
+				KeyValues ObjSchema = GetObjectiveSchema(this.UUID, ObjectiveID);
 				this.CachedObjSchema.Push(ObjSchema);
 				this.ObjectiveProgress.Push(0);
 				this.ObjectiveThreshold.Push(new StringMap());
@@ -226,6 +209,7 @@ enum struct Contract
 		delete this.ObjectiveProgress;
 		delete this.ObjectiveThreshold;
 		this.ObjectiveCount = 0;
+		this.ContractProgress = 0;
 
 		this.m_bLoadedFromDatabase = false;
 		this.m_bHUD_ContractUpdate = false;
@@ -240,7 +224,7 @@ enum struct ObjectiveUpdate
 	int m_iValue;
 	int m_iObjectiveID;
 	char m_sEvent[MAX_EVENT_SIZE];
-	char UUID[MAX_UUID_SIZE];
+	char m_sUUID[MAX_UUID_SIZE];
 }
 
 enum struct CompletedContractInfo
