@@ -150,8 +150,8 @@ public any Native_SetObjectiveProgressDatabase(Handle plugin, int numParams)
     }
 
     // Don't save infinite objectives.
-    KeyValues Schema = GetObjectiveSchema(UUID, objective_id+1);
-    if (view_as<bool>(Schema.GetNum("infinite", 0)))
+    KeyValues Schema = GetObjectiveSchema(UUID, objective_id);
+    if (view_as<bool>(Schema.GetNum(CONTRACT_DEF_OBJ_INFINITE, 0)))
     {
         ThrowNativeError(SP_ERROR_NATIVE, "Cannot set progress for an objective that's marked infinite (UUID: %s, OBJ: %d)", UUID, objective_id);
     }
@@ -291,7 +291,7 @@ public any Native_SaveActiveObjectiveToDatabase(Handle plugin, int numParams)
 
     // Don't save infinite objectives.
     KeyValues Schema = GetObjectiveSchema(UUID, objective+1);
-    if (view_as<bool>(Schema.GetNum("infinite", 0)))
+    if (view_as<bool>(Schema.GetNum(CONTRACT_DEF_OBJ_INFINITE, 0)))
     {
         return false;
     }

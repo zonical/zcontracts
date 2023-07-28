@@ -49,7 +49,7 @@ void CreateContractMenu()
 			char sUUID[MAX_UUID_SIZE];
 			g_ContractSchema.GetSectionName(sUUID, sizeof(sUUID));
 			char sContractName[MAX_CONTRACT_NAME_SIZE];
-			g_ContractSchema.GetString("name", sContractName, sizeof(sContractName), "undefined");
+			g_ContractSchema.GetString(CONTRACT_DEF_NAME, sContractName, sizeof(sContractName), "undefined");
 			gContractMenu.AddItem(sUUID, sContractName);
 		}
 		while(g_ContractSchema.GotoNextKey());
@@ -362,12 +362,12 @@ void CreateObjectiveDisplay(int client, bool unknown)
 	ContractDisplay.OptionFlags = MENUFLAG_NO_SOUND | MENUFLAG_BUTTON_EXIT;
 
 	char ContractName[128];
-	ActiveContract[client].CachedSchema.GetString("name", ContractName, sizeof(ContractName));
+	ActiveContract[client].GetSchema().GetString(CONTRACT_DEF_NAME, ContractName, sizeof(ContractName));
 	Format(ContractName, sizeof(ContractName), "\"%s\"", ContractName);
 	
 	// Add difficulty stars to our title.
 	char StrDifficulty[32] = " || Difficulty: ";
-	int Difficulty = ActiveContract[client].CachedSchema.GetNum("difficulty", 0);
+	int Difficulty = ActiveContract[client].GetSchema().GetNum(CONTRACT_DEF_DIFFICULTY, 0);
 	if (Difficulty > 0)
 	{
 		for (int i = 0; i < Difficulty; i++)
@@ -390,11 +390,11 @@ void CreateObjectiveDisplay(int client, bool unknown)
 
 	ContractDisplay.SetTitle(ContractName);
 
-	switch (view_as<ContractType>(ActiveContract[client].CachedSchema.GetNum("type")))
+	switch (view_as<ContractType>(ActiveContract[client].GetSchema().GetNum(CONTRACT_DEF_TYPE)))
 	{
 		case Contract_ContractProgress:
 		{
-			int MaxProgress = ActiveContract[client].CachedSchema.GetNum("maximum_cp");
+			int MaxProgress = ActiveContract[client].GetSchema().GetNum(CONTRACT_DEF_MAX_PROGRESS);
 			char ContractGoal[128] = "To complete this Contract, get %d CP.";
 			Format(ContractGoal, sizeof(ContractGoal), ContractGoal, MaxProgress);
 			ContractDisplay.AddItem("#contract_goal", ContractGoal, ITEMDRAW_DISABLED);
@@ -429,12 +429,12 @@ void CreateObjectiveDisplay(int client, bool unknown)
 	// TODO: Should we split this up into two pages?
 	for (int obj_id = 0; obj_id < ActiveContract[client].ObjectiveCount; obj_id++)
 	{
-		KeyValues ObjSchema = ActiveContract[client].CachedObjSchema.Get(obj_id);
+		KeyValues ObjSchema = ActiveContract[client].GetObjectiveSchema(obj_id);
 		char line[256];
 		char Description[256];
-		ObjSchema.GetString("description", Description, sizeof(Description));
-		int MaxProgress = ObjSchema.GetNum("maximum_cp");
-		int Award = ObjSchema.GetNum("award");
+		ObjSchema.GetString(CONTRACT_DEF_OBJ_DESC, Description, sizeof(Description));
+		int MaxProgress = ObjSchema.GetNum(CONTRACT_DEF_OBJ_MAX_PROGRESS);
+		int Award = ObjSchema.GetNum(CONTRACT_DEF_OBJ_AWARD);
 
 		if (ActiveContract[client].IsObjectiveInfinite(obj_id))
 		{
@@ -442,7 +442,7 @@ void CreateObjectiveDisplay(int client, bool unknown)
 		}
 		else
 		{
-			switch (view_as<ContractType>(ActiveContract[client].CachedSchema.GetNum("type")))
+			switch (view_as<ContractType>(ActiveContract[client].GetSchema().GetNum(CONTRACT_DEF_TYPE)))
 			{
 				case Contract_ObjectiveProgress:
 				{
@@ -502,9 +502,9 @@ public int ObjectiveDisplayHandler(Menu menu, MenuAction action, int param1, int
 				ReplaceString(MenuDisplay, sizeof(MenuDisplay), "obj_", "");
 				int Objective = StringToInt(MenuDisplay);
 
-				KeyValues ObjSchema = ActiveContract[param1].CachedObjSchema.Get(Objective);
+				KeyValues ObjSchema = ActiveContract[param1].GetObjectiveSchema(Objective);
 				char ExtendedDesc[64];
-				ObjSchema.GetString("extended_description", ExtendedDesc, sizeof(ExtendedDesc), "");
+				ObjSchema.GetString(CONTRACT_DEF_OBJ_EXT_DESC, ExtendedDesc, sizeof(ExtendedDesc), "");
 				if (StrEqual(ExtendedDesc, ""))
 				{
 					return ITEMDRAW_DISABLED;
@@ -522,9 +522,9 @@ public int ObjectiveDisplayHandler(Menu menu, MenuAction action, int param1, int
 				ReplaceString(MenuDisplay, sizeof(MenuDisplay), "obj_", "");
 				int Objective = StringToInt(MenuDisplay);
 
-				KeyValues ObjSchema = ActiveContract[param1].CachedObjSchema.Get(Objective);
+				KeyValues ObjSchema = ActiveContract[param1].GetObjectiveSchema(Objective);
 				char ExtendedDesc[64];
-				ObjSchema.GetString("extended_description", ExtendedDesc, sizeof(ExtendedDesc));
+				ObjSchema.GetString(CONTRACT_DEF_OBJ_EXT_DESC, ExtendedDesc, sizeof(ExtendedDesc));
 				if (!StrEqual(ExtendedDesc, ""))
 				{
 					StrCat(MenuDisplay, sizeof(MenuDisplay), " (...)");
@@ -545,9 +545,9 @@ public int ObjectiveDisplayHandler(Menu menu, MenuAction action, int param1, int
 				ReplaceString(MenuDisplay, sizeof(MenuDisplay), "obj_", "");
 				int Objective = StringToInt(MenuDisplay);
 
-				KeyValues ObjSchema = ActiveContract[param1].CachedObjSchema.Get(Objective);
+				KeyValues ObjSchema = ActiveContract[param1].GetObjectiveSchema(Objective);
 				char ExtendedDesc[64];
-				ObjSchema.GetString("extended_description", ExtendedDesc, sizeof(ExtendedDesc));
+				ObjSchema.GetString(CONTRACT_DEF_OBJ_EXT_DESC, ExtendedDesc, sizeof(ExtendedDesc));
 				if (!StrEqual(ExtendedDesc, ""))
 				{
 					ConstructObjectiveInformationMenu(param1, Objective);
@@ -565,12 +565,12 @@ void ConstructObjectiveInformationMenu(int client, int objective)
 	ObjectiveInformation.OptionFlags = MENUFLAG_NO_SOUND | MENUFLAG_BUTTON_EXIT;
 
 	char ContractName[128];
-	ActiveContract[client].CachedSchema.GetString("name", ContractName, sizeof(ContractName));
+	ActiveContract[client].GetSchema().GetString(CONTRACT_DEF_NAME, ContractName, sizeof(ContractName));
 	Format(ContractName, sizeof(ContractName), "\"%s\"", ContractName);
 	
 	// Add difficulty stars to our title.
 	char StrDifficulty[32] = " || Difficulty: ";
-	int Difficulty = ActiveContract[client].CachedSchema.GetNum("difficulty", 0);
+	int Difficulty = ActiveContract[client].GetSchema().GetNum(CONTRACT_DEF_DIFFICULTY, 0);
 	if (Difficulty > 0)
 	{
 		for (int i = 0; i < Difficulty; i++)
@@ -592,10 +592,10 @@ void ConstructObjectiveInformationMenu(int client, int objective)
 	}
 
 	ObjectiveInformation.SetTitle(ContractName);
-	KeyValues ObjSchema = ActiveContract[client].CachedObjSchema.Get(objective);
+	KeyValues ObjSchema = ActiveContract[client].GetObjectiveSchema(objective);
 	
 	char ExtendedDesc[256];
-	ObjSchema.GetString("extended_description", ExtendedDesc, sizeof(ExtendedDesc), "");
+	ObjSchema.GetString(CONTRACT_DEF_OBJ_DESC, ExtendedDesc, sizeof(ExtendedDesc), "");
 
 	// For some reason, ExplodeString and ReplaceString don't want to deal with
 	// newline characters. As a hack, I will split strings with # instead.
@@ -708,7 +708,7 @@ void CreateLockedContractMenu(int client, char UUID[MAX_UUID_SIZE])
 	Menu ClientMenu = new Menu(LockedContractMenuHandler, MENU_ACTIONS_ALL);
 	char ContractNameText[MAX_CONTRACT_NAME_SIZE + 32] = "\"%s\" cannot be activated.";
 	char ContractName[MAX_CONTRACT_NAME_SIZE];
-	LockedContract.GetString("name", ContractName, sizeof(ContractName));
+	LockedContract.GetString(CONTRACT_DEF_NAME, ContractName, sizeof(ContractName));
 	Format(ContractNameText, sizeof(ContractNameText), ContractNameText, ContractName);
 
 	ClientMenu.SetTitle("ZContracts - Locked Contract");
@@ -734,7 +734,7 @@ void CreateLockedContractMenu(int client, char UUID[MAX_UUID_SIZE])
 			// Grab the name of this Contract.
 			if (!g_ContractSchema.JumpToKey(ContractUUID)) continue;
 			char DisplayName[MAX_CONTRACT_NAME_SIZE];
-			g_ContractSchema.GetString("name", DisplayName, sizeof(DisplayName));
+			g_ContractSchema.GetString(CONTRACT_DEF_NAME, DisplayName, sizeof(DisplayName));
 			g_ContractSchema.Rewind();
 
 			ClientMenu.AddItem(ContractUUID, DisplayName);
@@ -851,7 +851,7 @@ void ConstructRepeatContractPanel(int client, char UUID[MAX_UUID_SIZE])
 	KeyValues LockedContract = GetContractSchema(UUID);
 
 	char ContractName[MAX_CONTRACT_NAME_SIZE];
-	LockedContract.GetString("name", ContractName, sizeof(ContractName));
+	LockedContract.GetString(CONTRACT_DEF_NAME, ContractName, sizeof(ContractName));
 
 	char PromptText[128] = "Do you wish to reset your progress for \"%s\"";
 	Format(PromptText, sizeof(PromptText), PromptText, ContractName);

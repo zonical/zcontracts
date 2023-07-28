@@ -94,7 +94,7 @@ public void ProcessContractsSchema()
 		do
 		{
 			char sDirectory[MAX_DIRECTORY_SIZE];
-			g_ContractSchema.GetString("directory", sDirectory, sizeof(sDirectory), "root");
+			g_ContractSchema.GetString(CONTRACT_DEF_DIRECTORY, sDirectory, sizeof(sDirectory), "root");
 			// Add our new directory into the directory register.
 			if (g_Directories.FindString(sDirectory) == -1)
 			{
@@ -175,6 +175,7 @@ public any Native_GetObjectiveSchema(Handle plugin, int numParams)
 
 			return view_as<KeyValues>(Schema);
 		}
+		ObjectiveCount++;
 	} while (g_ContractSchema.GotoNextKey());
 
 	// Error out once more because we couldn't find the objective!
@@ -220,7 +221,7 @@ bool GetContractDirectory(const char[] sUUID, char buffer[MAX_DIRECTORY_SIZE])
 {
 	if (g_ContractSchema.JumpToKey(sUUID))
 	{
-		g_ContractSchema.GetString("directory", buffer, sizeof(buffer), "root");
+		g_ContractSchema.GetString(CONTRACT_DEF_DIRECTORY, buffer, sizeof(buffer), "root");
 		g_ContractSchema.GoBack();
 		return true;
 	}

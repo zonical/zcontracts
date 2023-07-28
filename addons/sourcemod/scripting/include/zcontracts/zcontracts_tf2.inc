@@ -7,6 +7,8 @@
 #include <tf2>
 #include <tf2_stocks>
 
+#define CONTRACT_DEF_TF2_CLASSES "classes"
+
 // ============================= SCHEMA FUNCTIONS =============================
 
 stock int TF2_GetTeamIndexFromString(const char[] team)

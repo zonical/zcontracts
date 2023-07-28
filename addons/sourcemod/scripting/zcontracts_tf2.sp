@@ -151,7 +151,7 @@ public Action OnContractCompletableCheck(int client, char UUID[MAX_UUID_SIZE])
 {
 	KeyValues ContractSchema = GetContractSchema(UUID);
 	
-	if (ContractSchema.JumpToKey("classes"))
+	if (ContractSchema.JumpToKey(CONTRACT_DEF_TF2_CLASSES))
 	{
 		// Class check.
 		TFClassType Class = TF2_GetPlayerClass(client);

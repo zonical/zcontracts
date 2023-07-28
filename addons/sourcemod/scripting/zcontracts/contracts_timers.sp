@@ -21,7 +21,7 @@ public Action EventTimer(Handle hTimer, DataPack hPack)
 	if (g_TimerActive[client] == false)
 	{
 		// Grab the starting time from the Schema.
-		KeyValues Schema = ActiveContract[client].CachedObjSchema.Get(obj_id);
+		KeyValues Schema = ActiveContract[client].GetObjectiveSchema(obj_id);
 		if (!Schema.JumpToKey("events")) ThrowError("Contract \"%s\" doesn't have any events! Fix this, server developer!", ActiveContract[client].UUID);
 		if (!Schema.JumpToKey(event)) ThrowError("Contract \"%s\" doesn't have requested event \"%s\"", ActiveContract[client].UUID, event);
 		Schema.JumpToKey("timer");
@@ -66,10 +66,10 @@ public Action EventTimer(Handle hTimer, DataPack hPack)
 public void SendEventToTimer(int client, int obj_id, char event[MAX_EVENT_SIZE], const char[] timer_event)
 {
 	// Grab the starting time from the Schema.
-	KeyValues Schema = ActiveContract[client].CachedObjSchema.Get(obj_id);
-	if (!Schema.JumpToKey("events")) ThrowError("Contract \"%s\" doesn't have any events! Fix this, server developer!", ActiveContract[client].UUID);
+	KeyValues Schema = ActiveContract[client].GetObjectiveSchema(obj_id);
+	if (!Schema.JumpToKey(CONTRACT_DEF_OBJ_EVENTS)) ThrowError("Contract \"%s\" doesn't have any events! Fix this, server developer!", ActiveContract[client].UUID);
 	if (!Schema.JumpToKey(event)) ThrowError("Contract \"%s\" doesn't have requested event \"%s\"", ActiveContract[client].UUID, event);
-	if (!Schema.JumpToKey("timer")) return;
+	if (!Schema.JumpToKey(CONTRACT_DEF_EVENT_TIMER)) return;
 	if (!Schema.JumpToKey(timer_event)) return;
 
 	char EventAction[64];
@@ -85,7 +85,7 @@ public void SendEventToTimer(int client, int obj_id, char event[MAX_EVENT_SIZE],
 	{
 		int Value = view_as<int>(Variable);
 		if (StrEqual(EventAction, "subtract_reward")) Value *= -1;
-		switch (view_as<ContractType>(ActiveContract[client].CachedSchema.GetNum("type")))
+		switch (view_as<ContractType>(ActiveContract[client].GetSchema().GetNum("type")))
 		{
 			case Contract_ObjectiveProgress: ModifyObjectiveProgress(client, Value, ActiveContract[client], obj_id);
 			case Contract_ContractProgress: ModifyContractProgress(client, Value, ActiveContract[client], obj_id);

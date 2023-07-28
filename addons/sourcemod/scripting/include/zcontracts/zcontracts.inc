@@ -64,13 +64,49 @@ enum ContractType
 // Examples: "pl_upward", "ctf_2fort", "koth_", "pl_constantlyupdated_v3"
 //
 // Team restriction: "team_restriction". This can be a team index number or a special name.
+
+// Definitions for things that are used in the base ZContracts plugin:
+
+#define CONTRACT_DEF_NAME "name"
+#define CONTRACT_DEF_DIRECTORY "directory"
+#define CONTRACT_DEF_TYPE "type"
+#define CONTRACT_DEF_MAX_PROGRESS "maximum_cp"
+#define CONTRACT_DEF_OBJECTIVES "objectives"
+#define CONTRACT_DEF_REQUIRED "required_contracts"
+#define CONTRACT_DEF_DIFFICULTY "difficulty"
+
+#define CONTRACT_DEF_OBJ_DESC "description"
+#define CONTRACT_DEF_OBJ_EXT_DESC "extended_description"
+#define CONTRACT_DEF_OBJ_INFINITE "infinite"
+#define CONTRACT_DEF_OBJ_AWARD "award"
+#define CONTRACT_DEF_OBJ_EVENTS "events"
+#define CONTRACT_DEF_OBJ_MAX_PROGRESS "maximum_cp"
+#define CONTRACT_DEF_OBJ_NO_MULTI "no_multiplication"
+
+#define CONTRACT_DEF_EVENT_TYPE "type"
+#define CONTRACT_DEF_EVENT_THRESHOLD "threshold"
+#define CONTRACT_DEF_EVENT_TIMER "timer"
+#define CONTRACT_DEF_TIMER_TIME "time"
+
+#define CONTRACT_DEF_ACTIVE_WEAPON_SLOT	"active_weapon_slot"
+#define CONTRACT_DEF_ACTIVE_WEAPON_NAME	"active_weapon_name"
+#define CONTRACT_DEF_ACTIVE_WEAPON_CLASSNAME "active_weapon_classname"
+#define CONTRACT_DEF_ACTIVE_WEAPON_ITEMDEF "active_weapon_itemdef"
+
+#define CONTRACT_DEF_INV_ITEM_NAME "inventory_item_name"
+#define CONTRACT_DEF_INV_ITEM_CLASSNAME "inventory_item_classname"
+#define CONTRACT_DEF_INV_ITEM_ITEMDEF "inventory_item_itemdef"
+
+#define CONTRACT_DEF_MAP "map_restriction"
+#define CONTRACT_DEF_TEAM "team_restriction"
+
+#define CONTRACT_DEF_UNIX_START "contract_start_unixtime"
+#define CONTRACT_DEF_UNIX_END "contract_end_unixtime"
+
 enum struct Contract
 {
 	bool Initalized;
 	bool Active;
-
-	KeyValues CachedSchema;
-	ArrayList CachedObjSchema;
 
 	// Internal representation of the Contract.
 	char UUID[MAX_UUID_SIZE];
@@ -115,20 +151,21 @@ enum struct Contract
 	{
 		if (!this.Active || !this.Initalized) return false;
 		
-		switch (view_as<ContractType>(this.CachedSchema.GetNum("type")))
+		switch (view_as<ContractType>(this.GetSchema().GetNum(CONTRACT_DEF_TYPE)))
 		{
 			case Contract_ObjectiveProgress: // All objectives must be complete.
 			{
 				for (int i = 0; i < this.ObjectiveCount; i++)
 				{
-					KeyValues ObjSchema = this.CachedObjSchema.Get(i);
-					return (this.ObjectiveProgress.Get(i) >= ObjSchema.GetNum("maximum_cp"));
+					KeyValues ObjSchema = this.GetObjectiveSchema(i);
+					if (ObjSchema.GetNum(CONTRACT_DEF_OBJ_INFINITE) == 1) continue;
+					if (!this.IsObjectiveComplete(i)) return false;
 				}
 				return true;
 			}
 			case Contract_ContractProgress: // The Contract's progress bar must be complete.
 			{
-				return this.ContractProgress >= this.CachedSchema.GetNum("maximum_cp");
+				return this.ContractProgress >= this.GetSchema().GetNum(CONTRACT_DEF_MAX_PROGRESS);
 			}	
 		}
 		return false;
@@ -136,19 +173,30 @@ enum struct Contract
 
 	bool IsObjectiveComplete(int ObjectiveID)
 	{
-		KeyValues ObjSchema = this.CachedObjSchema.Get(ObjectiveID);
-		return (this.ObjectiveProgress.Get(ObjectiveID) >= ObjSchema.GetNum("maximum_cp"));
+		KeyValues ObjSchema = this.GetObjectiveSchema(ObjectiveID);
+		if (ObjSchema.GetNum(CONTRACT_DEF_OBJ_INFINITE) == 1) return false;
+		return (this.ObjectiveProgress.Get(ObjectiveID) >= ObjSchema.GetNum(CONTRACT_DEF_OBJ_MAX_PROGRESS));
 	}
 
 	bool IsObjectiveInfinite(int ObjectiveID)
 	{
-		KeyValues ObjSchema = this.CachedObjSchema.Get(ObjectiveID);
-		return (ObjSchema.GetNum("infinite") == 1)
+		KeyValues ObjSchema = this.GetObjectiveSchema(ObjectiveID);
+		return (ObjSchema.GetNum(CONTRACT_DEF_OBJ_INFINITE) == 1)
 	}
 
 	bool IsTimerRunning(int ObjectiveID)
 	{
 		return (this.ObjectiveTimers.Get(ObjectiveID) != INVALID_HANDLE);
+	}
+
+	KeyValues GetSchema()
+	{
+		return GetContractSchema(this.UUID);
+	}
+
+	KeyValues GetObjectiveSchema(int ObjectiveID)
+	{
+		return GetObjectiveSchema(this.UUID, ObjectiveID);
 	}
 
 	/**
@@ -161,35 +209,30 @@ enum struct Contract
 		this.ContractProgress = 0;
 		this.UUID = UUID;
 
-		this.CachedSchema = GetContractSchema(this.UUID);
 		this.ObjectiveProgress = new ArrayList();
 		this.ObjectiveThreshold = new ArrayList(sizeof(StringMap));
 		this.ObjectiveTimers = new ArrayList(sizeof(Handle));
 
-		this.CachedObjSchema = new ArrayList(sizeof(KeyValues));
-
+		KeyValues Schema = this.GetSchema()
 		// Grab the schema KeyValue objects of our objectives and store them locally.
-		if (this.CachedSchema.JumpToKey("objectives"))
+		if (Schema.JumpToKey(CONTRACT_DEF_OBJECTIVES))
 		{
 			int ObjectiveID = 0;
-			this.CachedSchema.GotoFirstSubKey();
+			Schema.GotoFirstSubKey();
 			do
 			{
-				KeyValues ObjSchema = GetObjectiveSchema(this.UUID, ObjectiveID);
-				this.CachedObjSchema.Push(ObjSchema);
 				this.ObjectiveProgress.Push(0);
 				this.ObjectiveThreshold.Push(new StringMap());
 				this.ObjectiveTimers.Push(INVALID_HANDLE);
 				this.ObjectiveCount++;
 				ObjectiveID++;
 
-			} while (this.CachedSchema.GotoNextKey());
+			} while (Schema.GotoNextKey());
 		}
 		else
 		{
 			ThrowError("Tried to load Contract with no objectives! UUID: %s", this.UUID);
 		}
-
 		this.m_bLoadedFromDatabase = false;
 		this.m_bHUD_ContractUpdate = false;
 		this.m_iHUD_ObjectiveUpdate = -1;
@@ -202,9 +245,6 @@ enum struct Contract
 	{
 		this.Initalized = false;
 		this.Active = false;
-
-		this.CachedSchema = null;
-		delete this.CachedObjSchema;
 
 		delete this.ObjectiveProgress;
 		delete this.ObjectiveThreshold;
