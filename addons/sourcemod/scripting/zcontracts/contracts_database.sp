@@ -283,14 +283,14 @@ public any Native_SaveActiveObjectiveToDatabase(Handle plugin, int numParams)
     }
 
     int objective = GetNativeCell(2);
-    if (objective > /*zero indexed*/ GetContractObjectiveCount(UUID)-1)
+    if (objective > GetContractObjectiveCount(UUID))
     {
         LogMessage("SaveActiveObjectiveToDatabase: Invalid contract objective ID passed (%N: %d)", client, objective);
         return false;
     }
 
     // Don't save infinite objectives.
-    KeyValues Schema = GetObjectiveSchema(UUID, objective+1);
+    KeyValues Schema = GetObjectiveSchema(UUID, objective);
     if (view_as<bool>(Schema.GetNum(CONTRACT_DEF_OBJ_INFINITE, 0)))
     {
         return false;

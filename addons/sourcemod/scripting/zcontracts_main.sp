@@ -617,7 +617,107 @@ public any Native_SetClientContract(Handle plugin, int numParams)
  */
 public any Native_SetClientContractEx(Handle plugin, int numParams)
 {
-	// TODO: Reimplement!
+	int client = GetNativeCell(1);
+	char UUID[MAX_UUID_SIZE];
+	GetNativeString(2, UUID, sizeof(UUID));
+
+	if (!IsClientValid(client))
+	{
+		return ThrowNativeError(SP_ERROR_NATIVE, "Invalid client index (%d)", client);
+	}
+	if (IsFakeClient(client) && !g_BotContracts.BoolValue) return false;
+
+	if (UUID[0] != '{')
+	{
+		ThrowNativeError(SP_ERROR_NATIVE, "Invalid UUID passed. (%s)", UUID);
+	}
+
+	// If we have a Contract already selected, save it's progress to the database.
+	ActiveContract[client].Active = false;
+	OldContract[client] = ActiveContract[client];
+
+	if (OldContract[client].IsContractInitalized() && 
+	!OldContract[client].IsContractComplete() &&
+	!StrEqual(OldContract[client].UUID, UUID) && 
+	g_DB != null)
+	{
+#if defined VERBOSE_DEBUG
+		PrintToServer("[ZCD Native_SetClientContract(%N, %s)] Saving old Contract to DB", client, UUID);
+#endif
+		char steamid64[64];
+		GetClientAuthId(client, AuthId_SteamID64, steamid64, sizeof(steamid64));
+		SetContractProgressDatabase(steamid64, OldContract[client].UUID, OldContract[client].ContractProgress);
+		for (int i = 0; i < OldContract[client].ObjectiveCount; i++)
+		{
+			KeyValues ObjSchema = OldContract[client].GetObjectiveSchema(i);
+			if (ObjSchema.GetNum(CONTRACT_DEF_OBJ_INFINITE) == 1) continue;
+			SetObjectiveProgressDatabase(steamid64, OldContract[client].UUID, i, OldContract[client].ObjectiveProgress.Get(i));
+		}
+	}
+
+	// Get our Contract definition.
+	Contract NewContract;
+	NewContract.Initalize(UUID);
+	ActiveContract[client] = NewContract;
+
+#if defined VERBOSE_DEBUG
+	PrintToServer("[ZCD Native_SetClientContract(%N, %s)] Init Contract struct", client, UUID);
+#endif
+
+	if (!IsFakeClient(client))
+	{
+		// Get the client's SteamID64.
+		char steamid64[64];
+		GetClientAuthId(client, AuthId_SteamID64, steamid64, sizeof(steamid64));
+
+#if defined VERBOSE_DEBUG
+		PrintToServer("[ZCD Native_SetClientContract(%N, %s)] Grabbing existing progress", client, UUID);
+#endif
+
+		// TODO: Can we make this into one query?
+		// TODO: Implement version checking when required! "version" key in SQL
+		char contract_query[1024];
+		if (view_as<ContractType>(ActiveContract[client].GetSchema().GetNum(CONTRACT_DEF_TYPE)) == Contract_ContractProgress)
+		{
+			g_DB.Format(contract_query, sizeof(contract_query),
+			"SELECT * FROM contract_progress WHERE steamid64 = '%s' AND contract_uuid = '%s'", steamid64, UUID);
+			g_DB.Query(CB_SetClientContract_Contract, contract_query, client);
+		}
+		char objective_query[1024];
+		g_DB.Format(objective_query, sizeof(objective_query), 
+		"SELECT * FROM objective_progress WHERE steamid64 = '%s' AND contract_uuid = '%s' AND (objective_id BETWEEN 0 AND %d) ORDER BY objective_id ASC;", 
+		steamid64, UUID, ActiveContract[client].ObjectiveCount);
+		g_DB.Query(CB_SetClientContract_Objective, objective_query, client);
+	}
+
+	// Display the Contract to the client when we can.
+	bool dont_notify = GetNativeCell(4);
+	if (!dont_notify)
+	{
+		CreateObjectiveDisplay(client, true);
+		CreateTimer(1.0, Timer_DisplayContractInfo, client, TIMER_REPEAT);
+	}
+	// Set this Contract as our current session.
+	bool dont_save = GetNativeCell(3);
+	if (!dont_save)
+	{
+		char steamid64[64];
+		GetClientAuthId(client, AuthId_SteamID64, steamid64, sizeof(steamid64));
+		SetSessionDatabase(steamid64, ActiveContract[client].UUID);
+	}
+
+
+	Call_StartForward(g_fOnClientActivatedContract);
+	Call_PushCell(client);
+	Call_PushString(ActiveContract[client].UUID);
+	Call_Finish();
+
+	LogMessage("[ZContracts] %N CONTRACT: Set Contract to: %s", client, ActiveContract[client].UUID);
+
+	// Reset our current directory in the Contracker.
+	g_Menu_CurrentDirectory[client] = "root";
+	g_Menu_DirectoryDeepness[client] = 1;
+
 	return true;
 }
 
@@ -1254,7 +1354,6 @@ public Action Timer_DrawContrackerHud(Handle hTimer)
  */
 public Action Timer_ProcessEvents(Handle hTimer)
 {
-	PrintToServer("Timer_ProcessEvents");
 	int iProcessed = 0;
 	for (;;)
 	{
@@ -1291,11 +1390,19 @@ public Action Timer_ProcessEvents(Handle hTimer)
 			continue;
 		}
 
+		// You never know (debugging) - just process the active contract.
+		if (StrEqual(OldContract[client].UUID, ActiveContract[client].UUID))
+		{
+			ProcessContrackerEvent(client, event, value, false);
+#if defined VERBOSE_DEBUG
+			PrintToServer("[ZCD Timer_ProcessEvents(%N)] Calling ProcessContrackerEvent for active Contract %s", client, uuid);
+#endif
+			iProcessed++;
+			continue;
+		}
 		// Do our UUID's match?
 		if (OldContract[client].IsContractInitalized() && StrEqual(uuid, OldContract[client].UUID))
 		{
-			// You never know (debugging)
-			if (StrEqual(OldContract[client].UUID, ActiveContract[client].UUID)) continue;
 #if defined VERBOSE_DEBUG
 			PrintToServer("[ZCD Timer_ProcessEvents(%N)] Calling ProcessContrackerEvent for old Contract %s", client, uuid);
 #endif
