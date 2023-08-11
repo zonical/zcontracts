@@ -118,6 +118,7 @@ enum struct Contract
 	ArrayList ObjectiveProgress;
 	ArrayList ObjectiveThreshold;
 	ArrayList ObjectiveTimers;
+	ArrayList ObjectiveTimerStarted;
 	int ObjectiveCount;
 
 	// Because of the combine-event logic, there is a chance that the value passed
@@ -212,6 +213,7 @@ enum struct Contract
 		this.ObjectiveProgress = new ArrayList();
 		this.ObjectiveThreshold = new ArrayList(sizeof(StringMap));
 		this.ObjectiveTimers = new ArrayList(sizeof(Handle));
+		this.ObjectiveTimerStarted = new ArrayList();
 
 		KeyValues Schema = this.GetSchema()
 		// Grab the schema KeyValue objects of our objectives and store them locally.
@@ -224,6 +226,7 @@ enum struct Contract
 				this.ObjectiveProgress.Push(0);
 				this.ObjectiveThreshold.Push(new StringMap());
 				this.ObjectiveTimers.Push(INVALID_HANDLE);
+				this.ObjectiveTimerStarted.Push(-1.0);
 				this.ObjectiveCount++;
 				ObjectiveID++;
 
@@ -248,6 +251,8 @@ enum struct Contract
 
 		delete this.ObjectiveProgress;
 		delete this.ObjectiveThreshold;
+		delete this.ObjectiveTimers;
+		delete this.ObjectiveTimerStarted;
 		this.ObjectiveCount = 0;
 		this.ContractProgress = 0;
 

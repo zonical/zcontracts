@@ -50,6 +50,12 @@ public Action EventTimer(Handle hTimer, DataPack hPack)
 		// Call an event for when the timer ends.
 		SendEventToTimer(client, obj_id, event, "OnTimerEnd");
 		ActiveContract[client].ObjectiveTimers.Set(obj_id, INVALID_HANDLE);
+		ActiveContract[client].ObjectiveTimerStarted.Set(obj_id, -1.0);
+
+		StringMap ObjectiveThreshold = ActiveContract[client].ObjectiveThreshold.Get(obj_id);
+		ObjectiveThreshold.SetValue(event, 0);
+		ActiveContract[client].ObjectiveThreshold.Set(obj_id, ObjectiveThreshold);
+
 		TimeRemaining = 0.0;
 		g_TimerActive[client] = false;
 

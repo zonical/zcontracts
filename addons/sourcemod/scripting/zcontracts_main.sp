@@ -2,7 +2,8 @@
 #pragma newdecls required
 
 #undef REQUIRE_EXTENSIONS
-#define VERBOSE_DEBUG
+#undef VERBOSE_DEBUG
+#define PREVENT_100_PLAYERS
 
 #include <sourcemod>
 #include <sdktools>
@@ -20,6 +21,7 @@ Handle g_HudSync;
 Contract OldContract[MAXPLAYERS+1];
 Contract ActiveContract[MAXPLAYERS+1];
 StringMap CompletedContracts[MAXPLAYERS+1];
+bool PlayerHasSpawned[MAXPLAYERS+1] = { false, ... };
 
 // ConVars.
 ConVar g_UpdatesPerSecond;
@@ -33,6 +35,8 @@ ConVar g_RepeatContracts;
 ConVar g_AutoResetContracts;
 ConVar g_DisplayCompletionsInMenu;
 ConVar g_DisplayRepeatsInHUD;
+ConVar g_ResetThresholdsPerRound;
+ConVar g_ResetTimersPerRound;
 
 ConVar g_DebugEvents;
 ConVar g_DebugProcessing;
@@ -135,6 +139,20 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 
 public void OnPluginStart()
 {
+#if defined PREVENT_100_PLAYERS
+	// TF2 recently added the ability for servers to have up to 100 max players with this
+	// command line parameter. For now (29/07), I'm not going to support the feature and
+	// I'm leaving the max players at 64. You would have to be crazy to undefine this. I
+	// will also not support bugs related to having 100 players trying to all complete
+	// contracts at the same time.
+	char CommandLine[512];
+	GetCommandLine(CommandLine, sizeof(CommandLine));
+	if (StrContains(CommandLine, "-unrestricted_maxplayers") != -1)
+	{
+		SetFailState("ZContracts is not ready for 100 players yet. Calm down.");
+	}
+#endif
+
 	PrintToServer("[ZContracts] Initalizing ZContracts %s - Contracker Version: %d", ZCONTRACTS_PLUGIN_VERSION, CONTRACKER_VERSION);
 
 	// Create our Hud Sync object.
@@ -155,6 +173,8 @@ public void OnPluginStart()
 	g_AutoResetContracts = CreateConVar("zc_repeatable_autoreset", "0", "If enabled, when a Contract is completed, its progress will automatically be reset so the player can complete it again.");
 	g_DisplayCompletionsInMenu = CreateConVar("zc_repeatable_displaycount", "1", "If enabled with zc_repeatable_contracts, a value displaying how many times a contract was completed will be shown in the Contracker.");
 	g_DisplayRepeatsInHUD = CreateConVar("zc_display_repeats_hud", "0", "If enabled, the progress HUD on the right side of the screen will display the amount of times that Contract has been completed.");
+	g_ResetThresholdsPerRound = CreateConVar("zc_reset_thresholds_per_round", "1", "If enabled, the threshold for client objective will be reset.");
+	g_ResetTimersPerRound = CreateConVar("zc_reset_timers_per_round", "1", "If enabled, all timers for client objectives will be reset.");
 
 	g_DebugEvents = CreateConVar("zc_debug_print_events", "0", "Logs every time an event is sent.");
 	g_DebugProcessing = CreateConVar("zc_debug_processing", "0", "Logs every time an event is processed.");
@@ -169,6 +189,9 @@ public void OnPluginStart()
 	g_ConfigSearchPath.AddChangeHook(OnSchemaConVarChange);
 	g_RequiredFileExt.AddChangeHook(OnSchemaConVarChange);
 	g_DisabledPath.AddChangeHook(OnSchemaConVarChange);
+
+	HookEvent("teamplay_round_start", OnRoundStart);
+	HookEvent("player_spawn", OnPlayerSpawn);
 
 	// ================ ENGINE SETUP ================
 	switch (GetEngineVersion())
@@ -281,6 +304,7 @@ public void DelayedLoad(int client)
 	Contract BlankContract;
 	ActiveContract[client] = BlankContract;
 	OldContract[client] = BlankContract;
+	PlayerHasSpawned[client] = false;
 
 	DB_LoadContractFromLastSession(client);
 	DB_LoadAllClientPreferences(client);
@@ -307,9 +331,10 @@ public void OnClientDisconnect(int client)
 	Contract Blank;
 	ActiveContract[client] = Blank;
 	OldContract[client] = Blank;
+	PlayerHasSpawned[client] = false;
+
 	g_Menu_CurrentDirectory[client] = "root";
 	g_Menu_DirectoryDeepness[client] = 1;
-	
 	g_NextHUDUpdate[client] = -1.0;
 }
 
@@ -1155,11 +1180,42 @@ public void CB_GetContractFromLastSession(Database db, DBResultSet results, cons
     while (results.FetchRow())
     {
         results.FetchString(0, UUID, sizeof(UUID));
-        SetClientContract(client, UUID);
+        SetClientContractEx(client, UUID, true, true);
     }
 }
 
+public Action OnPlayerSpawn(Event event, const char[] name, bool dontBroadcast)
+{
+	int client = GetClientOfUserId(event.GetInt("userid"));
+	if (PlayerHasSpawned[client]) return Plugin_Continue;
+	OpenContrackerForClient(client);
+	PlayerHasSpawned[client] = true;
+	return Plugin_Continue;
+}
+
 // ============ MAIN LOGIC FUNCTIONS ============
+
+public Action OnRoundStart(Event event, const char[] name, bool dontBroadcast)
+{
+	for (int i = 0; i < MAXPLAYERS+1; i++)
+	{
+		if (!IsClientValid(i)) continue;
+		if (!ActiveContract[i].IsContractInitalized()) continue;
+		for (int j = 0; j < ActiveContract[i].ObjectiveCount; j++)
+		{
+			if (g_ResetThresholdsPerRound.BoolValue) ActiveContract[i].ObjectiveThreshold.Set(j, 0);
+			if (g_ResetTimersPerRound.BoolValue)
+			{
+				CloseHandle(ActiveContract[i].ObjectiveTimers.Get(j));
+				ActiveContract[i].ObjectiveTimers.Set(j, INVALID_HANDLE);
+
+				g_TimeChange[i] = 0.0;
+				g_TimerActive[i] = false;
+			}
+		}
+	}
+	return Plugin_Continue;
+}
 
 public Action Timer_DrawContrackerHud(Handle hTimer)
 {
@@ -1195,7 +1251,7 @@ public Action Timer_DrawContrackerHud(Handle hTimer)
 
 		// TODO: UNDO ME
 		// Add text if we've completed the Contract.
-		/*if (ActiveContract[i].IsContractComplete())
+		if (ActiveContract[i].IsContractComplete())
 		{
 			char CompleteText[] = "CONTRACT COMPLETE - Type /c to\nselect a new Contract.";
 			StrCat(DisplayText, sizeof(DisplayText), CompleteText);
@@ -1205,7 +1261,7 @@ public Action Timer_DrawContrackerHud(Handle hTimer)
 			char WarningText[] = "This Contract cannot be completed.\nType /c to select a new Contract.";
 			StrCat(DisplayText, sizeof(DisplayText), WarningText);
 		}
-		else*/
+		else
 		{
 			// Display the overall Contract progress.
 			if (view_as<ContractType>(ActiveContract[i].GetSchema().GetNum(CONTRACT_DEF_TYPE)) == Contract_ContractProgress)
@@ -1252,7 +1308,7 @@ public Action Timer_DrawContrackerHud(Handle hTimer)
 				KeyValues ObjSchema = ActiveContract[i].GetObjectiveSchema(j);
 
 				char ObjectiveText[64] = "#%d:";
-				Format(ObjectiveText, sizeof(ObjectiveText), ObjectiveText, j);
+				Format(ObjectiveText, sizeof(ObjectiveText), ObjectiveText, j+1);
 				// Display the progress of this objective if we're not infinite.
 				if (!ActiveContract[i].IsObjectiveInfinite(j))
 				{
@@ -1289,26 +1345,20 @@ public Action Timer_DrawContrackerHud(Handle hTimer)
 				}
 				// Infinite contract objectives may have timers attached to them, so we
 				// add them here.
-
-				// TODO: Rejig this timer code!
-				/*
 				char TimerText[64] = " [TIME: %ds]";
 				// Display a timer if we have one active.
-				for (int k = 0; k < ActiveContractObjective.m_hEvents.Length; k++)
+				for (int k = 0; k < ActiveContract[i].ObjectiveCount; k++)
 				{
-					ContractObjectiveEvent ObjEvent;
-					ActiveContractObjective.m_hEvents.GetArray(k, ObjEvent);
-
 					// Do we have a timer going?
-					if (ObjEvent.m_hTimer != INVALID_HANDLE)
+					if (ActiveContract[i].IsTimerRunning(k))
 					{
-						int TimeDiff = RoundFloat((GetGameTime() - ObjEvent.m_fStarted));
+						int TimeDiff = (RoundToFloor(GetGameTime()) - RoundToFloor(ActiveContract[i].ObjectiveTimerStarted.Get(k)));
 						Format(TimerText, sizeof(TimerText), TimerText, TimeDiff);
 
 						if (g_TimeChange[i] != 0.0)
 						{
 							SetHudTextParams(1.0, -1.0, 1.0, 255, 242, 0, 255, 1);
-							char TimeDiffText[16] = " %s%.1fs";
+							char TimeDiffText[16] = " %s%.1fs max";
 							if (g_TimeChange[i] > 0.0)
 							{
 								Format(TimeDiffText, sizeof(TimeDiffText), TimeDiffText, "+", g_TimeChange[i]);
@@ -1322,7 +1372,7 @@ public Action Timer_DrawContrackerHud(Handle hTimer)
 						}
 						StrCat(ObjectiveText, sizeof(ObjectiveText), TimerText);
 					}
-				}*/
+				}
 
 				if (strlen(ObjectiveText) > 4)
 				{
@@ -1452,6 +1502,7 @@ void ProcessEventTimerLogic(int client, Contract Buffer, int obj_id, char event[
 			TimerData.WriteString(event);
 			TimerData.WriteFloat(GetGameTime());
 			Buffer.ObjectiveTimers.Set(obj_id, TimerHandle);
+			Buffer.ObjectiveTimerStarted.Set(obj_id, GetGameTime());
 		}
 	}
 }

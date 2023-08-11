@@ -592,7 +592,7 @@ void ConstructObjectiveInformationMenu(int client, int objective)
 	KeyValues ObjSchema = ActiveContract[client].GetObjectiveSchema(objective);
 	
 	char ExtendedDesc[256];
-	ObjSchema.GetString(CONTRACT_DEF_OBJ_DESC, ExtendedDesc, sizeof(ExtendedDesc), "");
+	ObjSchema.GetString(CONTRACT_DEF_OBJ_EXT_DESC, ExtendedDesc, sizeof(ExtendedDesc), "");
 
 	// For some reason, ExplodeString and ReplaceString don't want to deal with
 	// newline characters. As a hack, I will split strings with # instead.
