@@ -1203,11 +1203,23 @@ public Action OnRoundStart(Event event, const char[] name, bool dontBroadcast)
 		if (!ActiveContract[i].IsContractInitalized()) continue;
 		for (int j = 0; j < ActiveContract[i].ObjectiveCount; j++)
 		{
-			if (g_ResetThresholdsPerRound.BoolValue) ActiveContract[i].ObjectiveThreshold.Set(j, 0);
+			if (g_ResetThresholdsPerRound.BoolValue)
+			{
+				StringMap ObjectiveThreshold = ActiveContract[i].ObjectiveThreshold.Get(j);
+				StringMapSnapshot Snapshot = ObjectiveThreshold.Snapshot();
+				for (int k = 0; k < Snapshot.Length; k++)
+				{
+					char event_name[MAX_EVENT_SIZE];
+					Snapshot.GetKey(k, event_name, sizeof(event_name));
+					ObjectiveThreshold.SetValue(event_name, 0);
+				}
+				ActiveContract[i].ObjectiveThreshold.Set(j, ObjectiveThreshold);
+			}
 			if (g_ResetTimersPerRound.BoolValue)
 			{
 				CloseHandle(ActiveContract[i].ObjectiveTimers.Get(j));
 				ActiveContract[i].ObjectiveTimers.Set(j, INVALID_HANDLE);
+				ActiveContract[i].ObjectiveTimerStarted.Set(j, -1.0);
 
 				g_TimeChange[i] = 0.0;
 				g_TimerActive[i] = false;
@@ -1713,7 +1725,7 @@ void ProcessContrackerEvent(int client, char event[MAX_EVENT_SIZE], int value, b
 			CompletedContracts[client].GetArray(Buffer.UUID, info, sizeof(CompletedContractInfo));
 		}
 		info.m_iCompletions++;
-		if (g_AutoResetContracts) info.m_bReset = true;
+		info.m_bReset = g_AutoResetContracts.BoolValue;
 		CompletedContracts[client].SetArray(Buffer.UUID, info, sizeof(CompletedContractInfo));
 		SetCompletedContractInfoDatabase(steamid64, Buffer.UUID, info);
 
@@ -1730,7 +1742,32 @@ void ProcessContrackerEvent(int client, char event[MAX_EVENT_SIZE], int value, b
 		{
 			DeleteContractProgressDatabase(steamid64, Buffer.UUID);
 			DeleteAllObjectiveProgressDatabase(steamid64, Buffer.UUID);
-			SetClientContractEx(client, Buffer.UUID, true, true);
+
+			if (!use_old)
+			{
+				// Reset everything.
+				Buffer.ContractProgress = 0;
+				for (int j = 0; j < Buffer.ObjectiveCount; j++)
+				{
+					Buffer.ObjectiveProgress.Set(j, 0);
+					StringMap ObjectiveThreshold = Buffer.ObjectiveThreshold.Get(j);
+					StringMapSnapshot Snapshot = ObjectiveThreshold.Snapshot();
+					for (int k = 0; k < Snapshot.Length; k++)
+					{
+						char event_name[MAX_EVENT_SIZE];
+						Snapshot.GetKey(k, event_name, sizeof(event_name));
+						ObjectiveThreshold.SetValue(event_name, 0);
+					}
+					Buffer.ObjectiveThreshold.Set(j, ObjectiveThreshold);
+
+					CloseHandle(Buffer.ObjectiveTimers.Get(j));
+					Buffer.ObjectiveTimers.Set(j, INVALID_HANDLE);
+					Buffer.ObjectiveTimerStarted.Set(j, -1.0);
+
+					g_TimeChange[client] = 0.0;
+					g_TimerActive[client] = false;
+				}
+			}
 		}
 
 		// If we're a bot, grant a new Contract straight away.

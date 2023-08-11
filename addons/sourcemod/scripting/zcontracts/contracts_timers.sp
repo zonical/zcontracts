@@ -97,13 +97,13 @@ public void SendEventToTimer(int client, int obj_id, char event[MAX_EVENT_SIZE],
 			case Contract_ContractProgress: ModifyContractProgress(client, Value, ActiveContract[client], obj_id);
 		}
 	}
-	if (StrContains(EventAction, "threshold") != -1)
+	/*if (StrContains(EventAction, "threshold") != -1)
 	{
 		int curr_threshold = ActiveContract[client].ObjectiveThreshold.Get(obj_id);
 		int Value = view_as<int>(Variable);
 		if (StrContains(EventAction, "subtract") != -1) Value *= -1;
 		ActiveContract[client].ObjectiveThreshold.Set(obj_id, curr_threshold + Value);
-	}
+	}*/
 
 	if (StrEqual(EventAction, "add_time")) g_TimeChange[client] = Variable;
 	if (StrEqual(EventAction, "subtract_time")) g_TimeChange[client] = Variable * -1.0;
