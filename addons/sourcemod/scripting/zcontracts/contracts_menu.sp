@@ -91,6 +91,8 @@ int ContractMenuHandler(Menu menu, MenuAction action, int param1, int param2)
 			// Are we a contract?
 			else if (MenuKey[0] == '{')
 			{
+				KeyValues Schema = GetContractSchema(MenuKey);
+
 				char ContractDirectory[MAX_DIRECTORY_SIZE];
 				GetContractDirectory(MenuKey, ContractDirectory);
 				// Are we in the right directory?
@@ -98,6 +100,12 @@ int ContractMenuHandler(Menu menu, MenuAction action, int param1, int param2)
 				{
 					return ITEMDRAW_IGNORE;
 				}
+
+				// Admin check.
+				char AdminFlags[64];
+				Schema.GetString(CONTRACT_DEF_REQUIRED_FLAG, AdminFlags, sizeof(AdminFlags));
+				int RequiredFlags = ReadFlagString(AdminFlags);
+				if (!StrEqual(AdminFlags, "") && !(RequiredFlags && GetUserFlagBits(param1) & RequiredFlags)) return ITEMDRAW_IGNORE;
 
 				// Are we currently using this contract?
 				if (StrEqual(MenuKey, ActiveContract[param1].UUID)) 
@@ -120,6 +128,13 @@ int ContractMenuHandler(Menu menu, MenuAction action, int param1, int param2)
 				{
 					return ITEMDRAW_IGNORE;
 				}
+
+				// Do not draw a directory if it's listed as an admin-only directory.
+				/*char DictAdminString[64];
+				g_AdminDictList.GetString(MenuKey, DictAdminString, sizeof(DictAdminString))
+				PrintToChat(param1, DictAdminString);
+				int RequiredFlags = ReadFlagString(DictAdminString);
+				if (!StrEqual(DictAdminString, "") && !(RequiredFlags && GetUserFlagBits(param1) & RequiredFlags)) return ITEMDRAW_IGNORE;*/
 
 				// Depending on our deepness, see how many times the slash character shows
 				// up in this directory choice. If there's more than there should be, don't

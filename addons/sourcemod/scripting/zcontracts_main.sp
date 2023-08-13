@@ -14,6 +14,7 @@
 
 Database g_DB = null;
 Handle g_DatabaseRetryTimer;
+KeyValues g_AdminDictList;
 
 Handle g_HudSync;
 
@@ -246,6 +247,21 @@ public void OnPluginStart()
 	RegConsoleCmd("sm_zcpref", OpenPrefPanelCmd);
 	RegConsoleCmd("sm_zchelp", OpenHelpPanelCmd);
 	RegConsoleCmd("sm_chelp", OpenHelpPanelCmd);
+
+	// ================ CONFIG ================
+	/*g_AdminDictList = new KeyValues("AdminDicts");
+	char FileDir[PLATFORM_MAX_PATH];
+	BuildPath(Path_SM, FileDir, sizeof(FileDir), "configs/zcontracts/");
+	NormalizePathToPOSIX(FileDir);
+	StrCat(FileDir, sizeof(FileDir), "admin_directories.txt");
+	if (!g_AdminDictList.ImportFromFile(FileDir))
+	{
+		LogMessage("Could not find \"%s\"!", FileDir);
+	}
+
+	char e[256];
+	g_AdminDictList.ExportToString(e, sizeof(e));
+	PrintToServer(e);*/
 }
 
 public void OnMapEnd()
@@ -903,6 +919,13 @@ public any Native_CanClientActivateContract(Handle plugin, int numParams)
 	if (g_DebugUnlockContracts.BoolValue) return true;
 
 	KeyValues Schema = GetContractSchema(UUID);
+
+	// Admin check.
+	/*char AdminFlags[64];
+	Schema.GetString(CONTRACT_DEF_REQUIRED_FLAG, AdminFlags, sizeof(AdminFlags));
+	PrintToChat(client, "flags: %s", AdminFlags);
+	int RequiredFlags = ReadFlagString(AdminFlags);
+	if (!StrEqual(AdminFlags, "") && !(RequiredFlags && GetUserFlagBits(client) & RequiredFlags)) return false;*/
 
 	// Time restriction check.
 	int BeginTimestampRestriction = Schema.GetNum(CONTRACT_DEF_UNIX_START, -1);

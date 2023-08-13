@@ -45,6 +45,9 @@ public KeyValues LoadContractsSchema()
 		char requiredExt[16];
 		g_RequiredFileExt.GetString(requiredExt, sizeof(requiredExt));
 		if (StrContains(contractFilePath, requiredExt) == -1) continue;
+
+		// Don't load special config files.
+		if (StrContains(contractFilePath, "admin_directories.txt") != -1) continue;
 		
 		// Import in this config file.
 		KeyValues importKV = new KeyValues("Contract");

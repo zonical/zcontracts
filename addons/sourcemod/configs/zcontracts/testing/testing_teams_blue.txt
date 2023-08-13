@@ -6,6 +6,7 @@
 		"directory"	"root/testing"
 		"type"		"2"
 		"maximum_cp"	"50"
+		"required_flag"	"z"
 
 		"team_restriction"	"blue"
 

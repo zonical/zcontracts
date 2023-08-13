@@ -74,6 +74,7 @@ enum ContractType
 #define CONTRACT_DEF_OBJECTIVES "objectives"
 #define CONTRACT_DEF_REQUIRED "required_contracts"
 #define CONTRACT_DEF_DIFFICULTY "difficulty"
+#define CONTRACT_DEF_REQUIRED_FLAG "required_flag"
 
 #define CONTRACT_DEF_OBJ_DESC "description"
 #define CONTRACT_DEF_OBJ_EXT_DESC "extended_description"
