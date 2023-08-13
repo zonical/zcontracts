@@ -36,11 +36,11 @@ If you make any edits to any of the enum structs, make sure you recompile all pl
 - Contracts can be grouped into directories (e.g `root/offense-contracts`).
 - Objectives can have timer-based events (e.g "Kill three players in ten seconds.")
 - Server operators can easily create and modify Contracts with a text editor.
-- [Plugin developers can easily create custom Contracker events with the provided Native functions](https://github.com/zonical/zcontracts/wiki/Natives-and-Forwards).
+- Plugin developers can easily create custom Contracker events with the provided Native functions.
 - Two different types of Contract progress-collection: “Objective Progress” and “Contract Progress”:
   - "Objective Based" Contracts require all Objectives to be completed to finish a Contract.
   - "Contract Based" Contracts require getting a certain amount of points to finish a Contract.
-- [Lots of customisation (e.g Contracts can be repeated infinitely), all controllable with ConVars](https://github.com/zonical/zcontracts/wiki/ConVar's-and-Console-Commands).
+- Lots of customisation (e.g Contracts can be repeated infinitely), all controllable with ConVars.
 
 ## Usage
 This plugin, like any other SourceMod plugin, falls under the [SourceMod License](https://www.sourcemod.net/license.php) (specifically GPLv3). You are free to use this plugin on your server and modify the plugin source code to suit your own needs. I would appreciate a small credit for creating the plugin but it's not a requirement. This plugin will always be open sourced and free. The sample Contracts provided in this repositiory are free to be used, modified, or deleted.
