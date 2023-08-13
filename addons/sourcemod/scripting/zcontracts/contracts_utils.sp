@@ -12,7 +12,7 @@ bool IsContractLockedForClient(int client, char UUID[MAX_UUID_SIZE])
 	if (g_ContractSchema.JumpToKey(UUID))
 	{
 		// Construct the required contracts.
-		if (g_ContractSchema.JumpToKey("required_contracts", false))
+		if (g_ContractSchema.JumpToKey(CONTRACT_DEF_REQUIRED, false))
 		{
 			int Value = 0;
 			for (;;)

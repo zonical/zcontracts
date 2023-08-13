@@ -6,6 +6,7 @@
 		"directory"	"root/testing"
 		"type"		"2"
 		"maximum_cp"	"50"
+		"required_flag"	"z"
 
 		// What classes can do this contract?
 		"classes"
@@ -25,7 +26,8 @@
 		{
 			"1"
 			{
-				"description"		"Kill three players within 10 seconds."
+				"description"		"Kill five players within 10 seconds."
+				"extended_description"	"Kill five players within 10 seconds.#Getting a kill with the timer active will add an additional three seconds."
 				"infinite"			"1"
 				
 				// How many points should we give for successfully doing this objective?
@@ -40,7 +42,7 @@
 						"type"		"increment"
 						
 						// How many times does this event need to trigger to add points?
-						"threshold"	"3"
+						"threshold"	"5"
 
 						"timer"
 						{

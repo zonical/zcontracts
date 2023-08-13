@@ -41,16 +41,6 @@ public Action ReloadDatabase(int client, int args)
 }
 
 /**
- * The ConVar "zc_database_update_time" controls how often we update the database
- * with all of the player Contract information.
-*/
-public void OnDatabaseUpdateChange(ConVar convar, char[] oldValue, char[] newValue)
-{
-    delete g_DatabaseUpdateTimer;
-    g_DatabaseUpdateTimer = CreateTimer(StringToFloat(newValue), Timer_SaveAllToDB, _, TIMER_REPEAT);
-}
-
-/**
  * The ConVar "zc_database_retry_time" is used when an attempt to connect to the database
  * fails and we need to reattempt at a later point.
  */
@@ -63,48 +53,6 @@ public void OnDatabaseRetryChange(ConVar convar, char[] oldValue, char[] newValu
 public Action Timer_RetryDBConnect(Handle hTimer)
 {
     Database.Connect(GotDatabase, "zcontracts");
-    return Plugin_Continue;
-}
-
-/**
- * The ConVar "zc_database_update_time" controls how often we update the database
- * with all of the player Contract information.
- */
-
-// TODO: Can we make this into a transaction?
-public Action Timer_SaveAllToDB(Handle hTimer)
-{
-    for (int i = 0; i < MAXPLAYERS+1; i++)
-    {
-        if (!IsClientValid(i) || IsFakeClient(i)) continue;
-
-        // Save this contract to the database.
-        if (!ActiveContract[i].IsContractInitalized()) continue;
-
-        if (g_DB != null)
-        {
-            // Save the Contract.
-            if (ActiveContract[i].m_bNeedsDBSave)
-            {
-                SaveActiveContractToDatabase(i);
-                ActiveContract[i].m_bNeedsDBSave = false;
-            }
-            // Save each of our objectives.
-            for (int j = 0; j < ActiveContract[i].m_hObjectives.Length; j++)
-            {
-                ContractObjective ActiveContractObjective;
-                ActiveContract[i].GetObjective(j, ActiveContractObjective);
-                if (!ActiveContractObjective.m_bInitalized) continue;
-
-                if (ActiveContractObjective.m_bNeedsDBSave)
-                {
-                    SaveActiveObjectiveToDatabase(i, j);
-                    ActiveContractObjective.m_bNeedsDBSave = false;
-                    ActiveContract[i].SaveObjective(j, ActiveContractObjective);
-                }
-            }
-        }
-    }
     return Plugin_Continue;
 }
 
@@ -202,8 +150,8 @@ public any Native_SetObjectiveProgressDatabase(Handle plugin, int numParams)
     }
 
     // Don't save infinite objectives.
-    KeyValues Schema = GetObjectiveSchema(UUID, objective_id+1);
-    if (view_as<bool>(Schema.GetNum("infinite", 0)))
+    KeyValues Schema = GetObjectiveSchema(UUID, objective_id);
+    if (view_as<bool>(Schema.GetNum(CONTRACT_DEF_OBJ_INFINITE, 0)))
     {
         ThrowNativeError(SP_ERROR_NATIVE, "Cannot set progress for an objective that's marked infinite (UUID: %s, OBJ: %d)", UUID, objective_id);
     }
@@ -335,15 +283,15 @@ public any Native_SaveActiveObjectiveToDatabase(Handle plugin, int numParams)
     }
 
     int objective = GetNativeCell(2);
-    if (objective > /*zero indexed*/ GetContractObjectiveCount(UUID)-1)
+    if (objective > GetContractObjectiveCount(UUID))
     {
         LogMessage("SaveActiveObjectiveToDatabase: Invalid contract objective ID passed (%N: %d)", client, objective);
         return false;
     }
 
     // Don't save infinite objectives.
-    KeyValues Schema = GetObjectiveSchema(UUID, objective+1);
-    if (view_as<bool>(Schema.GetNum("infinite", 0)))
+    KeyValues Schema = GetObjectiveSchema(UUID, objective);
+    if (view_as<bool>(Schema.GetNum(CONTRACT_DEF_OBJ_INFINITE, 0)))
     {
         return false;
     }
@@ -398,18 +346,18 @@ public void CB_SetClientContract_Contract(Database db, DBResultSet results, cons
             ThrowError("Outdated contract data. Minimum version: %d, data version: %d", MinimumRequiredVersion, DataVersion);
         }
 
-        ActiveContract[client].m_iProgress = results.FetchInt(2);
+        ActiveContract[client].ContractProgress = results.FetchInt(2);
 
         Call_StartForward(g_fOnContractProgressReceived);
         Call_PushCell(client);
-        Call_PushString(ActiveContract[client].m_sUUID);
-        Call_PushCell(ActiveContract[client].m_iProgress);
+        Call_PushString(ActiveContract[client].UUID);
+        Call_PushCell(ActiveContract[client].ContractProgress);
         Call_Finish();
 
         if (g_DebugQuery.BoolValue && IsClientValid(client))
         {
-            LogMessage("[ZContracts] %N LOAD: Successfully grabbed Contract progress from database (%d/%d).",
-            client, ActiveContract[client].m_iProgress, ActiveContract[client].m_iMaxProgress);
+            LogMessage("[ZContracts] %N LOAD: Successfully grabbed Contract progress from database. Value: %d",
+            client, ActiveContract[client].ContractProgress);
         }
     }
 
@@ -439,23 +387,20 @@ public void CB_SetClientContract_Objective(Database db, DBResultSet results, con
             ThrowError("Outdated contract objective data. Minimum version: %d, data version: %d", MinimumRequiredVersion, DataVersion);
         }
 
-        ContractObjective hObj;
         int db_id = results.FetchInt(2);
-        ActiveContract[client].GetObjective(db_id, hObj);
-        hObj.m_iProgress = results.FetchInt(3);
-        ActiveContract[client].SaveObjective(db_id, hObj);
+        ActiveContract[client].ObjectiveProgress.Set(db_id, results.FetchInt(3));
 
         Call_StartForward(g_fOnObjectiveProgressReceived);
         Call_PushCell(client);
-        Call_PushString(ActiveContract[client].m_sUUID);
+        Call_PushString(ActiveContract[client].UUID);
         Call_PushCell(db_id);
-        Call_PushCell(hObj.m_iProgress);
+        Call_PushCell(ActiveContract[client].ObjectiveProgress.Get(db_id));
         Call_Finish();
 
         if (g_DebugQuery.BoolValue)
         {
-            LogMessage("[ZContracts] %N LOAD: Successfully grabbed ContractObjective %d progress from database CP: (%d/%d)",
-            client, db_id, hObj.m_iProgress, hObj.m_iMaxProgress);
+            LogMessage("[ZContracts] %N LOAD: Successfully grabbed objective %d progress from database. Value: %d",
+            client, db_id, ActiveContract[client].ObjectiveProgress);
         }
     }
 
