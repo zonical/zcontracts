@@ -102,10 +102,10 @@ int ContractMenuHandler(Menu menu, MenuAction action, int param1, int param2)
 				}
 
 				// Admin check.
-				char AdminFlags[64];
+				/*char AdminFlags[64];
 				Schema.GetString(CONTRACT_DEF_REQUIRED_FLAG, AdminFlags, sizeof(AdminFlags));
 				int RequiredFlags = ReadFlagString(AdminFlags);
-				if (!StrEqual(AdminFlags, "") && !(RequiredFlags && GetUserFlagBits(param1) & RequiredFlags)) return ITEMDRAW_IGNORE;
+				if (!StrEqual(AdminFlags, "") && !(RequiredFlags && GetUserFlagBits(param1) & RequiredFlags)) return ITEMDRAW_IGNORE;*/
 
 				// Are we currently using this contract?
 				if (StrEqual(MenuKey, ActiveContract[param1].UUID)) 
