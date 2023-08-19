@@ -382,16 +382,13 @@ void CreateObjectiveDisplay(int client, bool unknown)
 	
 	// Add difficulty stars to our title.
 	char StrDifficulty[32] = " || Difficulty: ";
-	int Difficulty = ActiveContract[client].GetSchema().GetNum(CONTRACT_DEF_DIFFICULTY, 0);
-	if (Difficulty > 0)
+	int Difficulty = ActiveContract[client].GetSchema().GetNum(CONTRACT_DEF_DIFFICULTY, 1);
+	for (int i = 0; i < Difficulty; i++)
 	{
-		for (int i = 0; i < Difficulty; i++)
-		{
-			StrCat(StrDifficulty, sizeof(StrDifficulty), "%s");
-			Format(StrDifficulty, sizeof(StrDifficulty), StrDifficulty, "★");
-		}
-		StrCat(ContractName, sizeof(ContractName), StrDifficulty);
+		StrCat(StrDifficulty, sizeof(StrDifficulty), "%s");
+		Format(StrDifficulty, sizeof(StrDifficulty), StrDifficulty, "★");
 	}
+	StrCat(ContractName, sizeof(ContractName), StrDifficulty);
 
 	// Display the amount of times we've completed this Contract.
 	if (g_RepeatContracts.BoolValue)

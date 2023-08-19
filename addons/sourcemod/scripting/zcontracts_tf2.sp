@@ -21,7 +21,7 @@ public Plugin myinfo =
 	name = "ZContracts - TF2 Logic",
 	author = "ZoNiCaL",
 	description = "Creates TF2-specific events for the ZContract system and handles special TF2 logic.",
-	version = "0.8.0",
+	version = ZCONTRACTS_PLUGIN_VERSION,
 	url = ""
 };
 
