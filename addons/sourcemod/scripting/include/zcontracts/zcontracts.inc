@@ -4,7 +4,7 @@
 
 #define __zcontracts_included
 
-#define ZCONTRACTS_PLUGIN_VERSION "0.11.0"
+#define ZCONTRACTS_PLUGIN_VERSION "0.11.1"
 // This value should be incremented with every breaking version made to the
 // database so saves can be easily converted. For developers who fork this project and
 // wish to merge changes, do not increment this number until merge.
@@ -152,53 +152,63 @@ enum struct Contract
 	bool IsContractComplete()
 	{
 		if (!this.Active || !this.Initalized) return false;
-		
-		switch (view_as<ContractType>(this.GetSchema().GetNum(CONTRACT_DEF_TYPE)))
+		switch (this.GetContractType())
 		{
 			case Contract_ObjectiveProgress: // All objectives must be complete.
 			{
 				for (int i = 0; i < this.ObjectiveCount; i++)
 				{
-					KeyValues ObjSchema = this.GetObjectiveSchema(i);
-					if (ObjSchema.GetNum(CONTRACT_DEF_OBJ_INFINITE) == 1) continue;
-					if (!this.IsObjectiveComplete(i)) return false;
+					if (this.IsObjectiveInfinite(i)) continue;
+					if (!this.IsObjectiveComplete(i))
+					{
+						return false;
+					}
 				}
 				return true;
 			}
 			case Contract_ContractProgress: // The Contract's progress bar must be complete.
 			{
-				return this.ContractProgress >= this.GetSchema().GetNum(CONTRACT_DEF_MAX_PROGRESS);
+				KeyValues Schema = GetContractSchema(this.UUID);
+				int MaxProgress = Schema.GetNum(CONTRACT_DEF_MAX_PROGRESS);
+				delete Schema;
+				return this.ContractProgress >= MaxProgress;
 			}	
 		}
 		return false;
 	}
 
+	ContractType GetContractType()
+	{
+		KeyValues Schema = GetContractSchema(this.UUID);
+		ContractType Type = view_as<ContractType>(Schema.GetNum(CONTRACT_DEF_TYPE));
+		delete Schema;
+		return Type;
+	}
+
 	bool IsObjectiveComplete(int ObjectiveID)
 	{
-		KeyValues ObjSchema = this.GetObjectiveSchema(ObjectiveID);
-		if (ObjSchema.GetNum(CONTRACT_DEF_OBJ_INFINITE) == 1) return false;
-		return (this.ObjectiveProgress.Get(ObjectiveID) >= ObjSchema.GetNum(CONTRACT_DEF_OBJ_MAX_PROGRESS));
+		KeyValues ObjSchema = GetObjectiveSchema(this.UUID, ObjectiveID);
+		if (this.IsObjectiveInfinite(ObjectiveID))
+		{
+			delete ObjSchema;
+			return false;
+		}
+		int MaxObjProgress = ObjSchema.GetNum(CONTRACT_DEF_OBJ_MAX_PROGRESS);
+		delete ObjSchema;
+		return (this.ObjectiveProgress.Get(ObjectiveID) >= MaxObjProgress);
 	}
 
 	bool IsObjectiveInfinite(int ObjectiveID)
 	{
-		KeyValues ObjSchema = this.GetObjectiveSchema(ObjectiveID);
-		return (ObjSchema.GetNum(CONTRACT_DEF_OBJ_INFINITE) == 1)
+		KeyValues ObjSchema = GetObjectiveSchema(this.UUID, ObjectiveID);
+		bool IsInfinite = (ObjSchema.GetNum(CONTRACT_DEF_OBJ_INFINITE) == 1);
+		delete ObjSchema;
+		return IsInfinite;
 	}
 
 	bool IsTimerRunning(int ObjectiveID)
 	{
 		return (this.ObjectiveTimers.Get(ObjectiveID) != INVALID_HANDLE);
-	}
-
-	KeyValues GetSchema()
-	{
-		return GetContractSchema(this.UUID);
-	}
-
-	KeyValues GetObjectiveSchema(int ObjectiveID)
-	{
-		return GetObjectiveSchema(this.UUID, ObjectiveID);
 	}
 
 	/**
@@ -215,8 +225,8 @@ enum struct Contract
 		this.ObjectiveThreshold = new ArrayList(sizeof(StringMap));
 		this.ObjectiveTimers = new ArrayList(sizeof(Handle));
 		this.ObjectiveTimerStarted = new ArrayList();
+		KeyValues Schema = GetContractSchema(this.UUID);
 
-		KeyValues Schema = this.GetSchema()
 		// Grab the schema KeyValue objects of our objectives and store them locally.
 		if (Schema.JumpToKey(CONTRACT_DEF_OBJECTIVES))
 		{

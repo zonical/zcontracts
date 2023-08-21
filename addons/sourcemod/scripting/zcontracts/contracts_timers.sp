@@ -21,17 +21,26 @@ public Action EventTimer(Handle hTimer, DataPack hPack)
 	if (g_TimerActive[client] == false)
 	{
 		// Grab the starting time from the Schema.
-		KeyValues Schema = ActiveContract[client].GetObjectiveSchema(obj_id);
-		if (!Schema.JumpToKey("events")) ThrowError("Contract \"%s\" doesn't have any events! Fix this, server developer!", ActiveContract[client].UUID);
-		if (!Schema.JumpToKey(event)) ThrowError("Contract \"%s\" doesn't have requested event \"%s\"", ActiveContract[client].UUID, event);
-		Schema.JumpToKey("timer");
+		KeyValues ObjSchema = GetObjectiveSchema(ActiveContract[client].UUID, obj_id);
+		if (!ObjSchema.JumpToKey("events"))
+		{
+			delete ObjSchema;
+			ThrowError("Contract \"%s\" doesn't have any events! Fix this, server developer!", ActiveContract[client].UUID);
+		}
+		if (!ObjSchema.JumpToKey(event)) 
+		{
+			delete ObjSchema;
+			ThrowError("Contract \"%s\" doesn't have requested event \"%s\"", ActiveContract[client].UUID, event);
+		}
+		ObjSchema.JumpToKey("timer");
 		
-		TimeRemaining = Schema.GetFloat("time");
+		TimeRemaining = ObjSchema.GetFloat("time");
 		if (g_DebugTimers.BoolValue)
 		{
 			LogMessage("[ZContracts] Timer started for %N: [OBJ: %d, EVENT: %s, TIME: %.1f]", client, obj_id, event, TimeRemaining);
 		}
 		g_TimerActive[client] = true;
+		delete ObjSchema;
 	}
 
 	if (g_TimeChange[client] != 0.0)
@@ -72,26 +81,42 @@ public Action EventTimer(Handle hTimer, DataPack hPack)
 public void SendEventToTimer(int client, int obj_id, char event[MAX_EVENT_SIZE], const char[] timer_event)
 {
 	// Grab the starting time from the Schema.
-	KeyValues Schema = ActiveContract[client].GetObjectiveSchema(obj_id);
-	if (!Schema.JumpToKey(CONTRACT_DEF_OBJ_EVENTS)) ThrowError("Contract \"%s\" doesn't have any events! Fix this, server developer!", ActiveContract[client].UUID);
-	if (!Schema.JumpToKey(event)) ThrowError("Contract \"%s\" doesn't have requested event \"%s\"", ActiveContract[client].UUID, event);
-	if (!Schema.JumpToKey(CONTRACT_DEF_EVENT_TIMER)) return;
-	if (!Schema.JumpToKey(timer_event)) return;
+	KeyValues ObjSchema = GetObjectiveSchema(ActiveContract[client].UUID, obj_id);
+	if (!ObjSchema.JumpToKey(CONTRACT_DEF_OBJ_EVENTS))
+	{
+		delete ObjSchema;
+		ThrowError("Contract \"%s\" doesn't have any events! Fix this, server developer!", ActiveContract[client].UUID);
+	}
+	if (!ObjSchema.JumpToKey(event))
+	{
+		delete ObjSchema;
+		ThrowError("Contract \"%s\" doesn't have requested event \"%s\"", ActiveContract[client].UUID, event);
+	}
+	if (!ObjSchema.JumpToKey(CONTRACT_DEF_EVENT_TIMER))
+	{
+		delete ObjSchema;
+		return;
+	}
+	if (!ObjSchema.JumpToKey(timer_event))
+	{
+		delete ObjSchema;
+		return;
+	}
 
 	char EventAction[64];
-	Schema.GetString("event", EventAction, sizeof(EventAction));
+	ObjSchema.GetString("event", EventAction, sizeof(EventAction));
 	if (g_DebugTimers.BoolValue)
 	{
 		LogMessage("[ZContracts] Timer event fired for %N: [OBJ: %d, OBJ-EVENT: %d, EVENT: %s, ACTION: %s]",
 		client, obj_id, event, timer_event, EventAction);
 	}
-	float Variable = Schema.GetFloat("variable");
+	float Variable = ObjSchema.GetFloat("variable");
 
 	if (StrContains(EventAction, "reward") != -1)
 	{
 		int Value = view_as<int>(Variable);
 		if (StrEqual(EventAction, "subtract_reward")) Value *= -1;
-		switch (view_as<ContractType>(ActiveContract[client].GetSchema().GetNum("type")))
+		switch (ActiveContract[client].GetContractType())
 		{
 			case Contract_ObjectiveProgress: ModifyObjectiveProgress(client, Value, ActiveContract[client], obj_id);
 			case Contract_ContractProgress: ModifyContractProgress(client, Value, ActiveContract[client], obj_id);
@@ -107,4 +132,6 @@ public void SendEventToTimer(int client, int obj_id, char event[MAX_EVENT_SIZE],
 
 	if (StrEqual(EventAction, "add_time")) g_TimeChange[client] = Variable;
 	if (StrEqual(EventAction, "subtract_time")) g_TimeChange[client] = Variable * -1.0;
+
+	delete ObjSchema;
 }

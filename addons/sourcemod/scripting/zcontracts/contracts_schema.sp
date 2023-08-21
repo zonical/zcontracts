@@ -134,6 +134,7 @@ public any Native_GetContractSchema(Handle plugin, int numParams)
 	NewKV.Import(g_ContractSchema);
 	g_ContractSchema.Rewind();
 	Handle Schema = CloneHandle(NewKV, plugin);
+	delete NewKV;
 	return view_as<KeyValues>(Schema);
 }
 
@@ -175,6 +176,7 @@ public any Native_GetObjectiveSchema(Handle plugin, int numParams)
 			NewKV.Import(g_ContractSchema);
 			g_ContractSchema.Rewind();
 			Handle Schema = CloneHandle(NewKV, plugin);
+			delete NewKV;
 
 			return view_as<KeyValues>(Schema);
 		}
@@ -225,7 +227,7 @@ bool GetContractDirectory(const char[] sUUID, char buffer[MAX_DIRECTORY_SIZE])
 	if (g_ContractSchema.JumpToKey(sUUID))
 	{
 		g_ContractSchema.GetString(CONTRACT_DEF_DIRECTORY, buffer, sizeof(buffer), "root");
-		g_ContractSchema.GoBack();
+		g_ContractSchema.Rewind();
 		return true;
 	}
 	return false;

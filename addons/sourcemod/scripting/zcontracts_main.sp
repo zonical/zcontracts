@@ -583,8 +583,7 @@ public any Native_SetClientContract(Handle plugin, int numParams)
 		SetContractProgressDatabase(steamid64, OldContract[client].UUID, OldContract[client].ContractProgress);
 		for (int i = 0; i < OldContract[client].ObjectiveCount; i++)
 		{
-			KeyValues ObjSchema = OldContract[client].GetObjectiveSchema(i);
-			if (ObjSchema.GetNum(CONTRACT_DEF_OBJ_INFINITE) == 1) continue;
+			if (OldContract[client].IsObjectiveInfinite(i)) continue;
 			SetObjectiveProgressDatabase(steamid64, OldContract[client].UUID, i, OldContract[client].ObjectiveProgress.Get(i));
 		}
 	}
@@ -611,7 +610,7 @@ public any Native_SetClientContract(Handle plugin, int numParams)
 		// TODO: Can we make this into one query?
 		// TODO: Implement version checking when required! "version" key in SQL
 		char contract_query[1024];
-		if (view_as<ContractType>(ActiveContract[client].GetSchema().GetNum(CONTRACT_DEF_TYPE)) == Contract_ContractProgress)
+		if (ActiveContract[client].GetContractType() == Contract_ContractProgress)
 		{
 			g_DB.Format(contract_query, sizeof(contract_query),
 			"SELECT * FROM contract_progress WHERE steamid64 = '%s' AND contract_uuid = '%s'", steamid64, UUID);
@@ -690,8 +689,7 @@ public any Native_SetClientContractEx(Handle plugin, int numParams)
 		SetContractProgressDatabase(steamid64, OldContract[client].UUID, OldContract[client].ContractProgress);
 		for (int i = 0; i < OldContract[client].ObjectiveCount; i++)
 		{
-			KeyValues ObjSchema = OldContract[client].GetObjectiveSchema(i);
-			if (ObjSchema.GetNum(CONTRACT_DEF_OBJ_INFINITE) == 1) continue;
+			if (OldContract[client].IsObjectiveInfinite(i)) continue;
 			SetObjectiveProgressDatabase(steamid64, OldContract[client].UUID, i, OldContract[client].ObjectiveProgress.Get(i));
 		}
 	}
@@ -718,7 +716,7 @@ public any Native_SetClientContractEx(Handle plugin, int numParams)
 		// TODO: Can we make this into one query?
 		// TODO: Implement version checking when required! "version" key in SQL
 		char contract_query[1024];
-		if (view_as<ContractType>(ActiveContract[client].GetSchema().GetNum(CONTRACT_DEF_TYPE)) == Contract_ContractProgress)
+		if (ActiveContract[client].GetContractType() == Contract_ContractProgress)
 		{
 			g_DB.Format(contract_query, sizeof(contract_query),
 			"SELECT * FROM contract_progress WHERE steamid64 = '%s' AND contract_uuid = '%s'", steamid64, UUID);
@@ -929,9 +927,18 @@ public any Native_CanClientActivateContract(Handle plugin, int numParams)
 
 	// Time restriction check.
 	int BeginTimestampRestriction = Schema.GetNum(CONTRACT_DEF_UNIX_START, -1);
-	if (BeginTimestampRestriction != -1 && BeginTimestampRestriction > GetTime()) return false;
+	if (BeginTimestampRestriction != -1 && BeginTimestampRestriction > GetTime())
+	{
+		delete Schema;
+		return false;
+	}
+
 	int EndTimestampRestriction = Schema.GetNum(CONTRACT_DEF_UNIX_END, -1);
-	if (EndTimestampRestriction != -1 && EndTimestampRestriction < GetTime()) return false;
+	if (EndTimestampRestriction != -1 && EndTimestampRestriction < GetTime())
+	{
+		delete Schema;
+		return false;
+	}
 	
 	// Required contracts check.
 	if (Schema.JumpToKey(CONTRACT_DEF_REQUIRED, false))
@@ -948,6 +955,7 @@ public any Native_CanClientActivateContract(Handle plugin, int numParams)
 			if (StrEqual("{}", ContractUUID)) break;
 			if (CompletedContracts[client].ContainsKey(ContractUUID))
 			{
+				delete Schema;
 				return true;
 			}
 			Value++;
@@ -955,9 +963,11 @@ public any Native_CanClientActivateContract(Handle plugin, int numParams)
 	}
 	else
 	{
+		delete Schema;
 		return true;	
 	}
 	
+	delete Schema;
 	return false;
 }
 
@@ -1010,6 +1020,7 @@ public any Native_CanClientCompleteContract(Handle plugin, int numParams)
 		PrintToServer("[ZCD Native_CanClientCompleteContract(%N, %s)] Map check failed. Schema: %s, curr: %s",
 		client, UUID, MapRestriction, Map);
 #endif
+		delete Schema;
 		return false;
 	}
 
@@ -1027,6 +1038,7 @@ public any Native_CanClientCompleteContract(Handle plugin, int numParams)
 		PrintToServer("[ZCD Native_CanClientCompleteContract(%N, %s)] Team check failed. Schema: %d, curr: %d",
 		client, UUID, TeamRestriction, GetClientTeam(client));
 #endif
+		delete Schema;
 		return false;
 	}
 
@@ -1051,6 +1063,7 @@ public any Native_CanClientCompleteContract(Handle plugin, int numParams)
 				PrintToServer("[ZCD Native_CanClientCompleteContract(%N, %s)] Weapon classname check failed. Schema: %s, curr: %s",
 				client, UUID, WeaponClassnameRestriction, Classname);
 #endif
+				delete Schema;
 				return false;
 			}
 		}
@@ -1068,6 +1081,7 @@ public any Native_CanClientCompleteContract(Handle plugin, int numParams)
 		PrintToServer("[ZCD Native_CanClientCompleteContract(%N, %s)] Time begin check failed. Schema: %d, curr: %d",
 		client, UUID, BeginTimestampRestriction, GetTime());
 #endif
+		delete Schema;
 		return false;
 	}
 	int EndTimestampRestriction = Schema.GetNum(CONTRACT_DEF_UNIX_END, -1);
@@ -1077,6 +1091,7 @@ public any Native_CanClientCompleteContract(Handle plugin, int numParams)
 		PrintToServer("[ZCD Native_CanClientCompleteContract(%N, %s)] Time begin check failed. Schema: %d, curr: %d",
 		client, UUID, EndTimestampRestriction, GetTime());
 #endif
+		delete Schema;
 		return false;
 	}
 
@@ -1088,6 +1103,7 @@ public any Native_CanClientCompleteContract(Handle plugin, int numParams)
 	PrintToServer("[ZCD Native_CanClientCompleteContract(%N, %s)] All checks passed, client can complete contract.", client, UUID);
 #endif
 
+	delete Schema;
 	return true;
 }
 
@@ -1262,6 +1278,8 @@ public Action Timer_DrawContrackerHud(Handle hTimer)
 		if (!ActiveContract[i].IsContractInitalized() || !ActiveContract[i].Active) continue;
 		if (!PlayerHUDEnabled[i]) continue;
 
+		KeyValues Schema = GetContractSchema(ActiveContract[i].UUID);
+
 		// TF2 specific check.
 		if (GetEngineVersion() == Engine_TF2 &&
 		(TF2_GetClientTeam(i) == TFTeam_Spectator || TF2_GetClientTeam(i) == TFTeam_Unassigned)) continue;
@@ -1270,7 +1288,7 @@ public Action Timer_DrawContrackerHud(Handle hTimer)
 		SetHudTextParams(1.0, -1.0, HUD_REFRESH_RATE + 0.1, 255, 255, 255, 255);
 		char DisplayText[512] = "\"%s\":\n";
 		char ContractName[MAX_CONTRACT_NAME_SIZE];
-		ActiveContract[i].GetSchema().GetString(CONTRACT_DEF_NAME, ContractName, sizeof(ContractName));
+		Schema.GetString(CONTRACT_DEF_NAME, ContractName, sizeof(ContractName));
 		Format(DisplayText, sizeof(DisplayText), DisplayText, ContractName);
 
 		// Add the amount of completions.
@@ -1284,7 +1302,6 @@ public Action Timer_DrawContrackerHud(Handle hTimer)
 			StrCat(DisplayText, sizeof(DisplayText), CompletionsText);
 		}
 
-		// TODO: UNDO ME
 		// Add text if we've completed the Contract.
 		if (ActiveContract[i].IsContractComplete())
 		{
@@ -1299,13 +1316,13 @@ public Action Timer_DrawContrackerHud(Handle hTimer)
 		else
 		{
 			// Display the overall Contract progress.
-			if (view_as<ContractType>(ActiveContract[i].GetSchema().GetNum(CONTRACT_DEF_TYPE)) == Contract_ContractProgress)
+			if (ActiveContract[i].GetContractType() == Contract_ContractProgress)
 			{
 				if (g_NextHUDUpdate[i] > GetGameTime()) continue;
 
 				char ProgressText[128] = "Progress: [%d/%d]";
 				Format(ProgressText, sizeof(ProgressText), ProgressText,
-				ActiveContract[i].ContractProgress, ActiveContract[i].GetSchema().GetNum(CONTRACT_DEF_MAX_PROGRESS));		
+				ActiveContract[i].ContractProgress, Schema.GetNum(CONTRACT_DEF_MAX_PROGRESS));		
 
 				// Adds +xCP value to the end of the text.
 				if (ActiveContract[i].m_bHUD_ContractUpdate)
@@ -1340,14 +1357,18 @@ public Action Timer_DrawContrackerHud(Handle hTimer)
 			for (int j = 0; j < ActiveContract[i].ObjectiveCount; j++)
 			{
 				if (ActiveContract[i].IsObjectiveComplete(j)) continue;
-				KeyValues ObjSchema = ActiveContract[i].GetObjectiveSchema(j);
+				KeyValues ObjSchema = GetObjectiveSchema(ActiveContract[i].UUID, j);
 
 				char ObjectiveText[64] = "#%d:";
 				Format(ObjectiveText, sizeof(ObjectiveText), ObjectiveText, j+1);
 				// Display the progress of this objective if we're not infinite.
 				if (!ActiveContract[i].IsObjectiveInfinite(j))
 				{
-					if (g_NextHUDUpdate[i] > GetGameTime()) continue;
+					if (g_NextHUDUpdate[i] > GetGameTime())
+					{
+						delete ObjSchema;
+						continue;
+					}
 
 					char ProgressText[64] = " [%d/%d]";
 					Format(ProgressText, sizeof(ProgressText), ProgressText,
@@ -1414,6 +1435,8 @@ public Action Timer_DrawContrackerHud(Handle hTimer)
 					StrCat(DisplayText, sizeof(DisplayText), ObjectiveText);
 					StrCat(DisplayText, sizeof(DisplayText), "\n");
 				}
+
+				delete ObjSchema;
 			}
 
 			// Add some text saying that we're saving the Contract to the database.
@@ -1425,6 +1448,8 @@ public Action Timer_DrawContrackerHud(Handle hTimer)
 		}
 		// Display text to client.
 		ShowSyncHudText(i, g_HudSync, DisplayText);
+
+		delete Schema;
 	}
 
 	return Plugin_Continue;
@@ -1519,10 +1544,22 @@ void ProcessEventTimerLogic(int client, Contract Buffer, int obj_id, char event[
 	}
 	else 
 	{
-		KeyValues Schema = Buffer.GetObjectiveSchema(obj_id);
-		if (!Schema.JumpToKey(CONTRACT_DEF_OBJ_EVENTS)) ThrowError("Contract \"%s\" doesn't have any events! Fix this, server developer!", Buffer.UUID);
-		if (!Schema.JumpToKey(event)) ThrowError("Contract \"%s\" doesn't have requested event \"%s\"", Buffer.UUID, event);
-		if (!Schema.JumpToKey(CONTRACT_DEF_EVENT_TIMER)) return;
+		KeyValues Schema = GetObjectiveSchema(Buffer.UUID, obj_id);
+		if (!Schema.JumpToKey(CONTRACT_DEF_OBJ_EVENTS))
+		{
+			delete Schema;
+			ThrowError("Contract \"%s\" doesn't have any events! Fix this, server developer!", Buffer.UUID);
+		}
+		if (!Schema.JumpToKey(event))
+		{
+			delete Schema;
+			ThrowError("Contract \"%s\" doesn't have requested event \"%s\"", Buffer.UUID, event);
+		}
+		if (!Schema.JumpToKey(CONTRACT_DEF_EVENT_TIMER))
+		{
+			delete Schema;
+			return;
+		}
 
 		// Start a timer if we should have one.
 		if (Buffer.ObjectiveTimers.Get(obj_id) == INVALID_HANDLE && Schema.GetFloat(CONTRACT_DEF_TIMER_TIME) != 0.0)
@@ -1539,6 +1576,7 @@ void ProcessEventTimerLogic(int client, Contract Buffer, int obj_id, char event[
 			Buffer.ObjectiveTimers.Set(obj_id, TimerHandle);
 			Buffer.ObjectiveTimerStarted.Set(obj_id, GetGameTime());
 		}
+		delete Schema;
 	}
 }
 
@@ -1548,9 +1586,17 @@ void PerformThresholdCheck(int client, Contract Buffer, int objective_id, char e
 	PrintToServer("[ZCD PerformThresholdCheck(%N, %s, %d, %s, %d)] Called.", client, Buffer.UUID, objective_id, event, value);
 #endif
 
-	KeyValues Schema = Buffer.GetObjectiveSchema(objective_id);
-	if (!Schema.JumpToKey(CONTRACT_DEF_OBJ_EVENTS)) ThrowError("Contract \"%s\" doesn't have any events! Fix this, server developer!", Buffer.UUID);
-	if (!Schema.JumpToKey(event)) ThrowError("Contract \"%s\" doesn't have requested event \"%s\"", Buffer.UUID, event);
+	KeyValues Schema = GetObjectiveSchema(Buffer.UUID, objective_id);
+	if (!Schema.JumpToKey(CONTRACT_DEF_OBJ_EVENTS))
+	{
+		delete Schema;
+		ThrowError("Contract \"%s\" doesn't have any events! Fix this, server developer!", Buffer.UUID);
+	}
+	if (!Schema.JumpToKey(event))
+	{
+		delete Schema;
+		ThrowError("Contract \"%s\" doesn't have requested event \"%s\"", Buffer.UUID, event);
+	}
 
 	StringMap ObjectiveThreshold = Buffer.ObjectiveThreshold.Get(objective_id);
 	int CurrentThreshold = 0;
@@ -1569,7 +1615,7 @@ void PerformThresholdCheck(int client, Contract Buffer, int objective_id, char e
 				value *= -1;
 			}
 
-			switch (view_as<ContractType>(Buffer.GetSchema().GetNum(CONTRACT_DEF_TYPE)))
+			switch (Buffer.GetContractType())
 			{
 				case Contract_ObjectiveProgress: ModifyObjectiveProgress(client, value, Buffer, objective_id);
 				case Contract_ContractProgress: ModifyContractProgress(client, value, Buffer, objective_id);
@@ -1606,6 +1652,7 @@ void PerformThresholdCheck(int client, Contract Buffer, int objective_id, char e
 		}
 	}
 	Buffer.ObjectiveThreshold.Set(objective_id, ObjectiveThreshold);
+	delete Schema;
 }
 
 void ProcessContrackerEvent(int client, char event[MAX_EVENT_SIZE], int value, bool use_old=false)
@@ -1636,15 +1683,23 @@ void ProcessContrackerEvent(int client, char event[MAX_EVENT_SIZE], int value, b
 #if defined VERBOSE_DEBUG
 		PrintToServer("[ZCD ProcessContrackerEvent(%N, %s, %d, %d)] Contract: %s, obj %d passed completion check", client, event, value, use_old, Buffer.UUID, obj_id);
 #endif
-		KeyValues Schema = Buffer.GetObjectiveSchema(obj_id);
+		KeyValues ObjSchema = GetObjectiveSchema(Buffer.UUID, obj_id);
 		// Loop through events:
-		if (!Schema.JumpToKey(CONTRACT_DEF_OBJ_EVENTS)) ThrowError("Contract \"%s\" doesn't have any events! Fix this, server developer!", Buffer.UUID);
-		if (!Schema.GotoFirstSubKey()) ThrowError("Contract \"%s\" doesn't have any events! Fix this, server developer!", Buffer.UUID);
+		if (!ObjSchema.JumpToKey(CONTRACT_DEF_OBJ_EVENTS))
+		{
+			delete ObjSchema;
+			ThrowError("Contract \"%s\" doesn't have any events! Fix this, server developer!", Buffer.UUID);
+		}
+		if (!ObjSchema.GotoFirstSubKey())
+		{
+			delete ObjSchema;
+			ThrowError("Contract \"%s\" doesn't have any events! Fix this, server developer!", Buffer.UUID);
+		}
 		do
 		{
 			// The name of the section is the event we compare, e.g "CONTRACTS_PLAYER_KILL"
 			char EventName[MAX_EVENT_SIZE];
-			Schema.GetSectionName(EventName, sizeof(EventName));
+			ObjSchema.GetSectionName(EventName, sizeof(EventName));
 
 			if (!StrEqual(EventName, event)) continue;
 #if defined VERBOSE_DEBUG
@@ -1685,7 +1740,7 @@ void ProcessContrackerEvent(int client, char event[MAX_EVENT_SIZE], int value, b
 			
 			// Store the old progress so we can check to see if we need to save.
 			int OldProgress = 0;
-			switch (view_as<ContractType>(Buffer.GetSchema().GetNum(CONTRACT_DEF_TYPE)))
+			switch (Buffer.GetContractType())
 			{
 				case Contract_ContractProgress: OldProgress = Buffer.ContractProgress;
 				case Contract_ObjectiveProgress: OldProgress = Buffer.ObjectiveProgress.Get(obj_id);
@@ -1715,15 +1770,16 @@ void ProcessContrackerEvent(int client, char event[MAX_EVENT_SIZE], int value, b
 
 			// Do a progress check now to see if we should save.
 			bool ShouldSave = false;
-			switch (view_as<ContractType>(Buffer.GetSchema().GetNum(CONTRACT_DEF_TYPE)))
+			switch (Buffer.GetContractType())
 			{
-				case Contract_ContractProgress: ShouldSave = (OldProgress < Buffer.ContractProgress);
-				case Contract_ObjectiveProgress: ShouldSave = (OldProgress < Buffer.ObjectiveProgress.Get(obj_id));
+				case Contract_ContractProgress: ShouldSave = (OldProgress != Buffer.ContractProgress);
+				case Contract_ObjectiveProgress: ShouldSave = (OldProgress != Buffer.ObjectiveProgress.Get(obj_id));
 			}
 
 			if (ShouldSave) SetContractProgressDatabase(steamid64, Buffer.UUID, Buffer.ContractProgress);
 
-		} while (Schema.GotoNextKey());
+		} while (ObjSchema.GotoNextKey());
+		delete ObjSchema;
 	}
 
 	// Is our contract now complete?
@@ -1754,12 +1810,16 @@ void ProcessContrackerEvent(int client, char event[MAX_EVENT_SIZE], int value, b
 
 		if (!g_AutoResetContracts.BoolValue)
 		{
+			KeyValues Schema = GetContractSchema(Buffer.UUID);
+
 			char ContractName[MAX_CONTRACT_NAME_SIZE];
-			Buffer.GetSchema().GetString(CONTRACT_DEF_NAME, ContractName, sizeof(ContractName));
+			Schema.GetString(CONTRACT_DEF_NAME, ContractName, sizeof(ContractName));
 
 			PrintColoredChatAll("%s[ZC]%s %N has completed the contract: %s\"%s\"%s, congratulations!",
 			COLOR_LIGHTSEAGREEN, COLOR_DEFAULT, client, COLOR_YELLOW, ContractName, COLOR_DEFAULT);
 			SetContractProgressDatabase(steamid64, Buffer.UUID, Buffer.ContractProgress);
+
+			delete Schema;
 		}
 		else // Delete all progress from database and reset the Contract.
 		{
@@ -1806,7 +1866,8 @@ void ProcessContrackerEvent(int client, char event[MAX_EVENT_SIZE], int value, b
 void ModifyContractProgress(int client, int value, Contract Buffer, int obj_id)
 {
 	int AddValue = 0;
-	KeyValues ObjSchema = Buffer.GetObjectiveSchema(obj_id);
+	KeyValues Schema = GetContractSchema(Buffer.UUID);
+	KeyValues ObjSchema = GetObjectiveSchema(Buffer.UUID, obj_id);
 
 	// This award value will not be multiplied by the value argument. This may be useful for some Contracts.
 	if (Buffer.m_bNoMultiplication) AddValue = ObjSchema.GetNum(CONTRACT_DEF_OBJ_AWARD);
@@ -1814,10 +1875,12 @@ void ModifyContractProgress(int client, int value, Contract Buffer, int obj_id)
 	else AddValue = ObjSchema.GetNum(CONTRACT_DEF_OBJ_AWARD) * value;
 
 	Buffer.ContractProgress += AddValue;
-	Buffer.ContractProgress = Int_Min(Buffer.ContractProgress, Buffer.GetSchema().GetNum(CONTRACT_DEF_MAX_PROGRESS));
+	Buffer.ContractProgress = Int_Min(Buffer.ContractProgress, Schema.GetNum(CONTRACT_DEF_MAX_PROGRESS));
 	if (Buffer.ContractProgress < 0)
 	{
 		Buffer.ContractProgress = 0;
+		delete Schema;
+		delete ObjSchema;
 		return;
 	}
 
@@ -1834,7 +1897,7 @@ void ModifyContractProgress(int client, int value, Contract Buffer, int obj_id)
 		int ObjectiveProgress = Buffer.ObjectiveProgress.Get(obj_id);
 		ObjectiveProgress++;
 
-		ObjectiveProgress = Int_Min(ObjectiveProgress, Buffer.GetSchema().GetNum(CONTRACT_DEF_MAX_PROGRESS));
+		ObjectiveProgress = Int_Min(ObjectiveProgress, Schema.GetNum(CONTRACT_DEF_MAX_PROGRESS));
 		Buffer.ObjectiveProgress.Set(obj_id, ObjectiveProgress);
 	}
 
@@ -1848,8 +1911,8 @@ void ModifyContractProgress(int client, int value, Contract Buffer, int obj_id)
 
 		char ContractName[MAX_CONTRACT_NAME_SIZE];
 		char ContractDescription[256];
-		Buffer.GetSchema().GetString(CONTRACT_DEF_NAME, ContractName, sizeof(ContractName));
-		Buffer.GetObjectiveSchema(obj_id).GetString(CONTRACT_DEF_OBJ_DESC, ContractDescription, sizeof(ContractDescription));
+		Schema.GetString(CONTRACT_DEF_NAME, ContractName, sizeof(ContractName));
+		ObjSchema.GetString(CONTRACT_DEF_OBJ_DESC, ContractDescription, sizeof(ContractDescription));
 
 		if (ObjSchema.GetNum(CONTRACT_DEF_OBJ_NO_MULTI) == 1)
 		{
@@ -1858,7 +1921,7 @@ void ModifyContractProgress(int client, int value, Contract Buffer, int obj_id)
 			MessageText = "\"%s\" (%s [%d/%dCP]) %s";
 			PrintHintText(client, MessageText, ContractDescription,
 			ContractName, Buffer.ContractProgress,
-			Buffer.GetSchema().GetNum(CONTRACT_DEF_MAX_PROGRESS), AwardStr);
+			Schema.GetNum(CONTRACT_DEF_MAX_PROGRESS), AwardStr);
 		}
 		else
 		{
@@ -1867,7 +1930,7 @@ void ModifyContractProgress(int client, int value, Contract Buffer, int obj_id)
 			MessageText = "\"%s\" %dx (%s [%d/%dCP]) %s";
 			PrintHintText(client, MessageText, ContractDescription,
 			value, ContractName, Buffer.ContractProgress,
-			Buffer.GetSchema().GetNum(CONTRACT_DEF_MAX_PROGRESS), AwardStr);
+			Schema.GetNum(CONTRACT_DEF_MAX_PROGRESS), AwardStr);
 		}
 	}
 	if (g_DebugProgress.BoolValue)
@@ -1875,12 +1938,16 @@ void ModifyContractProgress(int client, int value, Contract Buffer, int obj_id)
 		LogMessage("[ZContracts] %N PROGRESS: Increment event triggered [ID: %s, CP: %d]",
 		client, Buffer.UUID, Buffer.ObjectiveProgress.Get(obj_id));
 	}
+
+	delete Schema;
+	delete ObjSchema;
 }
 
 void ModifyObjectiveProgress(int client, int value, Contract Buffer, int obj_id)
 {
 	int AddValue = 0;
-	KeyValues ObjSchema = Buffer.GetObjectiveSchema(obj_id);
+	KeyValues Schema = GetContractSchema(Buffer.UUID);
+	KeyValues ObjSchema = GetObjectiveSchema(Buffer.UUID, obj_id);
 
 	// This award value will not be multiplied by the value argument. This may be useful for some Contracts.
 	if (Buffer.m_bNoMultiplication) AddValue = ObjSchema.GetNum(CONTRACT_DEF_OBJ_AWARD);
@@ -1888,7 +1955,7 @@ void ModifyObjectiveProgress(int client, int value, Contract Buffer, int obj_id)
 	else AddValue = ObjSchema.GetNum(CONTRACT_DEF_OBJ_AWARD) * value;
 
 	int ObjectiveProgress = Buffer.ObjectiveProgress.Get(obj_id) + AddValue;
-	ObjectiveProgress = Int_Min(ObjectiveProgress, Buffer.GetSchema().GetNum(CONTRACT_DEF_MAX_PROGRESS));
+	ObjectiveProgress = Int_Min(ObjectiveProgress, Schema.GetNum(CONTRACT_DEF_MAX_PROGRESS));
 	if (ObjectiveProgress < 0) ObjectiveProgress = 0;
 	Buffer.ObjectiveProgress.Set(obj_id, ObjectiveProgress);
 
@@ -1909,8 +1976,8 @@ void ModifyObjectiveProgress(int client, int value, Contract Buffer, int obj_id)
 
 		char ContractName[MAX_CONTRACT_NAME_SIZE];
 		char ContractDescription[256];
-		Buffer.GetSchema().GetString(CONTRACT_DEF_NAME, ContractName, sizeof(ContractName));
-		Buffer.GetSchema().GetString(CONTRACT_DEF_OBJ_DESC, ContractDescription, sizeof(ContractDescription));
+		Schema.GetString(CONTRACT_DEF_NAME, ContractName, sizeof(ContractName));
+		Schema.GetString(CONTRACT_DEF_OBJ_DESC, ContractDescription, sizeof(ContractDescription));
 		
 		if (ObjSchema.GetNum(CONTRACT_DEF_OBJ_NO_MULTI) == 1)
 		{
@@ -1919,7 +1986,7 @@ void ModifyObjectiveProgress(int client, int value, Contract Buffer, int obj_id)
 			MessageText = "\"%s\" (%s [%d/%d]) %s";
 			PrintHintText(client, MessageText, ContractDescription,
 			ContractName, Buffer.ObjectiveProgress.Get(obj_id),
-			Buffer.GetSchema().GetNum(CONTRACT_DEF_MAX_PROGRESS), AwardStr);
+			Schema.GetNum(CONTRACT_DEF_MAX_PROGRESS), AwardStr);
 		}
 		else
 		{
@@ -1928,7 +1995,7 @@ void ModifyObjectiveProgress(int client, int value, Contract Buffer, int obj_id)
 			MessageText = "\"%s\" %dx (%s [%d/%d]) %s";
 			PrintHintText(client, MessageText, ContractDescription,
 			value, ContractName, Buffer.ObjectiveProgress.Get(obj_id),
-			Buffer.GetSchema().GetNum(CONTRACT_DEF_MAX_PROGRESS), AwardStr);
+			Schema.GetNum(CONTRACT_DEF_MAX_PROGRESS), AwardStr);
 		}
 	}
 	if (g_DebugProgress.BoolValue)
@@ -1936,6 +2003,9 @@ void ModifyObjectiveProgress(int client, int value, Contract Buffer, int obj_id)
 		LogMessage("[ZContracts] %N PROGRESS: Increment event triggered [ID: %s, OBJ: %d, CP: %d]",
 		client, Buffer.UUID, obj_id, Buffer.ObjectiveProgress.Get(obj_id));
 	}
+
+	delete Schema;
+	delete ObjSchema;
 }
 
 // ============ DEBUG FUNCTIONS ============

@@ -91,7 +91,6 @@ int ContractMenuHandler(Menu menu, MenuAction action, int param1, int param2)
 			// Are we a contract?
 			else if (MenuKey[0] == '{')
 			{
-				KeyValues Schema = GetContractSchema(MenuKey);
 
 				char ContractDirectory[MAX_DIRECTORY_SIZE];
 				GetContractDirectory(MenuKey, ContractDirectory);
@@ -114,7 +113,10 @@ int ContractMenuHandler(Menu menu, MenuAction action, int param1, int param2)
 					{
 						return ITEMDRAW_DEFAULT;
 					}
-					else return ITEMDRAW_DISABLED;
+					else
+					{
+						return ITEMDRAW_DISABLED;
+					}
 				}
 			}
 			// Any special options.
@@ -371,18 +373,20 @@ void OpenContrackerForClient(int client)
 **/
 void CreateObjectiveDisplay(int client, bool unknown)
 {
+	KeyValues Schema = GetContractSchema(ActiveContract[client].UUID);
+
 	if (!unknown && PlayerSoundsEnabled[client] == Sounds_Enabled) EmitGameSoundToClient(client, ProgressLoadedSound);
 
 	Menu ContractDisplay = new Menu(ObjectiveDisplayHandler, MENU_ACTIONS_ALL);
 	ContractDisplay.OptionFlags = MENUFLAG_NO_SOUND | MENUFLAG_BUTTON_EXIT;
 
 	char ContractName[128];
-	ActiveContract[client].GetSchema().GetString(CONTRACT_DEF_NAME, ContractName, sizeof(ContractName));
+	Schema.GetString(CONTRACT_DEF_NAME, ContractName, sizeof(ContractName));
 	Format(ContractName, sizeof(ContractName), "\"%s\"", ContractName);
 	
 	// Add difficulty stars to our title.
 	char StrDifficulty[32] = " || Difficulty: ";
-	int Difficulty = ActiveContract[client].GetSchema().GetNum(CONTRACT_DEF_DIFFICULTY, 1);
+	int Difficulty = Schema.GetNum(CONTRACT_DEF_DIFFICULTY, 1);
 	for (int i = 0; i < Difficulty; i++)
 	{
 		StrCat(StrDifficulty, sizeof(StrDifficulty), "%s");
@@ -402,11 +406,11 @@ void CreateObjectiveDisplay(int client, bool unknown)
 
 	ContractDisplay.SetTitle(ContractName);
 
-	switch (view_as<ContractType>(ActiveContract[client].GetSchema().GetNum(CONTRACT_DEF_TYPE)))
+	switch (ActiveContract[client].GetContractType())
 	{
 		case Contract_ContractProgress:
 		{
-			int MaxProgress = ActiveContract[client].GetSchema().GetNum(CONTRACT_DEF_MAX_PROGRESS);
+			int MaxProgress = Schema.GetNum(CONTRACT_DEF_MAX_PROGRESS);
 			char ContractGoal[128] = "To complete this Contract, get %d CP.";
 			Format(ContractGoal, sizeof(ContractGoal), ContractGoal, MaxProgress);
 			ContractDisplay.AddItem("#contract_goal", ContractGoal, ITEMDRAW_DISABLED);
@@ -441,7 +445,7 @@ void CreateObjectiveDisplay(int client, bool unknown)
 	// TODO: Should we split this up into two pages?
 	for (int obj_id = 0; obj_id < ActiveContract[client].ObjectiveCount; obj_id++)
 	{
-		KeyValues ObjSchema = ActiveContract[client].GetObjectiveSchema(obj_id);
+		KeyValues ObjSchema = GetObjectiveSchema(ActiveContract[client].UUID, obj_id);
 		char line[256];
 		char Description[256];
 		ObjSchema.GetString(CONTRACT_DEF_OBJ_DESC, Description, sizeof(Description));
@@ -454,7 +458,7 @@ void CreateObjectiveDisplay(int client, bool unknown)
 		}
 		else
 		{
-			switch (view_as<ContractType>(ActiveContract[client].GetSchema().GetNum(CONTRACT_DEF_TYPE)))
+			switch (ActiveContract[client].GetContractType())
 			{
 				case Contract_ObjectiveProgress:
 				{
@@ -481,7 +485,9 @@ void CreateObjectiveDisplay(int client, bool unknown)
 		}
 		char MenuKey[8];
 		Format(MenuKey, sizeof(MenuKey), "obj_%d", obj_id);
-		ContractDisplay.AddItem(MenuKey, line);	
+		ContractDisplay.AddItem(MenuKey, line);
+
+		delete ObjSchema;
 	}
 	
 	ContractDisplay.AddItem("#divider3", "-------------------------------------------------", ITEMDRAW_SPACER);
@@ -489,6 +495,8 @@ void CreateObjectiveDisplay(int client, bool unknown)
 	// Send this to our client.
 	ContractDisplay.AddItem("open", "Open Contracker");
 	ContractDisplay.Display(client, 20);
+
+	delete Schema;
 }
 
 /**
@@ -514,9 +522,10 @@ public int ObjectiveDisplayHandler(Menu menu, MenuAction action, int param1, int
 				ReplaceString(MenuDisplay, sizeof(MenuDisplay), "obj_", "");
 				int Objective = StringToInt(MenuDisplay);
 
-				KeyValues ObjSchema = ActiveContract[param1].GetObjectiveSchema(Objective);
+				KeyValues ObjSchema = GetObjectiveSchema(ActiveContract[param1].UUID, Objective);
 				char ExtendedDesc[64];
 				ObjSchema.GetString(CONTRACT_DEF_OBJ_EXT_DESC, ExtendedDesc, sizeof(ExtendedDesc), "");
+				delete ObjSchema;
 				if (StrEqual(ExtendedDesc, ""))
 				{
 					return ITEMDRAW_DISABLED;
@@ -534,9 +543,10 @@ public int ObjectiveDisplayHandler(Menu menu, MenuAction action, int param1, int
 				ReplaceString(MenuDisplay, sizeof(MenuDisplay), "obj_", "");
 				int Objective = StringToInt(MenuDisplay);
 
-				KeyValues ObjSchema = ActiveContract[param1].GetObjectiveSchema(Objective);
+				KeyValues ObjSchema = GetObjectiveSchema(ActiveContract[param1].UUID, Objective);
 				char ExtendedDesc[64];
 				ObjSchema.GetString(CONTRACT_DEF_OBJ_EXT_DESC, ExtendedDesc, sizeof(ExtendedDesc));
+				delete ObjSchema;
 				if (!StrEqual(ExtendedDesc, ""))
 				{
 					StrCat(MenuDisplay, sizeof(MenuDisplay), " (...)");
@@ -557,9 +567,10 @@ public int ObjectiveDisplayHandler(Menu menu, MenuAction action, int param1, int
 				ReplaceString(MenuDisplay, sizeof(MenuDisplay), "obj_", "");
 				int Objective = StringToInt(MenuDisplay);
 
-				KeyValues ObjSchema = ActiveContract[param1].GetObjectiveSchema(Objective);
+				KeyValues ObjSchema = GetObjectiveSchema(ActiveContract[param1].UUID, Objective);
 				char ExtendedDesc[64];
 				ObjSchema.GetString(CONTRACT_DEF_OBJ_EXT_DESC, ExtendedDesc, sizeof(ExtendedDesc));
+				delete ObjSchema;
 				if (!StrEqual(ExtendedDesc, ""))
 				{
 					ConstructObjectiveInformationMenu(param1, Objective);
@@ -572,17 +583,19 @@ public int ObjectiveDisplayHandler(Menu menu, MenuAction action, int param1, int
 
 void ConstructObjectiveInformationMenu(int client, int objective)
 {
+	KeyValues Schema = GetContractSchema(ActiveContract[client].UUID);
+
 	// Construct our panel for the client.
 	Menu ObjectiveInformation = new Menu(ObjectiveInformationHandler, MENU_ACTIONS_ALL);
 	ObjectiveInformation.OptionFlags = MENUFLAG_NO_SOUND | MENUFLAG_BUTTON_EXIT;
 
 	char ContractName[128];
-	ActiveContract[client].GetSchema().GetString(CONTRACT_DEF_NAME, ContractName, sizeof(ContractName));
+	Schema.GetString(CONTRACT_DEF_NAME, ContractName, sizeof(ContractName));
 	Format(ContractName, sizeof(ContractName), "\"%s\"", ContractName);
 	
 	// Add difficulty stars to our title.
 	char StrDifficulty[32] = " || Difficulty: ";
-	int Difficulty = ActiveContract[client].GetSchema().GetNum(CONTRACT_DEF_DIFFICULTY, 1);
+	int Difficulty = Schema.GetNum(CONTRACT_DEF_DIFFICULTY, 1);
 	for (int i = 0; i < Difficulty; i++)
 	{
 		StrCat(StrDifficulty, sizeof(StrDifficulty), "%s");
@@ -601,7 +614,7 @@ void ConstructObjectiveInformationMenu(int client, int objective)
 	}
 
 	ObjectiveInformation.SetTitle(ContractName);
-	KeyValues ObjSchema = ActiveContract[client].GetObjectiveSchema(objective);
+	KeyValues ObjSchema = GetObjectiveSchema(ActiveContract[client].UUID, objective);
 	
 	char ExtendedDesc[256];
 	ObjSchema.GetString(CONTRACT_DEF_OBJ_EXT_DESC, ExtendedDesc, sizeof(ExtendedDesc), "");
@@ -633,6 +646,9 @@ void ConstructObjectiveInformationMenu(int client, int objective)
 	ObjectiveInformation.AddItem("return", "Return to Contract");
 	ObjectiveInformation.AddItem("open", "Open Contracker");
 	ObjectiveInformation.Display(client, 20);
+
+	delete Schema;
+	delete ObjSchema;
 }
 
 public int ObjectiveInformationHandler(Menu menu, MenuAction action, int param1, int param2)
@@ -875,6 +891,8 @@ void ConstructRepeatContractPanel(int client, char UUID[MAX_UUID_SIZE])
 
 	strcopy(g_RepeatUUID[client], sizeof(g_RepeatUUID[]), UUID);
 	gRepeatDisplay[client].Send(client, RepeatContractPanelHandler, MENU_TIME_FOREVER);
+
+	delete LockedContract;
 }
 
 public int RepeatContractPanelHandler(Menu menu, MenuAction action, int param1, int param2)
