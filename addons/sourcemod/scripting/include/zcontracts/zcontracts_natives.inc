@@ -71,6 +71,7 @@ native bool CallContrackerEvent(int client, char event[MAX_EVENT_SIZE], int valu
 
 /**
  * Grabs the Keyvalues schema for a Contract.
+ * The Handle must be closed with CloseHandle() or delete.
  *
  * @param UUID  Contract UUID.
  * @return		KeyValues object of a Contract.
@@ -80,6 +81,7 @@ native KeyValues GetContractSchema(char UUID[MAX_UUID_SIZE]);
 
 /**
  * Grabs the Keyvalues schema for an Objective.
+ * The Handle must be closed with CloseHandle() or delete.
  *
  * @param UUID  Contract UUID.
  * @param objective Objective ID.
