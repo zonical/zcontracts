@@ -169,7 +169,11 @@ public Action OnContractCompletableCheck(int client, char UUID[MAX_UUID_SIZE])
         ClassCheckArray[TFClass_Medic]      = view_as<bool>(ContractSchema.GetNum("medic", 0));
         ClassCheckArray[TFClass_Spy]        = view_as<bool>(ContractSchema.GetNum("spy", 0));
 
-		if (!ClassCheckArray[Class]) return Plugin_Stop;
+		if (!ClassCheckArray[Class])
+		{
+			delete ContractSchema;
+			return Plugin_Stop;
+		}
 		ContractSchema.Rewind();
 	}
 
@@ -178,10 +182,18 @@ public Action OnContractCompletableCheck(int client, char UUID[MAX_UUID_SIZE])
 	ContractSchema.GetString("required_gamerules", RequiredGameRulesEnt, sizeof(RequiredGameRulesEnt));
 	if (!StrEqual(RequiredGameRulesEnt, ""))
 	{
-		if (!TF2_ValidGameRulesEntityExists(RequiredGameRulesEnt)) return Plugin_Stop;
+		if (!TF2_ValidGameRulesEntityExists(RequiredGameRulesEnt)) 
+		{
+			delete ContractSchema;
+			return Plugin_Stop;
+		}
 	}
 	if ((ContractSchema.GetNum("gamemode_extension", view_as<int>(TGE_NoExtension)) != view_as<int>(TGE_NoExtension)) 
-	&& (ContractSchema.GetNum("gamemode_extension", view_as<int>(TGE_NoExtension)) != view_as<int>(g_TF2_GameModeExtension))) return Plugin_Stop;
+	&& (ContractSchema.GetNum("gamemode_extension", view_as<int>(TGE_NoExtension)) != view_as<int>(g_TF2_GameModeExtension))) 
+	{
+		delete ContractSchema;
+		return Plugin_Stop;
+	}
 
 	// Active weapon checks.
 	char ActiveWeaponSlot[64];
@@ -192,12 +204,20 @@ public Action OnContractCompletableCheck(int client, char UUID[MAX_UUID_SIZE])
 		if (IsValidEntity(ActiveWeapon))
 		{
 			int ItemDef = GetEntProp(ActiveWeapon, Prop_Send, "m_iItemDefinitionIndex");
-			if (!TF2Econ_IsValidItemDefinition(ItemDef)) return Plugin_Stop;
+			if (!TF2Econ_IsValidItemDefinition(ItemDef)) 
+			{
+				delete ContractSchema;
+				return Plugin_Stop;
+			}
 
 			int LoadoutSlot = TF2Econ_GetItemLoadoutSlot(ItemDef, TF2_GetPlayerClass(client));
 			char LoadoutSlotName[64];
 			TF2Econ_TranslateLoadoutSlotIndexToName(LoadoutSlot, LoadoutSlotName, sizeof(LoadoutSlotName));
-			if (!StrEqual(LoadoutSlotName, ActiveWeaponSlot)) return Plugin_Stop;
+			if (!StrEqual(LoadoutSlotName, ActiveWeaponSlot))
+			{
+				delete ContractSchema;
+				return Plugin_Stop;
+			}
 		}
 	}
 
@@ -222,7 +242,11 @@ public Action OnContractCompletableCheck(int client, char UUID[MAX_UUID_SIZE])
 			// Item definition index.
 			if (SchemaItemDef !=  ItemDef) ItemFound = false;
 		}
-		if (!ItemFound) return Plugin_Stop;
+		if (!ItemFound) 
+		{
+			delete ContractSchema;
+			return Plugin_Stop;
+		}
 	}
 
 	char InventoryItemName[64];
@@ -319,11 +343,16 @@ public Action OnContractCompletableCheck(int client, char UUID[MAX_UUID_SIZE])
 			}
 		}
 
-		if (!ItemFound) return Plugin_Stop;
+		if (!ItemFound)
+		{
+			delete ContractSchema;
+			return Plugin_Stop;
+		}
 	}
 
 
 	// All good! :)
+	delete ContractSchema;
 	return Plugin_Continue;
 }
 
