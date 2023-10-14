@@ -494,6 +494,7 @@ void CreateObjectiveDisplay(int client, bool unknown)
 
 	// Send this to our client.
 	ContractDisplay.AddItem("open", "Open Contracker");
+	ContractDisplay.AddItem("pref", "Edit Contracker Preferences");
 	ContractDisplay.Display(client, 20);
 
 	delete Schema;
@@ -560,6 +561,10 @@ public int ObjectiveDisplayHandler(Menu menu, MenuAction action, int param1, int
 			if (StrEqual(MenuKey, "open"))
 			{
 				gContractMenu.Display(param1, MENU_TIME_FOREVER);
+			}
+			else if (StrEqual(MenuKey, "pref"))
+			{
+				ConstructPreferencePanel(param1);
 			}
 			else if (StrContains(MenuKey, "obj_") != -1)
 			{

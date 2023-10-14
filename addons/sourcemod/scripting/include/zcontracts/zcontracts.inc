@@ -4,7 +4,7 @@
 
 #define __zcontracts_included
 
-#define ZCONTRACTS_PLUGIN_VERSION "0.11.1"
+#define ZCONTRACTS_PLUGIN_VERSION "0.11.2"
 // This value should be incremented with every breaking version made to the
 // database so saves can be easily converted. For developers who fork this project and
 // wish to merge changes, do not increment this number until merge.

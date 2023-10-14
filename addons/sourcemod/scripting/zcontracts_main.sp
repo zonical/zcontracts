@@ -28,16 +28,19 @@ bool PlayerHasSpawned[MAXPLAYERS+1] = { false, ... };
 ConVar g_UpdatesPerSecond;
 ConVar g_DatabaseRetryTime;
 ConVar g_DatabaseMaximumFailures;
-ConVar g_DisplayHudMessages;
-ConVar g_DisplayProgressHud;
-ConVar g_PlaySounds;
+
 ConVar g_BotContracts;
 ConVar g_RepeatContracts;
 ConVar g_AutoResetContracts;
 ConVar g_DisplayCompletionsInMenu;
-ConVar g_DisplayRepeatsInHUD;
 ConVar g_ResetThresholdsPerRound;
 ConVar g_ResetTimersPerRound;
+
+ConVar g_DisplayRepeatsInHUD;
+ConVar g_DisplayHudMessages;
+ConVar g_DisplayProgressHud;
+ConVar g_PlaySounds;
+ConVar g_OpenStatusOnJoin;
 
 ConVar g_DebugEvents;
 ConVar g_DebugProcessing;
@@ -46,6 +49,7 @@ ConVar g_DebugProgress;
 ConVar g_DebugSessions;
 ConVar g_DebugUnlockContracts;
 ConVar g_DebugTimers;
+
 
 // Forwards
 GlobalForward g_fOnObjectiveCompleted;
@@ -176,6 +180,7 @@ public void OnPluginStart()
 	g_DisplayRepeatsInHUD = CreateConVar("zc_display_repeats_hud", "0", "If enabled, the progress HUD on the right side of the screen will display the amount of times that Contract has been completed.");
 	g_ResetThresholdsPerRound = CreateConVar("zc_reset_thresholds_per_round", "1", "If enabled, the threshold for client objective will be reset.");
 	g_ResetTimersPerRound = CreateConVar("zc_reset_timers_per_round", "1", "If enabled, all timers for client objectives will be reset.");
+	g_OpenStatusOnJoin = CreateConVar("zc_open_status_on_join", "1", "If enabled, a client's active contract will be displayed when they first join the server.");
 
 	g_DebugEvents = CreateConVar("zc_debug_print_events", "0", "Logs every time an event is sent.");
 	g_DebugProcessing = CreateConVar("zc_debug_processing", "0", "Logs every time an event is processed.");
@@ -270,7 +275,6 @@ public void OnMapEnd()
 	for (int i = 0; i < MAXPLAYERS+1; i++)
 	{
 		if (!IsClientValid(i) || IsFakeClient(i)) continue;
-		SaveClientPreferences(i);
 
 		SaveActiveContractToDatabase(i);
 		for (int j = 0; j < ActiveContract[i].ObjectiveCount; j++)
@@ -317,10 +321,12 @@ public void DelayedLoad(int client)
 #endif
 
 	// Reset variables.
+	ActiveContract[client].Destroy();
+	OldContract[client].Destroy();
+
 	Contract BlankContract;
 	ActiveContract[client] = BlankContract;
 	OldContract[client] = BlankContract;
-	PlayerHasSpawned[client] = false;
 
 	DB_LoadContractFromLastSession(client);
 	DB_LoadAllClientPreferences(client);
@@ -336,13 +342,15 @@ public void OnClientDisconnect(int client)
 #if defined VERBOSE_DEBUG
 		PrintToServer("[ZCD OnClientDisconnect(%N)] Saving ZContracts information...", client);
 #endif
-		SaveClientPreferences(client);
 		SaveActiveContractToDatabase(client);
 		for (int i = 0; i < ActiveContract[client].ObjectiveCount; i++)
 		{
 			SaveActiveObjectiveToDatabase(client, i);
 		}
 	}
+
+	ActiveContract[client].Destroy();
+	OldContract[client].Destroy();
 
 	Contract Blank;
 	ActiveContract[client] = Blank;
@@ -568,6 +576,7 @@ public any Native_SetClientContract(Handle plugin, int numParams)
 
 	// If we have a Contract already selected, save it's progress to the database.
 	ActiveContract[client].Active = false;
+	OldContract[client].Destroy();
 	OldContract[client] = ActiveContract[client];
 
 	if (OldContract[client].IsContractInitalized() && 
@@ -1227,7 +1236,11 @@ public Action OnPlayerSpawn(Event event, const char[] name, bool dontBroadcast)
 {
 	int client = GetClientOfUserId(event.GetInt("userid"));
 	if (PlayerHasSpawned[client]) return Plugin_Continue;
-	OpenContrackerForClient(client);
+	if (!PlayerOpenStatusOnJoin[client]) return Plugin_Continue;
+	if (ActiveContract[client].IsContractInitalized())
+	{
+		CreateObjectiveDisplay(client, false);
+	}
 	PlayerHasSpawned[client] = true;
 	return Plugin_Continue;
 }
@@ -1245,6 +1258,8 @@ public Action OnRoundStart(Event event, const char[] name, bool dontBroadcast)
 			if (g_ResetThresholdsPerRound.BoolValue)
 			{
 				StringMap ObjectiveThreshold = ActiveContract[i].ObjectiveThreshold.Get(j);
+				if (ObjectiveThreshold == null) continue;
+				
 				StringMapSnapshot Snapshot = ObjectiveThreshold.Snapshot();
 				for (int k = 0; k < Snapshot.Length; k++)
 				{
@@ -1253,6 +1268,8 @@ public Action OnRoundStart(Event event, const char[] name, bool dontBroadcast)
 					ObjectiveThreshold.SetValue(event_name, 0);
 				}
 				ActiveContract[i].ObjectiveThreshold.Set(j, ObjectiveThreshold);
+				delete ObjectiveThreshold;
+				delete Snapshot;
 			}
 			if (g_ResetTimersPerRound.BoolValue)
 			{
@@ -1633,6 +1650,7 @@ void PerformThresholdCheck(int client, Contract Buffer, int objective_id, char e
 				Snapshot.GetKey(i, event_name, sizeof(event_name));
 				ObjectiveThreshold.SetValue(event_name, 0);
 			}
+			delete Snapshot;
 		}
 		
 		// Cancel our timer now that we've reached our threshold.
@@ -1652,6 +1670,7 @@ void PerformThresholdCheck(int client, Contract Buffer, int objective_id, char e
 		}
 	}
 	Buffer.ObjectiveThreshold.Set(objective_id, ObjectiveThreshold);
+	delete ObjectiveThreshold;
 	delete Schema;
 }
 
@@ -1737,6 +1756,7 @@ void ProcessContrackerEvent(int client, char event[MAX_EVENT_SIZE], int value, b
 			ObjectiveThreshold.GetValue(event, CurrentThreshold);
 			ObjectiveThreshold.SetValue(event, CurrentThreshold + value);
 			Buffer.ObjectiveThreshold.Set(obj_id, ObjectiveThreshold);
+			delete ObjectiveThreshold;
 			
 			// Store the old progress so we can check to see if we need to save.
 			int OldProgress = 0;
@@ -1842,6 +1862,8 @@ void ProcessContrackerEvent(int client, char event[MAX_EVENT_SIZE], int value, b
 						ObjectiveThreshold.SetValue(event_name, 0);
 					}
 					Buffer.ObjectiveThreshold.Set(j, ObjectiveThreshold);
+					delete ObjectiveThreshold;
+					delete Snapshot;
 
 					CloseHandle(Buffer.ObjectiveTimers.Get(j));
 					Buffer.ObjectiveTimers.Set(j, INVALID_HANDLE);
